@@ -1,0 +1,13 @@
+d:\MangaManager\dist\console\MangaManager.Console.exe
+d:\MangaManager\dist\console\MangaManager.Console.dll
+d:\MangaManager\dist\console\MangaManager.Console.deps.json
+d:\MangaManager\dist\console\MangaManager.Console.runtimeconfig.json
+d:\MangaManager\dist\console\MangaManager.Console.pdb
+d:\MangaManager\dist\console\Hardcodet.NotifyIcon.Wpf.dll
+d:\MangaManager\dist\console\Microsoft.Xaml.Behaviors.dll
+d:\MangaManager\dist\console\System.IO.Pipelines.dll
+d:\MangaManager\dist\console\System.Net.Http.Json.dll
+d:\MangaManager\dist\console\System.Text.Encodings.Web.dll
+d:\MangaManager\dist\console\System.Text.Json.dll
+d:\MangaManager\dist\console\runtimes\browser\lib\net8.0\System.Text.Encodings.Web.dll
+d:\MangaManager\dist\console\runtimes\win\lib\net9.0\System.Text.Encodings.Web.dll

@@ -1,0 +1,25 @@
+# 数据库
+*.db
+*.db-shm
+*.db-wal
+
+# Cookie / 密钥
+ehentai_cookies.json
+*.key
+
+# 构建产物
+src/backend/MangaManager.Api/bin/
+src/backend/MangaManager.Api/obj/
+src/backend/MangaManager.Core/bin/
+src/backend/MangaManager.Core/obj/
+src/backend/MangaManager.Data/bin/
+src/backend/MangaManager.Data/obj/
+src/backend/MangaManager.Services/bin/
+src/backend/MangaManager.Services/obj/
+src/frontend/manga-ui/node_modules/
+src/frontend/manga-ui/dist/
+
+# IDE
+.idea/
+.vs/
+.vscode/

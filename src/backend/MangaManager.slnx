@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MangaManager.Api/MangaManager.Api.csproj" />
+  <Project Path="MangaManager.Core/MangaManager.Core.csproj" />
+  <Project Path="MangaManager.Data/MangaManager.Data.csproj" />
+  <Project Path="MangaManager.Services/MangaManager.Services.csproj" />
+</Solution>

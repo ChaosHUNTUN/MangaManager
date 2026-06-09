@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "dgSpecHash": "ZuBxkellxsY=",
+  "success": true,
+  "projectFilePath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\27639\\.nuget\\packages\\hardcodet.notifyicon.wpf\\2.0.1\\hardcodet.notifyicon.wpf.2.0.1.nupkg.sha512",
+    "C:\\Users\\27639\\.nuget\\packages\\microsoft.xaml.behaviors.wpf\\1.1.142\\microsoft.xaml.behaviors.wpf.1.1.142.nupkg.sha512",
+    "C:\\Users\\27639\\.nuget\\packages\\system.io.pipelines\\10.0.8\\system.io.pipelines.10.0.8.nupkg.sha512",
+    "C:\\Users\\27639\\.nuget\\packages\\system.net.http.json\\10.0.8\\system.net.http.json.10.0.8.nupkg.sha512",
+    "C:\\Users\\27639\\.nuget\\packages\\system.text.encodings.web\\10.0.8\\system.text.encodings.web.10.0.8.nupkg.sha512",
+    "C:\\Users\\27639\\.nuget\\packages\\system.text.json\\10.0.8\\system.text.json.10.0.8.nupkg.sha512"
+  ],
+  "logs": []
+}
