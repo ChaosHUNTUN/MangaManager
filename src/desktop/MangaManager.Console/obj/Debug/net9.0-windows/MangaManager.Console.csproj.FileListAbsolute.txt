@@ -30,3 +30,4 @@ d:\MangaManager\src\desktop\MangaManager.Console\obj\Debug\net9.0-windows\MangaM
 d:\MangaManager\src\desktop\MangaManager.Console\obj\Debug\net9.0-windows\ref\MangaManager.Console.dll
 d:\MangaManager\src\desktop\MangaManager.Console\obj\Debug\net9.0-windows\GeneratedInternalTypeHelper.g.cs
 d:\MangaManager\src\desktop\MangaManager.Console\obj\Debug\net9.0-windows\MangaManager.Console_MarkupCompile.lref
+D:\MangaManager\src\desktop\MangaManager.Console\obj\Debug\net9.0-windows\MangaManager.Console.sourcelink.json

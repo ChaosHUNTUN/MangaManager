@@ -31,8 +31,13 @@ public class DownloadManager
     public DownloadManager(IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory;
-        LoadTasksFromDb();
         StartWorker();
+    }
+
+    /// <summary>异步初始化：从数据库加载未完成任务（不阻塞构造）</summary>
+    public async Task InitializeAsync()
+    {
+        await Task.Run(LoadTasksFromDb);
     }
 
     // ==================== 公开 API ====================

@@ -18,11 +18,28 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _downloadTimer;
     private readonly string _apiUrl = "http://localhost:5000";
-    private readonly string _apiProject = @"d:\MangaManager\src\backend\MangaManager.Api\MangaManager.Api.csproj";
-    private readonly string _uiDir = @"d:\MangaManager\src\frontend\manga-ui";
+    private readonly string _apiProject;
+    private readonly string _uiDir;
 
     private Process? _apiProcess;
     private Process? _uiProcess;
+
+    /// <summary>向上查找项目根目录（包含 MangaManager.slnx 或 src 目录）</summary>
+    private static string FindProjectRoot()
+    {
+        var dir = AppDomain.CurrentDomain.BaseDirectory;
+        while (dir != null)
+        {
+            if (System.IO.File.Exists(System.IO.Path.Combine(dir, "MangaManager.slnx"))
+                || System.IO.Directory.Exists(System.IO.Path.Combine(dir, "src", "backend")))
+                return dir;
+            var parent = System.IO.Path.GetDirectoryName(dir);
+            if (parent == dir) break;
+            dir = parent;
+        }
+        // 降级：使用 exe 所在目录
+        return AppDomain.CurrentDomain.BaseDirectory;
+    }
     private readonly ObservableCollection<DownloadTaskVm> _tasks = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -33,14 +50,18 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        var root = FindProjectRoot();
+        _apiProject = System.IO.Path.Combine(root, "src", "backend", "MangaManager.Api", "MangaManager.Api.csproj");
+        _uiDir = System.IO.Path.Combine(root, "src", "frontend", "manga-ui");
+
         InitializeComponent();
         TasksList.ItemsSource = _tasks;
 
-        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _statusTimer.Tick += async (_, _) => await RefreshServiceStatus();
         _statusTimer.Start();
 
-        _downloadTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _downloadTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _downloadTimer.Tick += async (_, _) => await RefreshDownloadTasks();
         _downloadTimer.Start();
     }
@@ -48,6 +69,24 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         Log("MangaManager 管理控制台已启动");
+
+        // 环境检测
+        try
+        {
+            var dotnetCheck = new Process { StartInfo = new ProcessStartInfo("dotnet", "--version") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true } };
+            dotnetCheck.Start(); var dotnetVer = (await dotnetCheck.StandardOutput.ReadToEndAsync()).Trim(); dotnetCheck.WaitForExit();
+            Log($"✓ .NET SDK: {dotnetVer}");
+        }
+        catch { Log("⚠ 未检测到 dotnet 命令，API 后端将无法启动"); }
+
+        try
+        {
+            var nodeCheck = new Process { StartInfo = new ProcessStartInfo("node", "--version") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true } };
+            nodeCheck.Start(); var nodeVer = (await nodeCheck.StandardOutput.ReadToEndAsync()).Trim(); nodeCheck.WaitForExit();
+            Log($"✓ Node.js: {nodeVer}");
+        }
+        catch { Log("⚠ 未检测到 node 命令，Web 前端将无法启动"); }
+
         await RefreshServiceStatus();
         await RefreshDownloadTasks();
     }
@@ -58,9 +97,17 @@ public partial class MainWindow : Window
             DragMove();
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e)
+    private async void Close_Click(object sender, RoutedEventArgs e)
     {
-        Hide(); // 最小化到托盘
+        var result = System.Windows.MessageBox.Show(
+            "关闭控制台将停止所有服务（API + 前端），确定退出？",
+            "MangaManager", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result == MessageBoxResult.Yes)
+        {
+            await StopApi();
+            await StopUi();
+            Application.Current.Shutdown();
+        }
     }
 
     private void CloseBtn_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
@@ -77,16 +124,16 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
     {
-        // 最小化到托盘，不退出
-        e.Cancel = true;
-        Hide();
+        // 正常退出（Close_Click 已处理服务停止和确认）
+        _statusTimer?.Stop();
+        _downloadTimer?.Stop();
     }
 
     // ==================== 服务管理 ====================
 
     private async Task RefreshServiceStatus()
     {
-        bool apiRunning = await IsPortOpen(5000, "/api/download/tasks");
+        bool apiRunning = await IsPortOpen(5000, "/health");
         bool uiRunning = await IsPortOpen(5173, "/");
 
         UpdateServiceUI(apiRunning, TxtApiStatus, BtnApiStart, BtnApiStop, ApiStatusDot);
@@ -166,18 +213,18 @@ public partial class MainWindow : Window
         return p;
     }
 
-    private async void BtnApiStart_Click(object sender, RoutedEventArgs e) => StartApi();
+    private async void BtnApiStart_Click(object sender, RoutedEventArgs e) { _ = StartApiAsync(); }
     private async void BtnApiStop_Click(object sender, RoutedEventArgs e) => await StopApi();
-    private async void BtnApiRestart_Click(object sender, RoutedEventArgs e) { await StopApi(); await Task.Delay(1500); StartApi(); }
+    private async void BtnApiRestart_Click(object sender, RoutedEventArgs e) { await StopApi(); await Task.Delay(1500); _ = StartApiAsync(); }
 
-    private async void BtnUiStart_Click(object sender, RoutedEventArgs e) => StartUi();
+    private async void BtnUiStart_Click(object sender, RoutedEventArgs e) { _ = StartUiAsync(); }
     private async void BtnUiStop_Click(object sender, RoutedEventArgs e) => await StopUi();
-    private async void BtnUiRestart_Click(object sender, RoutedEventArgs e) { await StopUi(); await Task.Delay(1500); StartUi(); }
+    private async void BtnUiRestart_Click(object sender, RoutedEventArgs e) { await StopUi(); await Task.Delay(1500); _ = StartUiAsync(); }
 
-    private void BtnStartAll_Click(object sender, RoutedEventArgs e) { StartApi(); StartUi(); }
+    private async void BtnStartAll_Click(object sender, RoutedEventArgs e) { _ = StartApiAsync(); _ = StartUiAsync(); }
     private async void BtnStopAll_Click(object sender, RoutedEventArgs e) { await StopApi(); await StopUi(); }
 
-    private async void StartApi()
+    private async Task StartApiAsync()
     {
         try
         {
@@ -230,7 +277,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void StartUi()
+    private async Task StartUiAsync()
     {
         try
         {
@@ -442,11 +489,6 @@ public partial class MainWindow : Window
     private void OpenEhentai_Click(object sender, RoutedEventArgs e)
     {
         Process.Start(new ProcessStartInfo("http://localhost:5173/ehentai") { UseShellExecute = true });
-    }
-
-    private void OpenDownloads_Click(object sender, RoutedEventArgs e)
-    {
-        Process.Start(new ProcessStartInfo("http://localhost:5173/downloads") { UseShellExecute = true });
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e)

@@ -1,0 +1,90 @@
+{
+  "format": 1,
+  "restore": {
+    "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj": {}
+  },
+  "projects": {
+    "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+        "projectName": "MangaManager.Console",
+        "projectPath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+        "packagesPath": "C:\\Users\\27639\\.nuget\\packages\\",
+        "outputPath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\Coder\\Share\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\27639\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net9.0-windows"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net9.0-windows7.0": {
+            "targetAlias": "net9.0-windows",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net9.0-windows7.0": {
+          "targetAlias": "net9.0-windows",
+          "dependencies": {
+            "Hardcodet.NotifyIcon.Wpf": {
+              "target": "Package",
+              "version": "[2.0.1, )"
+            },
+            "Microsoft.Xaml.Behaviors.Wpf": {
+              "target": "Package",
+              "version": "[1.1.142, )"
+            },
+            "System.Net.Http.Json": {
+              "target": "Package",
+              "version": "[10.0.8, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            },
+            "Microsoft.WindowsDesktop.App.WPF": {
+              "privateAssets": "none"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.200/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

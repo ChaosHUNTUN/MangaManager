@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { fetchLocalGalleries, fetchLocalGalleryPages, API_BASE } from '../api'
+import { fetchLocalGalleries, fetchLocalGalleryPagesAbortable, API_BASE, fetchReadingProgressAbortable, saveReadingProgress } from '../api'
 import { useReaderSettings } from '../useReaderSettings'
+import PageImage from '../components/PageImage'
 
 const FIT_MODES = [
   { key: 'fit-width', label: '适应宽度', icon: '↔' },
@@ -21,63 +22,6 @@ const READ_MODES = [
   { key: 'scroll', label: '滚动', icon: '📜' },
 ]
 
-function useLazyImage(src) {
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState(false)
-  useEffect(() => {
-    setLoaded(false); setError(false)
-    const img = new Image()
-    img.onload = () => setLoaded(true)
-    img.onerror = () => setError(true)
-    img.src = src
-    return () => { img.onload = null; img.onerror = null }
-  }, [src])
-  return { loaded, error }
-}
-
-function PageImage({ src, fitMode, fitPercent, transition, current, index, onLoad, onError, scrollMode }) {
-  const { loaded, error } = useLazyImage(src)
-  useEffect(() => { if (loaded) onLoad?.() }, [loaded])
-  useEffect(() => { if (error) onError?.() }, [error])
-
-  const isCurrent = index === current
-  let cls = scrollMode ? 'reader-page-slot-scroll' : 'reader-page-slot '
-  if (!scrollMode) {
-    if (transition === 'fade') cls += isCurrent ? 'page-fade-in' : 'page-hidden'
-    else if (transition === 'slide') {
-      if (isCurrent) cls += 'page-slide-center'
-      else if (index < current) cls += 'page-slide-left'
-      else cls += 'page-slide-right'
-    } else cls += isCurrent ? '' : 'page-hidden'
-  }
-
-  const pct = (fitPercent ?? 100) / 100
-  let imgStyle = { display: 'block' }
-  let slotStyle = {}
-  if (fitMode === 'fit-width') {
-    imgStyle = { ...imgStyle, width: `${pct * 100}%`, height: 'auto', margin: '0 auto' }
-    slotStyle = { alignItems: 'flex-start', justifyContent: 'center' }
-  } else if (fitMode === 'fit-height') {
-    imgStyle = { ...imgStyle, width: 'auto', height: scrollMode ? '100vh' : '100%', margin: '0 auto' }
-    slotStyle = { alignItems: 'center', justifyContent: 'center' }
-  } else if (fitMode === 'fit-both') {
-    imgStyle = { ...imgStyle, maxWidth: `${pct * 100}%`, maxHeight: scrollMode ? '100vh' : '100%', width: 'auto', height: 'auto', margin: '0 auto' }
-    slotStyle = { alignItems: 'center', justifyContent: 'center' }
-  } else if (fitMode === 'original') {
-    imgStyle = { ...imgStyle, width: 'auto', height: 'auto', margin: '0 auto' }
-    slotStyle = { alignItems: 'center', justifyContent: 'flex-start' }
-  }
-
-  return (
-    <div className={cls} style={slotStyle}>
-      {!loaded && !error && <div className="reader-page-loading"><div className="reader-spinner" /></div>}
-      {error && <div className="reader-page-error">加载失败</div>}
-      {loaded && <img src={src} alt={`${index + 1}`} draggable={false} style={imgStyle}
-        onLoad={() => onLoad?.()} />}
-    </div>
-  )
-}
-
 export default function ReaderLocal() {
   const { gid } = useParams()
   const navigate = useNavigate()
@@ -89,6 +33,12 @@ export default function ReaderLocal() {
   const [showUI, setShowUI] = useState(true)
   const hideTimerRef = useRef(null)
   const scrollRef = useRef(null)
+
+  // 阅读进度追踪：记录本次阅读中所有漫画的当前页码
+  const progressRef = useRef({})
+  const progressSeededRef = useRef(false) // 防止 pages 加载覆盖进度
+  const abortRef = useRef(null) // AbortController 用于取消旧的页面加载请求
+  const currentGid = parseInt(gid)
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 10 })
   const loadedPagesRef = useRef(new Set())
   const [scrollProgress, setScrollProgress] = useState(0)
@@ -110,15 +60,39 @@ export default function ReaderLocal() {
   const { settings, updateSetting } = useReaderSettings()
   const { fitMode, fitPercent, transition, readMode, slideInterval, scrollSpeed, loopMode } = settings
 
-  useEffect(() => { fetchLocalGalleries().then(list => setGalleries(list)).catch(() => { }) }, [])
+  // 加载画廊列表（模块级缓存，避免每次切换都请求）
   useEffect(() => {
+    fetchLocalGalleries().then(list => setGalleries(list)).catch(() => { })
+  }, [])
+
+  // 加载当前漫画的阅读进度（只在 gid 变化时请求，取消旧请求）
+  useEffect(() => {
+    progressSeededRef.current = false
+    const ctrl = new AbortController()
+    fetchReadingProgressAbortable(currentGid, ctrl.signal).then(savedPage => {
+      if (savedPage > 0) {
+        progressSeededRef.current = true
+        setIndex(savedPage)
+      }
+    }).catch(() => { })
+    return () => ctrl.abort()
+  }, [currentGid])
+
+  useEffect(() => {
+    // 取消上一次未完成的请求
+    if (abortRef.current) abortRef.current.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+
     setLoading(true)
-    fetchLocalGalleryPages(parseInt(gid))
-      .then(p => { setPages(p); setIndex(0); setLoading(false) })
+    fetchLocalGalleryPagesAbortable(parseInt(gid), ctrl.signal)
+      .then(p => {
+        setPages(p)
+        if (!progressSeededRef.current) setIndex(0)
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [gid])
-
-  const currentGid = parseInt(gid)
 
   // 从 sessionStorage 获取筛选后的 gid 列表（由 LocalGallery 传入）
   const [readerList, setReaderList] = useState(null)
@@ -136,12 +110,22 @@ export default function ReaderLocal() {
 
   const goPrevPage = () => setIndex(i => Math.max(0, i - 1))
   const goNextPage = () => setIndex(i => Math.min(pages.length - 1, i + 1))
+
+  // index 变化时实时更新阅读进度（ref 用于退出时批量保存）
+  useEffect(() => {
+    progressRef.current[currentGid] = index
+  }, [index, currentGid])
+
   const goPrevGallery = () => {
-    if (hasPrevGallery) navigate(`/reader-local/${displayGalleries[currentIdx - 1]}`)
+    if (hasPrevGallery) {
+      navigate(`/reader-local/${displayGalleries[currentIdx - 1]}`)
+    }
     else { setToast('已经是第一部'); setTimeout(() => setToast(null), 1500) }
   }
   const goNextGallery = () => {
-    if (hasNextGallery) navigate(`/reader-local/${displayGalleries[currentIdx + 1]}`)
+    if (hasNextGallery) {
+      navigate(`/reader-local/${displayGalleries[currentIdx + 1]}`)
+    }
     else { setToast('已经是最后一部'); setTimeout(() => setToast(null), 1500) }
   }
 
@@ -224,9 +208,23 @@ export default function ReaderLocal() {
 
       if (e.key === 'ArrowLeft' || e.key === 'a') { e.preventDefault(); actionsRef.current.goPrevPage() }
       else if (e.key === 'ArrowRight' || e.key === 'd') { e.preventDefault(); actionsRef.current.goNextPage() }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); actionsRef.current.goPrevGallery() }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); actionsRef.current.goNextGallery() }
-      else if (e.key === 'Escape') { e.preventDefault(); navigate('/') }
+      // 滚动模式下 ArrowUp/Down 不切换画廊（让浏览器默认滚动）
+      else if (e.key === 'ArrowUp') {
+        if (readModeRef3.current !== 'scroll') { e.preventDefault(); actionsRef.current.goPrevGallery() }
+      }
+      else if (e.key === 'ArrowDown') {
+        if (readModeRef3.current !== 'scroll') { e.preventDefault(); actionsRef.current.goNextGallery() }
+      }
+      // Ctrl+ArrowUp/Down 在任何模式下切换画廊
+      else if (e.ctrlKey && e.key === 'ArrowUp') { e.preventDefault(); actionsRef.current.goPrevGallery() }
+      else if (e.ctrlKey && e.key === 'ArrowDown') { e.preventDefault(); actionsRef.current.goNextGallery() }
+      else if (e.key === 'Escape') {
+        e.preventDefault()
+        // 保存所有阅读进度后退出
+        const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+        saveReadingProgress(items)
+        navigate('/')
+      }
       else if (e.key === ' ') { e.preventDefault(); setSlideshow(s => !s) }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault() }
       else if (e.key === 'f' || e.key === 'F') {
@@ -331,6 +329,22 @@ export default function ReaderLocal() {
     if (readMode === 'scroll') loadedPagesRef.current = new Set()
   }, [readMode])
 
+  // 进度条百分比：滚动模式用实际滚动位置，翻页模式用页码
+  const progressPct = readMode === 'scroll'
+    ? scrollProgress.toFixed(1)
+    : ((index + 1) / pages.length * 100).toFixed(1)
+
+  // 预加载相邻页面
+  const preloadPages = useMemo(() => {
+    const result = []
+    for (let d = -3; d <= 3; d++) {
+      const idx = index + d
+      if (idx !== index && idx >= 0 && idx < pages.length)
+        result.push({ idx, url: `${API_BASE}${pages[idx].url}` })
+    }
+    return result
+  }, [index, pages])
+
   if (loading) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -348,10 +362,6 @@ export default function ReaderLocal() {
     )
   }
 
-  // 进度条百分比：滚动模式用实际滚动位置，翻页模式用页码
-  const progressPct = readMode === 'scroll'
-    ? scrollProgress.toFixed(1)
-    : ((index + 1) / pages.length * 100).toFixed(1)
   // 滚动模式下用实际滚动位置做进度条点击跳转
   const handleProgressClick = (e) => {
     if (readMode === 'scroll') {
@@ -368,12 +378,6 @@ export default function ReaderLocal() {
 
   const safePage = pages[index]
   const imgUrl = safePage ? `${API_BASE}${safePage.url}` : ''
-  const preloadPages = []
-  for (let d = -3; d <= 3; d++) {
-    const idx = index + d
-    if (idx !== index && idx >= 0 && idx < pages.length)
-      preloadPages.push({ idx, url: `${API_BASE}${pages[idx].url}` })
-  }
 
   return (
     <div className="reader-root">
@@ -384,7 +388,12 @@ export default function ReaderLocal() {
       {/* 顶栏 */}
       <div className={`reader-topbar ${showUI ? '' : 'hidden'}`}>
         <div className="reader-topbar-left">
-          <Link to="/" className="reader-back-btn">← 返回</Link>
+          <a href="/" className="reader-back-btn" onClick={e => {
+            e.preventDefault()
+            const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+            saveReadingProgress(items)
+            navigate('/')
+          }}>← 返回</a>
           <span className="reader-title" style={{ maxWidth: 300 }}>{(readerList ? galleries.find(g => g.gid === currentGid) : galleries[currentIdx])?.title || `GID ${gid}`}</span>
         </div>
         <div className="reader-topbar-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -440,12 +449,12 @@ export default function ReaderLocal() {
             <div className="reader-help-grid">
               <span className="reader-help-key">← / A</span><span>上一页</span>
               <span className="reader-help-key">→ / D</span><span>下一页</span>
-              <span className="reader-help-key">↑ / ↓</span><span>上/下一部</span>
-              <span className="reader-help-key">Space</span><span>幻灯片</span>
-              <span className="reader-help-key">F</span><span>缩放模式</span>
-              <span className="reader-help-key">M</span><span>翻页/滚动</span>
-              <span className="reader-help-key">? / H</span><span>快捷键</span>
-              <span className="reader-help-key">Esc</span><span>返回</span>
+              <span className="reader-help-key">Ctrl+↑ / Ctrl+↓</span><span>上/下一部</span>
+              <span className="reader-help-key">Space</span><span>幻灯片开关</span>
+              <span className="reader-help-key">F</span><span>切换缩放</span>
+              <span className="reader-help-key">M</span><span>翻页/滚动模式</span>
+              <span className="reader-help-key">? / H</span><span>显示/隐藏帮助</span>
+              <span className="reader-help-key">Esc</span><span>返回画廊</span>
             </div>
             <div className="reader-help-hint">点击空白处关闭 · 4秒后自动消失</div>
           </div>

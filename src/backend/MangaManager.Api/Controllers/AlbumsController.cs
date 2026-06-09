@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using MangaManager.Core.DTOs;
 using MangaManager.Core.Entities;
@@ -19,12 +20,32 @@ public class AlbumsController : ControllerBase
     {
         try
         {
+            // 先用 raw SQL 确保 CreatedAt 列存在，避免 EF 查询失败
+            var conn = _db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+            var hasCreatedAt = false;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('album_config') WHERE name='CreatedAt'";
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                    hasCreatedAt = (long)reader.GetValue(0) > 0;
+            }
+            if (!hasCreatedAt)
+            {
+                using var alterCmd = conn.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE album_config ADD COLUMN CreatedAt TEXT NOT NULL DEFAULT '2000-01-01T00:00:00'";
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+
             var list = await _db.AlbumConfigs.ToListAsync();
             var result = list.ToDictionary(a => a.Key, a => new
             {
                 name = a.Name,
                 gids = System.Text.Json.JsonSerializer.Deserialize<int[]>(a.Gids) ?? Array.Empty<int>(),
-                order = System.Text.Json.JsonSerializer.Deserialize<int[]>(a.Order ?? "[]") ?? Array.Empty<int>()
+                order = System.Text.Json.JsonSerializer.Deserialize<int[]>(a.Order ?? "[]") ?? Array.Empty<int>(),
+                createdAt = a.CreatedAt.ToString("o"),
+                updatedAt = a.UpdatedAt.ToString("o")
             });
             return Ok(new ApiResponse<object>(true, result));
         }
@@ -37,6 +58,9 @@ public class AlbumsController : ControllerBase
     [HttpPut]
     public async Task<IActionResult> Save([FromBody] Dictionary<string, AlbumItem> data)
     {
+        if (data == null || data.Count == 0)
+            return BadRequest(new ApiResponse<object>(false, null, "没有数据，拒绝保存以避免清空专辑"));
+
         var existing = await _db.AlbumConfigs.ToDictionaryAsync(a => a.Key);
         foreach (var (key, item) in data)
         {

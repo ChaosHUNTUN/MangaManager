@@ -64,6 +64,15 @@ public class ReadingProgress
     public Manga Manga { get; set; } = null!;
 }
 
+/// <summary>本地画廊阅读进度（按 gid 存储，不关联 Manga 实体）</summary>
+public class LocalReadingProgress
+{
+    public int Id { get; set; }
+    public int Gid { get; set; }
+    public int PageIndex { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class ScanLog
 {
     public int Id { get; set; }
@@ -148,5 +157,7 @@ public class AlbumConfig
     public string Name { get; set; } = "";       // 显示名称（可修改）
     public string Gids { get; set; } = "[]";     // JSON 数组: [1,2,3]
     public string Order { get; set; } = "[]";    // JSON 数组: 自定义排序 [2,1,3]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

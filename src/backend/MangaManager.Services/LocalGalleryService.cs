@@ -83,65 +83,82 @@ public class LocalGalleryService
     /// <summary>获取画廊详情（优先本地，否则从 EH 获取）</summary>
     public async Task<LocalGalleryDetail> GetDetailAsync(int gid)
     {
-        // 先从本地扫描中找到目录
-        var dir = FindLocalDir(gid);
-        if (dir == null) return new LocalGalleryDetail { Gid = gid };
-
-        var dirName = Path.GetFileName(dir);
-        var dashIdx = dirName.IndexOf('-');
-        var title = dashIdx > 0 ? dirName[(dashIdx + 1)..] : dirName;
-
-        var files = Directory.GetFiles(dir)
-            .Where(f => IsImageFile(f))
-            .OrderBy(f => f)
-            .ToList();
-
-        var pages = files.Select((f, i) => new LocalPageItem
-        {
-            Index = i + 1,
-            FileName = Path.GetFileName(f),
-            Url = $"/api/local/gallery/{gid}/page/{i}"
-        }).ToList();
-
-        // 尝试获取 EH 详情（标签等）
-        EhentaiService.GalleryDetail? ehDetail = null;
         try
         {
-            // 从目录名无法获取 token，先尝试找 .eh 元文件
-            var ehFile = Path.Combine(dir, ".eh");
-            string? token = null;
-            if (File.Exists(ehFile))
-            {
-                var lines = File.ReadAllLines(ehFile);
-                token = lines.FirstOrDefault(l => l.StartsWith("token="))?[6..];
-            }
-            if (!string.IsNullOrEmpty(token))
-            {
-                ehDetail = await _eh.GetGalleryDetailAsync(gid, token);
-            }
-        }
-        catch { /* EH 不可用不影响本地浏览 */ }
+            var dir = FindLocalDir(gid);
+            if (dir == null) return new LocalGalleryDetail { Gid = gid };
 
-        return new LocalGalleryDetail
+            var dirName = Path.GetFileName(dir);
+            var dashIdx = dirName.IndexOf('-');
+            var title = dashIdx > 0 ? dirName[(dashIdx + 1)..] : dirName;
+
+            // 安全列出文件（跳过可能被删除/锁定的文件）
+            var files = EnumerateImageFilesSafe(dir).OrderBy(f => f).ToList();
+
+            var pages = files.Select((f, i) => new LocalPageItem
+            {
+                Index = i + 1,
+                FileName = Path.GetFileName(f),
+                Url = $"/api/local/gallery/{gid}/page/{i}"
+            }).ToList();
+
+            long totalSize = 0;
+            foreach (var f in files)
+            {
+                try { totalSize += new FileInfo(f).Length; } catch { }
+            }
+
+            // 尝试获取 EH 详情（标签等）
+            EhentaiService.GalleryDetail? ehDetail = null;
+            try
+            {
+                var ehFile = Path.Combine(dir, ".eh");
+                string? token = null;
+                if (File.Exists(ehFile))
+                {
+                    var lines = File.ReadAllLines(ehFile);
+                    token = lines.FirstOrDefault(l => l.StartsWith("token="))?[6..];
+                }
+                if (!string.IsNullOrEmpty(token))
+                {
+                    ehDetail = await _eh.GetGalleryDetailAsync(gid, token);
+                }
+            }
+            catch { /* EH 不可用不影响本地浏览 */ }
+
+            return new LocalGalleryDetail
+            {
+                Gid = gid,
+                Title = ehDetail?.Title ?? title,
+                TitleJpn = ehDetail?.TitleJpn,
+                Category = ehDetail?.Category ?? "other",
+                Uploader = ehDetail?.Uploader ?? "",
+                FileCount = files.Count,
+                TotalSize = totalSize,
+                Rating = ehDetail?.Rating ?? "0",
+                RatingCount = ehDetail?.RatingCount ?? 0,
+                FavoriteCount = ehDetail?.FavoriteCount ?? 0,
+                Language = ehDetail?.Language,
+                Posted = ehDetail?.Posted ?? 0,
+                Token = ehDetail?.Token ?? "",
+                TagGroups = ehDetail?.TagGroups ?? new(),
+                Tags = ehDetail?.Tags ?? new(),
+                Pages = pages,
+                DirPath = dir
+            };
+        }
+        catch (Exception ex)
         {
-            Gid = gid,
-            Title = ehDetail?.Title ?? title,
-            TitleJpn = ehDetail?.TitleJpn,
-            Category = ehDetail?.Category ?? "other",
-            Uploader = ehDetail?.Uploader ?? "",
-            FileCount = files.Count,
-            TotalSize = files.Sum(f => new FileInfo(f).Length),
-            Rating = ehDetail?.Rating ?? "0",
-            RatingCount = ehDetail?.RatingCount ?? 0,
-            FavoriteCount = ehDetail?.FavoriteCount ?? 0,
-            Language = ehDetail?.Language,
-            Posted = ehDetail?.Posted ?? 0,
-            Token = ehDetail?.Token ?? "",
-            TagGroups = ehDetail?.TagGroups ?? new(),
-            Tags = ehDetail?.Tags ?? new(),
-            Pages = pages,
-            DirPath = dir
-        };
+            Console.WriteLine($"[LocalGallery] GetDetailAsync gid={gid} error: {ex.Message}");
+            return new LocalGalleryDetail { Gid = gid, Title = $"Error: {ex.Message}" };
+        }
+    }
+
+    /// <summary>安全枚举图片文件（忽略无法访问的）</summary>
+    private static IEnumerable<string> EnumerateImageFilesSafe(string dir)
+    {
+        try { return Directory.GetFiles(dir).Where(f => IsImageFile(f)); }
+        catch { return Array.Empty<string>(); }
     }
 
     /// <summary>从 EH 获取画廊详情（用于补全元数据）</summary>

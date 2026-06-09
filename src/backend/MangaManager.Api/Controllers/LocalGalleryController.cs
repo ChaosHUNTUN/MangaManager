@@ -75,24 +75,31 @@ public class LocalGalleryController : ControllerBase
     [HttpGet("gallery/{gid}/cover")]
     public IActionResult GetCover(int gid)
     {
-        var dir = Directory.GetDirectories(EhentaiService.DefaultDownloadDir, $"{gid}-*").FirstOrDefault();
-        if (dir == null) return NotFound();
+        try
+        {
+            var dir = Directory.GetDirectories(EhentaiService.DefaultDownloadDir, $"{gid}-*").FirstOrDefault();
+            if (dir == null) return NotFound();
 
-        var files = Directory.GetFiles(dir)
-            .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(f => f)
-            .ToList();
+            var files = Directory.GetFiles(dir)
+                .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                         || f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f)
+                .ToList();
 
-        if (files.Count == 0) return NotFound();
-        // 优先用 0001，否则第一张
-        var cover = files.FirstOrDefault(f => Path.GetFileNameWithoutExtension(f).EndsWith("0001")) ?? files[0];
+            if (files.Count == 0) return NotFound();
+            var cover = files.FirstOrDefault(f => Path.GetFileNameWithoutExtension(f).EndsWith("0001")) ?? files[0];
 
-        var ext = Path.GetExtension(cover).ToLower();
-        var ct = ext switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
-        Response.Headers["Cache-Control"] = "public, max-age=86400";
-        return PhysicalFile(cover, ct);
+            var ext = Path.GetExtension(cover).ToLower();
+            var ct = ext switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
+            Response.Headers["Cache-Control"] = "public, max-age=86400";
+            return PhysicalFile(cover, ct);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Cover] gid={gid} error: {ex.Message}");
+            return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
+        }
     }
 
     /// <summary>批量检查本地是否存在这些 gid</summary>

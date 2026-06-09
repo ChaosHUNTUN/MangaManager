@@ -42,8 +42,8 @@ public class DownloadTaskVm : INotifyPropertyChanged
         }
     }
 
-    public int TotalPages { get => _totalPages; set { if (Set(ref _totalPages, value)) OnPropertyChanged(nameof(ProgressWidth)); } }
-    public int DownloadedPages { get => _downloadedPages; set { if (Set(ref _downloadedPages, value)) OnPropertyChanged(nameof(ProgressWidth)); } }
+    public int TotalPages { get => _totalPages; set { if (Set(ref _totalPages, value)) { OnPropertyChanged(nameof(ProgressFraction)); OnPropertyChanged(nameof(ProgressPercent)); } } }
+    public int DownloadedPages { get => _downloadedPages; set { if (Set(ref _downloadedPages, value)) { OnPropertyChanged(nameof(ProgressFraction)); OnPropertyChanged(nameof(ProgressPercent)); } } }
     public int FailedPages { get => _failedPages; set => Set(ref _failedPages, value); }
     public string? ErrorMsg { get => _errorMsg; set { if (Set(ref _errorMsg, value)) OnPropertyChanged(nameof(ErrorVisible)); } }
     public double SpeedBps { get => _speedBps; set { Set(ref _speedBps, value); OnPropertyChanged(nameof(SpeedText)); OnPropertyChanged(nameof(SpeedVisible)); } }
@@ -91,7 +91,7 @@ public class DownloadTaskVm : INotifyPropertyChanged
         : "";
 
     public double ProgressPercent => TotalPages > 0 ? (double)DownloadedPages / TotalPages * 100 : 0;
-    public string ProgressWidth => $"{ProgressPercent * 2.5:F0}";
+    public double ProgressFraction => TotalPages > 0 ? (double)DownloadedPages / TotalPages : 0;
 
     public Brush ProgressBrush => new SolidColorBrush(
         (Color)ColorConverter.ConvertFromString(Status == "failed" ? "#FFEF4444"

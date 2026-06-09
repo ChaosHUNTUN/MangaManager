@@ -9,7 +9,9 @@ export const API_BASE = (() => {
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`
-  const res = await fetch(url, options)
+  // 支持 AbortController 取消请求
+  const { signal, ...fetchOptions } = options
+  const res = await fetch(url, { ...fetchOptions, signal })
   if (!res.ok) {
     const text = await res.text()
     let msg = `请求失败 (${res.status})`
@@ -301,6 +303,12 @@ export async function fetchLocalGalleryPages(gid) {
   const json = await request(`/api/local/gallery/${gid}/pages`)
   return json.data || []
 }
+
+/// 可取消版本（用于阅读器快速切换时取消旧请求）
+export async function fetchLocalGalleryPagesAbortable(gid, signal) {
+  const json = await request(`/api/local/gallery/${gid}/pages`, { signal })
+  return json.data || []
+}
 export function getLocalCoverUrl(gid) {
   return `${API_BASE}/api/local/gallery/${gid}/cover`
 }
@@ -375,6 +383,33 @@ export async function batchImportGalleries(parentDir, copyFiles = true) {
   return json.data
 }
 
+// ==================== 阅读进度 ====================
+export async function fetchReadingProgress(gid) {
+  try {
+    const json = await request(`/api/readingprogress/${gid}`)
+    return json.data?.pageIndex ?? 0
+  } catch { return 0 }
+}
+
+/// 可取消版本
+export async function fetchReadingProgressAbortable(gid, signal) {
+  try {
+    const json = await request(`/api/readingprogress/${gid}`, { signal })
+    return json.data?.pageIndex ?? 0
+  } catch { return 0 }
+}
+
+export async function saveReadingProgress(items) {
+  if (!items || items.length === 0) return
+  try {
+    await request('/api/readingprogress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(items)
+    })
+  } catch { /* 静默失败，不影响阅读体验 */ }
+}
+
 // ==================== 阅读器设置 ====================
 export async function fetchReaderSettings() {
   try {
@@ -400,7 +435,7 @@ export async function fetchAlbumConfig() {
     const resp = await fetch(`${API_BASE}/api/albums`)
     const json = await resp.json()
     return json.data || {}
-  } catch { return {} }
+  } catch { return null }
 }
 
 export async function saveAlbumConfig(config) {

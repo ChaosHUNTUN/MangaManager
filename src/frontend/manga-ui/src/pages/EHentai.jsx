@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import PageImage from '../components/PageImage'
 import {
   fetchEHentaiCookie, updateEHentaiCookie, validateEHentaiCookie,
   fetchEHGalleries, fetchEHGalleryDetail, checkEHConnectivity,
@@ -469,27 +470,6 @@ export default function EHentai() {
     return () => window.removeEventListener('keydown', handler)
   }, [!!readerPages, ehFitMode])
 
-  // EHentai 内嵌的 PageImage 组件
-  const EhPageImage = ({ page, idx }) => {
-    if (!page) return null
-    const src = page.local
-      ? (page.imageUrl.startsWith('http') ? page.imageUrl : `${API_BASE}${page.imageUrl}`)
-      : getEHImageProxyUrl(page.imageUrl || '')
-    const isCurrent = idx === readerIndex
-    let cls = 'reader-page-slot '
-    if (ehTransition === 'fade') cls += isCurrent ? 'page-fade-in' : 'page-hidden'
-    else if (ehTransition === 'slide') {
-      if (isCurrent) cls += 'page-slide-center'
-      else if (idx < readerIndex) cls += 'page-slide-left'
-      else cls += 'page-slide-right'
-    } else cls += isCurrent ? '' : 'page-hidden'
-    return (
-      <div className={cls}>
-        <img src={src} alt={`${idx + 1}`} draggable={false} className={`reader-image fit-${ehFitMode}`} />
-      </div>
-    )
-  }
-
   // 滚动模式处理
   useEffect(() => {
     if (!readerPages || ehReadMode !== 'scroll') return
@@ -577,9 +557,10 @@ export default function EHentai() {
             <div className="reader-scroll-inner" style={{ height: readerPages.length * window.innerHeight * 0.95 }}>
               {readerPages.map((rp, i) => {
                 const inRange = i >= ehVisibleRange.start && i <= ehVisibleRange.end
+                const pageUrl = getImgUrl(rp)
                 return (
                   <div key={i} className="reader-scroll-page" style={{ height: window.innerHeight * 0.95, position: 'absolute', top: i * window.innerHeight * 0.95, left: 0, right: 0 }}>
-                    {inRange ? <EhPageImage page={rp} idx={i} /> : <div className="reader-scroll-placeholder" />}
+                    {inRange ? <PageImage src={pageUrl} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={i} scrollMode /> : <div className="reader-scroll-placeholder" />}
                   </div>
                 )
               })}
@@ -593,12 +574,12 @@ export default function EHentai() {
               <div className="reader-transition-wrapper">
                 {ehTransition === 'slide' ? (
                   <>
-                    <EhPageImage page={readerPages[readerIndex - 1]} idx={readerIndex - 1} />
-                    <EhPageImage page={p} idx={readerIndex} />
-                    <EhPageImage page={readerPages[readerIndex + 1]} idx={readerIndex + 1} />
+                    <PageImage src={getImgUrl(readerPages[readerIndex - 1])} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex - 1} />
+                    <PageImage src={getImgUrl(p)} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex} />
+                    <PageImage src={getImgUrl(readerPages[readerIndex + 1])} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex + 1} />
                   </>
                 ) : (
-                  <EhPageImage page={p} idx={readerIndex} />
+                  <PageImage src={getImgUrl(p)} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex} />
                 )}
               </div>
               {isLocal && (
@@ -659,8 +640,6 @@ export default function EHentai() {
         <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
             <span style={{ fontWeight: 600 }}>Cookie</span>
-            <button className="btn-sm" onClick={() => setCookieForm({ ipbMemberId: '9017149', ipbPassHash: 'fbac29428aa697f62b1a305751098dbc', igneous: '7h78oqmgv5ur1y1s1', label: '测试' })}
-              style={{ fontSize: '0.7rem', borderColor: '#f59e0b', color: '#fbbf24' }}>填入测试</button>
           </div>
           {cookieInfo && <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: 10 }}>当前: {cookieInfo.ipbMemberId} {cookieInfo.ipbPassHash} [{cookieInfo.label}]</div>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>

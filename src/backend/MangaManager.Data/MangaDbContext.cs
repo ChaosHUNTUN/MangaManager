@@ -17,6 +17,7 @@ public class MangaDbContext : DbContext
     public DbSet<DownloadTask> DownloadTasks => Set<DownloadTask>();
     public DbSet<ReaderSettings> ReaderSettings => Set<ReaderSettings>();
     public DbSet<AlbumConfig> AlbumConfigs => Set<AlbumConfig>();
+    public DbSet<LocalReadingProgress> LocalReadingProgresses => Set<LocalReadingProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -119,6 +120,14 @@ public class MangaDbContext : DbContext
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Gids).HasColumnType("text");
             e.Property(x => x.Order).HasColumnType("text");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("datetime('now')");
+        });
+
+        modelBuilder.Entity<LocalReadingProgress>(e =>
+        {
+            e.ToTable("local_reading_progress");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Gid).IsUnique();
         });
     }
 }

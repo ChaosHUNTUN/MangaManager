@@ -302,8 +302,6 @@
                                         Click="OpenLocalGallery_Click" ToolTip="打开本地画廊页面"/>
                                 <Button Content="🔍 在线搜索" Style="{StaticResource QuickLinkBtn}" Margin="8,0,0,0"
                                         Click="OpenEhentai_Click" ToolTip="打开 E-Hentai 搜索页面" Background="#1A1A3A" Foreground="#A78BFA" BorderBrush="#407C3AED"/>
-                                <Button Content="📥 下载管理" Style="{StaticResource QuickLinkBtn}" Margin="8,0,0,0"
-                                        Click="OpenDownloads_Click" ToolTip="打开下载管理页面" Background="#1A2A1A" Foreground="#FBBF24" BorderBrush="#40F59E0B"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -372,8 +370,12 @@
                                                             <Border Height="5" CornerRadius="3" Background="#1E1E3A"/>
                                                             <Border Height="5" CornerRadius="3"
                                                                     Background="{Binding ProgressBrush}"
-                                                                    Width="{Binding ProgressWidth}"
-                                                                    HorizontalAlignment="Left"/>
+                                                                    HorizontalAlignment="Stretch"
+                                                                    RenderTransformOrigin="0,0">
+                                                                <Border.RenderTransform>
+                                                                    <ScaleTransform ScaleX="{Binding ProgressFraction}"/>
+                                                                </Border.RenderTransform>
+                                                            </Border>
                                                         </Grid>
                                                     </StackPanel>
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal"

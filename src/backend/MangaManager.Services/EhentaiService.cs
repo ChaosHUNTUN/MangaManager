@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MangaManager.Services;
 
@@ -15,8 +16,8 @@ namespace MangaManager.Services;
 /// </summary>
 public class EhentaiService
 {
-    private readonly HttpClient _http;
-    private readonly HttpClientHandler _handler;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly CookieContainer _cookieContainer;
     private readonly string _cookieFile;
 
     private EhentaiCookie _cookie = new();
@@ -30,27 +31,16 @@ public class EhentaiService
     private const string HOST_EX = "https://exhentai.org";
     private const string API_URL = "https://api.e-hentai.org/api.php";
 
-    public EhentaiService(IWebHostEnvironment env, IConfiguration config)
+    /// <summary>获取共享的 HttpClient（由 IHttpClientFactory 管理）</summary>
+    private HttpClient _http => _httpClientFactory.CreateClient("ehentai");
+
+    public EhentaiService(IHttpClientFactory httpClientFactory, IWebHostEnvironment env,
+        [FromKeyedServices("EhentaiCookies")] CookieContainer cookieContainer)
     {
+        _httpClientFactory = httpClientFactory;
+        _cookieContainer = cookieContainer;
         _cookieFile = Path.Combine(env.ContentRootPath, "ehentai_cookies.json");
         LoadCookies();
-
-        var cc = new CookieContainer();
-        _handler = new HttpClientHandler { UseCookies = true, CookieContainer = cc, AllowAutoRedirect = true };
-
-        // 代理配置（例如 http://127.0.0.1:7890）
-        var proxyUrl = config.GetValue<string>("Ehentai:Proxy");
-        if (!string.IsNullOrWhiteSpace(proxyUrl))
-        {
-            _handler.Proxy = new WebProxy(proxyUrl);
-            _handler.UseProxy = true;
-        }
-
-        _http = new HttpClient(_handler) { Timeout = TimeSpan.FromSeconds(25) };
-        _http.DefaultRequestHeaders.Add("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        _http.DefaultRequestHeaders.Add("Accept", "text/html,application/json,*/*");
-
         ApplyCookies();
     }
 
@@ -83,9 +73,7 @@ public class EhentaiService
 
     private void ApplyCookies()
     {
-        var cc = _handler.CookieContainer;
-        // 构造 Uri 时需要有效 host，domain 通过 Cookie.Domain 控制
-        var baseUri = new Uri(HOST_E);
+        var cc = _cookieContainer;
         cc.Add(new Cookie("ipb_member_id", _cookie.IpbMemberId ?? "", "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
         cc.Add(new Cookie("ipb_pass_hash", _cookie.IpbPassHash ?? "", "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
         if (!string.IsNullOrWhiteSpace(_cookie.Igneous))

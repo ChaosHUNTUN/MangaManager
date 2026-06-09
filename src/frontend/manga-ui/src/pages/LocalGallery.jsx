@@ -10,7 +10,7 @@ const CATEGORY_COLORS = {
 }
 const getCategoryColor = (cat) => CATEGORY_COLORS[(cat || '').toLowerCase()] || '#607D8B'
 const formatSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b + ' B'
-const PAGE_OPTIONS = [25, 50, 100]
+const PAGE_OPTIONS = [30, 60, 120]
 const SORT_OPTIONS = [
   { key: 'modified-desc', label: '最近修改' }, { key: 'modified-asc', label: '最早修改' },
   { key: 'title-asc', label: '标题 A-Z' }, { key: 'title-desc', label: '标题 Z-A' },
@@ -31,12 +31,19 @@ export default function LocalGallery() {
   const [batchMode, setBatchMode] = useState(false)
   const [selected, setSelected] = useState(new Set())
   const [tagTranslations, setTagTranslations] = useState({})
-  const [nsTranslations, setNsTranslations] = useState({})
-  const [toast, setToast] = useState(null)
+const [nsTranslations, setNsTranslations] = useState({})
+const [toasts, setToasts] = useState([])
+const toastIdRef = useRef(0)
+const setToast = (msg, duration = 2000) => {
+  if (!msg) return // 兼容 setToast(null) 清空
+  const id = ++toastIdRef.current
+  setToasts(prev => [...prev.slice(-2), { id, msg, key: id }])
+  setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration)
+}
 
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('modified-desc')
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(30)
   const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState('grid')
   const [activeGroup, setActiveGroup] = useState('all')
@@ -194,10 +201,10 @@ export default function LocalGallery() {
   // 计算分组（自动分组 + 自定义专辑）
   const groups = useMemo(() => {
     const map = new Map()
-    // 自定义专辑
+    // 自定义专辑（包括空专辑也要显示，方便用户管理）
     Object.entries(albumConfig).forEach(([key, val]) => {
       const gids = val.gids || []
-      if (gids.length > 0) map.set(`album:${key}`, { type: 'album', key: `album:${key}`, name: val.name || key, count: gids.length, editable: true })
+      map.set(`album:${key}`, { type: 'album', key: `album:${key}`, name: val.name || key, count: gids.length, editable: true, createdAt: val.createdAt || val.updatedAt, updatedAt: val.updatedAt })
     })
     // 未匹配到专辑的自动分组
     const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
@@ -221,7 +228,17 @@ export default function LocalGallery() {
         map.get('unknown').count++
       }
     })
-    return Array.from(map.entries()).sort((a, b) => b[1].count - a[1].count).map(([key, val]) => ({ key, ...val }))
+    // 专辑按创建时间排序（稳定），自动分组仍按 count 排序
+    return Array.from(map.entries())
+      .sort((a, b) => {
+        if (a[1].type === 'album' && b[1].type === 'album') {
+          const ta = a[1].createdAt || a[1].updatedAt || ''
+          const tb = b[1].createdAt || b[1].updatedAt || ''
+          return ta.localeCompare(tb)
+        }
+        return b[1].count - a[1].count
+      })
+      .map(([key, val]) => ({ key, ...val }))
   }, [galleries, albumConfig])
 
   // 搜索自动补全的标签池（从所有画廊提取 + 专辑名）
@@ -400,6 +417,10 @@ export default function LocalGallery() {
     e.preventDefault()
     e.stopPropagation()
 
+    const startX = e.clientX
+    const startY = e.clientY
+    const startTime = Date.now()
+
     dragGidRef.current = gid
     setDragGid(gid)
     const isSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
@@ -440,10 +461,12 @@ export default function LocalGallery() {
       if (currentSortTarget && currentSortTarget !== sortEl) {
         currentSortTarget.style.outline = ''
         currentSortTarget.style.outlineOffset = ''
+        currentSortTarget.style.borderLeft = ''
       }
       if (sortEl && sortEl !== currentSortTarget) {
-        sortEl.style.outline = '2px dashed #10b981'
-        sortEl.style.outlineOffset = '2px'
+        sortEl.style.outline = '2px solid #10b981'
+        sortEl.style.outlineOffset = '1px'
+        sortEl.style.borderLeft = '4px solid #10b981'
       }
       currentSortTarget = sortEl
     }
@@ -497,6 +520,16 @@ export default function LocalGallery() {
       setDragGid(null)
 
       if (droppedGid == null) return
+
+      // 检测是否为短点击（移动 < 5px 且 < 200ms）→ 视为普通点击
+      const dx = me.clientX - startX, dy = me.clientY - startY
+      const dt = Date.now() - startTime
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 200) {
+        setToast(null)
+        // 模拟卡片点击行为：切换 hoveredGid（显示 overlay 详情/阅读按钮）
+        setHoveredGid(prev => prev === droppedGid ? null : droppedGid)
+        return
+      }
 
       // 检测 mouseup 时的目标（克隆卡片已移除，无需隐藏）
       const el = document.elementFromPoint(me.clientX, me.clientY)
@@ -714,33 +747,24 @@ export default function LocalGallery() {
     </div>
   )}
 
-  // 专辑标签（分组筛选 + 拖拽放置区）
+  // 自动分组标签（分组筛选）
   const renderGroupTag = (grp) => {
     const isActive = activeGroup === grp.key
-    const icon = grp.type === 'artist' ? '👤' : grp.type === 'group' ? '👥' : grp.type === 'multi' ? '👥👤' : grp.type === 'album' ? '📁' : '📦'
-    const isDropTarget = dragGid != null && grp.type === 'album'
-    // 对于 album 类型，key 格式为 "album:xxx"，需要去掉前缀得到真实 key
-    const realKey = grp.type === 'album' ? grp.key.slice(6) : grp.key
+    const icon = grp.type === 'artist' ? '👤' : grp.type === 'group' ? '👥' : grp.type === 'multi' ? '👥👤' : '📦'
 
     return (
       <span key={grp.key} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <button className="btn-sm" onClick={() => { setActiveGroup(grp.key); setPage(1); if (grp.type === 'album') setSortBy('custom') }}
-          data-drop-zone={grp.type === 'album' ? realKey : undefined}
+        <button className="btn-sm" onClick={() => { setActiveGroup(grp.key); setPage(1) }}
           style={{
-            borderColor: isActive ? '#a78bfa' : isDropTarget ? '#f59e0b' : '#333',
-            color: isActive ? '#a78bfa' : isDropTarget ? '#fbbf24' : '#888',
+            borderColor: isActive ? '#a78bfa' : '#333',
+            color: isActive ? '#a78bfa' : '#888',
             background: isActive ? '#7c3aed10' : 'transparent',
             whiteSpace: 'nowrap', transition: 'all 0.2s',
             outline: 'none'
           }}>
           {icon} {grp.name} ({grp.count})
         </button>
-        {grp.editable ? (
-          <>
-            <button className="btn-sm" onClick={() => { const n = prompt('修改显示名称:', grp.name); if (n && n.trim() && n.trim() !== grp.name) { const cfg = { ...albumConfig }; if (cfg[realKey]) cfg[realKey] = { ...cfg[realKey], name: n.trim() }; saveAlbums(cfg) } }} style={{ padding: '2px 5px', fontSize: '0.6rem', borderColor: '#555', color: '#888', background: 'transparent' }} title="修改显示名称（不影响自动匹配）">✎</button>
-            <button className="btn-sm" onClick={() => { if (confirm(`删除专辑 "${grp.name}"？画廊将回到自动分组。`)) { const cfg = { ...albumConfig }; delete cfg[realKey]; saveAlbums(cfg) } }} style={{ padding: '2px 5px', fontSize: '0.6rem', borderColor: '#ef4444', color: '#fca5a5', background: 'transparent' }} title="删除">✕</button>
-          </>
-        ) : (
+        {!grp.editable && (
           <button className="btn-sm" onClick={() => convertGroupToAlbum(grp)} style={{ padding: '2px 5px', fontSize: '0.6rem', borderColor: '#8b5cf6', color: '#c4b5fd', background: 'transparent' }} title="转为自定义专辑">+</button>
         )}
       </span>
@@ -765,7 +789,7 @@ export default function LocalGallery() {
         const isDropTarget = dragGid != null
         const realKey = grp.key.slice(6) // 去掉 "album:" 前缀
         return (
-          <div key={grp.key} style={{ padding: '0 8px' }}>
+          <div key={grp.key} style={{ padding: '0 8px' }} className="album-sidebar-row">
             <div onClick={() => { setActiveGroup(grp.key); setPage(1); setSortBy('custom') }}
               data-drop-zone={realKey}
               style={{
@@ -777,6 +801,10 @@ export default function LocalGallery() {
               }}>
               <span style={{ fontSize: '0.78rem', color: isActive ? '#a78bfa' : '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>📁 {grp.name}</span>
               <span style={{ fontSize: '0.65rem', color: '#666', marginLeft: 6 }}>{grp.count}</span>
+              <span className="album-actions" style={{ display: 'flex', gap: 2, marginLeft: 4, alignItems: 'center' }}>
+                <button className="btn-sm" onClick={e => { e.stopPropagation(); const n = prompt('修改显示名称:', grp.name); if (n && n.trim() && n.trim() !== grp.name) { const cfg = { ...albumConfig }; if (cfg[realKey]) cfg[realKey] = { ...cfg[realKey], name: n.trim() }; saveAlbums(cfg) } }} style={{ padding: '2px 4px', fontSize: '0.65rem', borderColor: 'transparent', color: '#888', background: 'transparent', cursor: 'pointer' }} title="修改显示名称">✎</button>
+                <button className="btn-sm" onClick={e => { e.stopPropagation(); if (confirm(`删除专辑 "${grp.name}"？画廊将回到自动分组。`)) { const cfg = { ...albumConfig }; delete cfg[realKey]; saveAlbums(cfg) } }} style={{ padding: '2px 4px', fontSize: '0.65rem', borderColor: 'transparent', color: '#fca5a5', background: 'transparent', cursor: 'pointer' }} title="删除">✕</button>
+              </span>
             </div>
           </div>
         )
@@ -906,7 +934,7 @@ export default function LocalGallery() {
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, overflowX: 'auto', paddingBottom: 4, flexWrap: 'wrap' }}>
               <button className="btn-sm" onClick={() => { setActiveGroup('all'); setPage(1) }}
                 style={{ borderColor: activeGroup === 'all' ? '#a78bfa' : '#333', color: activeGroup === 'all' ? '#a78bfa' : '#888', background: activeGroup === 'all' ? '#7c3aed10' : 'transparent', whiteSpace: 'nowrap' }}>📦 全部 ({galleries.length})</button>
-              {groups.map(grp => renderGroupTag(grp))}
+              {groups.filter(g => g.type !== 'album').map(grp => renderGroupTag(grp))}
             </div>
           )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -938,7 +966,19 @@ export default function LocalGallery() {
         </div>
 
         {error && <div className="status-msg error" style={{ marginBottom: 12 }}>⚠ {error}</div>}
-        {loading && <div className="loading">加载中...</div>}
+        {loading && (
+          <div className="grid">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="gallery-card" style={{ background: '#1a1a2e', borderRadius: 10, overflow: 'hidden', animation: 'skeleton-pulse 1.5s infinite' }}>
+                <div style={{ width: '100%', paddingBottom: '140%', background: 'linear-gradient(90deg, #1a1a2e 0%, #252545 50%, #1a1a2e 100%)', backgroundSize: '200% 100%', animation: 'skeleton-shimmer 1.5s infinite' }} />
+                <div style={{ padding: '10px 12px' }}>
+                  <div style={{ height: 14, borderRadius: 4, background: '#252545', width: '80%', marginBottom: 6 }} />
+                  <div style={{ height: 10, borderRadius: 3, background: '#1e1e3a', width: '50%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {!loading && galleries.length === 0 && !error && <div className="empty"><p>暂无本地画廊</p><p style={{ fontSize: '0.8rem', color: '#666' }}>在 E-Hentai 页面下载后会自动出现在这里</p></div>}
 
         {viewMode === 'grid' ? (
@@ -957,7 +997,7 @@ export default function LocalGallery() {
         {detailLoading && <div className="modal-overlay"><div className="modal"><div className="loading">加载详情...</div></div></div>}
         {detail && !detailLoading && (
           <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setDetail(null) }}>
-            <div className="modal" style={{ maxWidth: 680, maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
+            <div className="modal" style={{ maxWidth: 'min(900px, 90vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
               <div style={{ position: 'relative', background: 'linear-gradient(180deg, #1a1a3a 0%, #0f0f1a 100%)', padding: '20px 24px 16px', borderBottom: '1px solid #2a2a4a' }}>
                 <button className="btn-sm" onClick={() => setDetail(null)} style={{ position: 'absolute', top: 10, right: 10, border: 'none', color: '#888', fontSize: '1.1rem' }}>✕</button>
                 <div style={{ display: 'flex', gap: 16 }}>
@@ -1340,7 +1380,18 @@ export default function LocalGallery() {
         </div>
       )}
 
-      {toast && <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 300, padding: '10px 24px', borderRadius: 10, background: 'rgba(0,0,0,0.85)', color: '#fbbf24', fontSize: '0.9rem', fontWeight: 600, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', animation: 'toast-in 0.3s ease, toast-out 0.3s ease 1.2s forwards', pointerEvents: 'none' }}>{toast}</div>}
+      {toasts.length > 0 && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 300, display: 'flex', flexDirection: 'column', gap: 6, pointerEvents: 'none' }}>
+          {toasts.map((t, i) => (
+            <div key={t.key} style={{
+              padding: '10px 24px', borderRadius: 10, background: 'rgba(0,0,0,0.85)',
+              color: '#fbbf24', fontSize: '0.9rem', fontWeight: 600,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)', opacity: 1 - i * 0.25,
+              transform: `translateY(${i * 4}px)`
+            }}>{t.msg}</div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
