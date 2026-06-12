@@ -1,6 +1,6 @@
 # 📚 MangaManager
 
-本地漫画文件管理系统 —— 目录扫描入库、标签分类管理、网页 & NeeView 双模式阅读。
+本地漫画文件管理系统 —— 目录扫描入库、标签分类管理、网页阅读。
 
 ## 技术栈
 
@@ -10,7 +10,7 @@
 | 前端 | React + React Router | 19.2 / 7.16 |
 | 构建 | Vite | 8 |
 | 数据库 | SQLite（开发）/ MySQL（生产） | EF Core |
-| 阅读器 | NeeView 集成 + 内置网页阅读器 | - |
+| 阅读器 | 内置网页阅读器 | - |
 
 ## 快速开始
 
@@ -18,7 +18,7 @@
 
 - .NET SDK 9.0+
 - Node.js 20+
-- 可选：MySQL 8.0+、NeeView 阅读器
+- 可选：MySQL 8.0+
 
 ### 1. 启动后端
 
@@ -151,9 +151,6 @@ MangaManager/
 |------|------|------|
 | GET | `/api/reader/manga/{id}/pages` | 页面列表 |
 | GET | `/api/reader/manga/{id}/page/{idx}` | 单张图片 |
-| POST | `/api/open/{id}` | 启动 NeeView |
-| GET | `/api/open/status/{id}` | 轮询阅读状态 |
-| GET | `/api/open/neeview/status` | NeeView 可用性 |
 
 ### 封面
 
@@ -212,10 +209,6 @@ scanning（扫描目录） → loading（加载数据库） → processing（处
 | `Esc` | 返回 |
 
 ---
-
-## NeeView 集成
-
-配置 `appsettings.json` 中的 NeeView 路径，详情页点击「📖 NeeView 阅读」即可启动本地 NeeView 阅读器。
 
 ---
 

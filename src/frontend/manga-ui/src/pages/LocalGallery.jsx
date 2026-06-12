@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchLocalGalleries, fetchLocalGalleryDetail, getLocalCoverUrl, deleteLocalGallery, translateEHTags, redownloadLocalGallery, batchRedownloadLocalGalleries, API_BASE, fetchAlbumConfig, saveAlbumConfig, importLocalGallery, batchImportGalleries, fetchGalleryMetaTags, updateGalleryMetaTags, browseDirectory } from '../api'
+import { fetchLocalGalleries, fetchLocalGalleryDetail, getLocalCoverUrl, deleteLocalGallery, translateEHTags, suggestEHTags, redownloadLocalGallery, batchRedownloadLocalGalleries, fetchAlbumConfig, saveAlbumConfig, importLocalGallery, batchImportGalleries, fetchGalleryMetaTags, updateGalleryMetaTags, browseDirectory } from '../api'
+import useGalleryDrag from '../hooks/useGalleryDrag'
+import GalleryDetail from '../components/GalleryDetail'
+import AlbumSidebar from '../components/AlbumSidebar'
 
 const CATEGORY_COLORS = {
   doujinshi: '#F44336', manga: '#FF9800', 'artist cg': '#FBC02D',
@@ -32,21 +35,40 @@ export default function LocalGallery() {
   const [selected, setSelected] = useState(new Set())
   const [tagTranslations, setTagTranslations] = useState({})
 const [nsTranslations, setNsTranslations] = useState({})
+// 搜索用标签翻译缓存：{ "artist:wada" -> "和田" }
+const [searchTagTransMap, setSearchTagTransMap] = useState({})
 const [toasts, setToasts] = useState([])
 const toastIdRef = useRef(0)
 const setToast = (msg, duration = 2000) => {
   if (!msg) return // 兼容 setToast(null) 清空
   const id = ++toastIdRef.current
-  setToasts(prev => [...prev.slice(-2), { id, msg, key: id }])
+  setToasts(prev => [...prev.slice(-3), { id, msg, key: id }]) // 最多保留3条
   setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration)
 }
 
-  const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState('modified-desc')
-  const [pageSize, setPageSize] = useState(30)
-  const [page, setPage] = useState(1)
-  const [viewMode, setViewMode] = useState('grid')
-  const [activeGroup, setActiveGroup] = useState('all')
+  // 恢复上次浏览状态（从阅读器返回时保留筛选条件）
+  const restoreState = () => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('local-gallery-state') || 'null')
+      if (saved && typeof saved === 'object') {
+        sessionStorage.removeItem('local-gallery-state') // 恢复后清除，避免下次从首页进入时误恢复
+        return saved
+      }
+    } catch { }
+    return null
+  }
+  const savedState = restoreState()
+  const [search, setSearch] = useState(savedState?.search || '')
+  const [sortBy, setSortBy] = useState(savedState?.sortBy || 'modified-desc')
+  const [pageSize, setPageSize] = useState(savedState?.pageSize || 30)
+  const [page, setPage] = useState(savedState?.page || 1)
+  const [viewMode, setViewMode] = useState(savedState?.viewMode || 'grid')
+  const [activeGroup, setActiveGroup] = useState(savedState?.activeGroup || 'all')
+
+  // 进入详情/阅读器前保存当前状态，返回后可恢复
+  const saveGalleryState = useCallback(() => {
+    try { sessionStorage.setItem('local-gallery-state', JSON.stringify({ search, sortBy, pageSize, page, viewMode, activeGroup })) } catch { }
+  }, [search, sortBy, pageSize, page, viewMode, activeGroup])
 
   // 搜索自动补全
   const [searchSuggestions, setSearchSuggestions] = useState([])
@@ -54,9 +76,6 @@ const setToast = (msg, duration = 2000) => {
   const [cursorPos, setCursorPos] = useState(0)
   const searchInputRef = useRef(null)
   const suggestTimerRef = useRef(null)
-
-  const [repairing, setRepairing] = useState(false)
-  const [repairProgress, setRepairProgress] = useState(null)
 
   // 导入外部作品对话框
   const [importModal, setImportModal] = useState(false)
@@ -127,16 +146,14 @@ const setToast = (msg, duration = 2000) => {
   // 侧边栏
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [albumModal, setAlbumModal] = useState(null)
-  const dragGidRef = useRef(null)
   const [dragGid, setDragGid] = useState(null)
-  const dragCloneRef = useRef(null)  // 拖拽时显示的克隆卡片
 
   // 点击触发的 hover 层
   const [hoveredGid, setHoveredGid] = useState(null)
 
   // 鼠标位置跟踪（侧边栏自动展开）
   const sidebarTimeoutRef = useRef(null)
-  const sidebarZoneRef = useRef(null)
+  // 侧边栏悬停展开
 
   useEffect(() => { loadGalleries() }, [])
 
@@ -145,6 +162,36 @@ const setToast = (msg, duration = 2000) => {
     try { setGalleries(await fetchLocalGalleries()) } catch (e) { setError(e.message) }
     setLoading(false)
   }
+
+  // 构建搜索用标签翻译缓存：收集所有画廊的标签，批量翻译为中文
+  useEffect(() => {
+    if (galleries.length === 0) return
+    const tagSet = new Set()
+    galleries.forEach(g => {
+      (g.artists || []).forEach(t => tagSet.add(`artist:${t}`))
+      ;(g.groups || []).forEach(t => tagSet.add(`group:${t}`))
+      if (g.language) tagSet.add(`language:${g.language}`)
+      if (g.category) tagSet.add(`category:${g.category}`)
+    })
+    if (tagSet.size === 0) return
+    const tagList = Array.from(tagSet)
+    // 分批翻译，每批最多 200 个
+    const batchSize = 200
+    const translateBatches = async () => {
+      const transMap = {}
+      for (let i = 0; i < tagList.length; i += batchSize) {
+        const batch = tagList.slice(i, i + batchSize)
+        try {
+          const r = await translateEHTags(batch)
+          ;(r.data || []).forEach(item => {
+            if (item.cn) transMap[item.key] = item.cn
+          })
+        } catch { /* 翻译失败不影响搜索功能 */ }
+      }
+      setSearchTagTransMap(transMap)
+    }
+    translateBatches()
+  }, [galleries.length])
 
   // 辅助：从画廊数据提取可匹配的标签
   const getGalleryTags = useCallback((g) => {
@@ -201,9 +248,16 @@ const setToast = (msg, duration = 2000) => {
   // 计算分组（自动分组 + 自定义专辑）
   const groups = useMemo(() => {
     const map = new Map()
-    // 自定义专辑（包括空专辑也要显示，方便用户管理）
+    // 先收集所有画廊的 artist/group 名称，用于判断空专辑是否还有对应作品
+    const allArtistGroupNames = new Set()
+    galleries.forEach(g => {
+      (g.artists || []).forEach(a => allArtistGroupNames.add(a))
+      ;(g.groups || []).forEach(gr => allArtistGroupNames.add(gr))
+    })
+    // 自定义专辑：空专辑仅当其 Key 对应的 artist/group 仍有未归类作品时才显示（方便一键归入）
     Object.entries(albumConfig).forEach(([key, val]) => {
       const gids = val.gids || []
+      if (gids.length === 0 && !allArtistGroupNames.has(key)) return
       map.set(`album:${key}`, { type: 'album', key: `album:${key}`, name: val.name || key, count: gids.length, editable: true, createdAt: val.createdAt || val.updatedAt, updatedAt: val.updatedAt })
     })
     // 未匹配到专辑的自动分组
@@ -220,7 +274,13 @@ const setToast = (msg, duration = 2000) => {
         const key = `group:${grps[0]}`
         if (!map.has(key)) map.set(key, { type: 'group', name: grps[0], count: 0 })
         map.get(key).count++
+      } else if (artists.length === 1 && grps.length === 1) {
+        // 各只有1个时，优先用 artist 作为分组
+        const key = `artist:${artists[0]}`
+        if (!map.has(key)) map.set(key, { type: 'artist', name: artists[0], count: 0 })
+        map.get(key).count++
       } else if (artists.length + grps.length > 1) {
+        // 多作者或多社团的复杂情况
         if (!map.has('multi')) map.set('multi', { type: 'multi', name: '多作者', count: 0 })
         map.get('multi').count++
       } else {
@@ -228,8 +288,9 @@ const setToast = (msg, duration = 2000) => {
         map.get('unknown').count++
       }
     })
-    // 专辑按创建时间排序（稳定），自动分组仍按 count 排序
+    // 专辑按创建时间排序（稳定），自动分组仍按 count 排序，过滤掉 count=0 的自动分组
     return Array.from(map.entries())
+      .filter(([, v]) => v.type === 'album' || v.count > 0)
       .sort((a, b) => {
         if (a[1].type === 'album' && b[1].type === 'album') {
           const ta = a[1].createdAt || a[1].updatedAt || ''
@@ -241,8 +302,13 @@ const setToast = (msg, duration = 2000) => {
       .map(([key, val]) => ({ key, ...val }))
   }, [galleries, albumConfig])
 
-  // 搜索自动补全的标签池（从所有画廊提取 + 专辑名）
+  // 搜索自动补全的标签池（用 ref 缓存，仅在画廊数量变化时重建）
+  const searchTagPoolRef = useRef([])
   const searchTagPool = useMemo(() => {
+    // 如果 galleries 长度没变，直接返回缓存（标签名不会变）
+    if (searchTagPoolRef.current.length > 0 && galleries.length === searchTagPoolRef.current._count) {
+      return searchTagPoolRef.current
+    }
     const pool = []
     const seen = new Set()
     const add = (prefix, label) => {
@@ -256,13 +322,14 @@ const setToast = (msg, duration = 2000) => {
       if (g.language) add('language', g.language)
       if (g.parody) add('parody', g.parody)
     })
-    // 添加专辑名
     Object.entries(albumConfig).forEach(([, val]) => {
       const name = val.name || ''
       if (name && !seen.has(name)) { seen.add(name); pool.push({ key: name, label: name, prefix: 'album', syntax: name }) }
     })
-    return pool.sort((a, b) => a.label.localeCompare(b.label))
-  }, [galleries, albumConfig])
+    pool._count = galleries.length
+    searchTagPoolRef.current = pool.sort((a, b) => a.label.localeCompare(b.label))
+    return searchTagPoolRef.current
+  }, [galleries.length, albumConfig])
 
   // 搜索输入处理（含自动补全）
   const handleSearchInput = (e) => {
@@ -277,13 +344,44 @@ const setToast = (msg, duration = 2000) => {
 
     if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
     if (currentWord.length >= 1) {
-      suggestTimerRef.current = setTimeout(() => {
-        const filtered = searchTagPool
+      suggestTimerRef.current = setTimeout(async () => {
+        // 先从本地标签池搜索
+        const localFiltered = searchTagPool
           .filter(t => t.label.toLowerCase().includes(currentWord))
           .slice(0, 8)
-        setSearchSuggestions(filtered)
-        setShowSearchSuggestions(filtered.length > 0)
-      }, 150)
+        if (localFiltered.length >= 3) {
+          // 本地结果足够，直接显示
+          setSearchSuggestions(localFiltered)
+          setShowSearchSuggestions(true)
+          return
+        }
+        // 本地结果不足，尝试从后端标签翻译数据库搜索（支持中文输入）
+        try {
+          const ehResults = await suggestEHTags(currentWord, 10)
+          const merged = [...localFiltered]
+          const seenLabels = new Set(localFiltered.map(t => t.syntax.toLowerCase()))
+          for (const r of ehResults) {
+            const syntax = r.ehSyntax || ''
+            if (seenLabels.has(syntax.toLowerCase())) continue
+            // 只保留 namespace 在本地画廊中实际存在的标签类型
+            const prefix = syntax.split(':')[0]?.toLowerCase()
+            if (!['artist', 'group', 'language', 'parody', 'category', 'female', 'male', 'misc'].includes(prefix)) continue
+            seenLabels.add(syntax.toLowerCase())
+            merged.push({
+              key: syntax,
+              label: `${r.cn || r.tag} (${syntax})`,
+              prefix,
+              syntax
+            })
+          }
+          setSearchSuggestions(merged.slice(0, 8))
+          setShowSearchSuggestions(merged.length > 0)
+        } catch {
+          // API 失败时仍然显示本地结果
+          setSearchSuggestions(localFiltered)
+          setShowSearchSuggestions(localFiltered.length > 0)
+        }
+      }, 200)
     } else {
       setShowSearchSuggestions(false)
     }
@@ -318,10 +416,21 @@ const setToast = (msg, duration = 2000) => {
         list = list.filter(g => !ag.has(g.gid) && (g.artists || []).length === 0 && (g.groups || []).length === 0)
       } else if (activeGroup.startsWith('artist:')) {
         const name = activeGroup.slice(7)
-        list = list.filter(g => (g.artists || []).length === 1 && g.artists[0] === name && (g.groups || []).length === 0)
+        list = list.filter(g => {
+          const artists = g.artists || []
+          const grps = g.groups || []
+          if (artists.length === 1 && artists[0] === name && grps.length === 0) return true
+          if (artists.length === 1 && artists[0] === name && grps.length === 1) return true
+          return false
+        })
       } else if (activeGroup.startsWith('group:')) {
         const name = activeGroup.slice(6)
-        list = list.filter(g => (g.groups || []).length === 1 && g.groups[0] === name && (g.artists || []).length === 0)
+        list = list.filter(g => {
+          const artists = g.artists || []
+          const grps = g.groups || []
+          if (grps.length === 1 && grps[0] === name && artists.length === 0) return true
+          return false
+        })
       } else if (activeGroup.startsWith('album:')) {
         const albumKey = activeGroup.slice(6)
         const albumGids = albumConfig[albumKey]?.gids || []
@@ -329,8 +438,15 @@ const setToast = (msg, duration = 2000) => {
       }
     }
     if (search.trim()) {
-      // 解析搜索词：支持空格分隔的多个词，支持 tag:value 语法
+      // 解析搜索词：支持空格分隔的多个词，支持 tag:value 语法，支持中文标签名搜索
       const terms = search.trim().split(/\s+/).filter(Boolean)
+      // 构建反向翻译索引：中文翻译 → 原始标签（如 "汉化" → ["language:chinese"]）
+      const cnToTag = {}
+      for (const [tagKey, cn] of Object.entries(searchTagTransMap)) {
+        const cnLower = cn.toLowerCase()
+        if (!cnToTag[cnLower]) cnToTag[cnLower] = []
+        cnToTag[cnLower].push(tagKey)
+      }
       list = list.filter(g => {
         return terms.every(term => {
           const lower = term.toLowerCase()
@@ -344,11 +460,53 @@ const setToast = (msg, duration = 2000) => {
             if (prefix === 'category') return (g.category || '').toLowerCase().includes(value)
             if (prefix === 'language') return (g.language || '').toLowerCase().includes(value)
           }
-          // 普通搜索：匹配标题、GID、artists、groups
-          return g.title.toLowerCase().includes(lower)
-            || String(g.gid).includes(lower)
-            || (g.artists || []).some(a => a.toLowerCase().includes(lower))
-            || (g.groups || []).some(gr => gr.toLowerCase().includes(lower))
+          // 检查搜索词是否匹配某个标签的中文翻译
+          const matchedTags = cnToTag[lower]
+          if (matchedTags) {
+            for (const tagKey of matchedTags) {
+              const [ns, tagVal] = tagKey.split(':')
+              if (ns === 'artist' && (g.artists || []).some(a => a.toLowerCase() === tagVal.toLowerCase())) return true
+              if (ns === 'group' && (g.groups || []).some(gr => gr.toLowerCase() === tagVal.toLowerCase())) return true
+              if (ns === 'language' && (g.language || '').toLowerCase() === tagVal.toLowerCase()) return true
+              if (ns === 'category' && (g.category || '').toLowerCase() === tagVal.toLowerCase()) return true
+            }
+          }
+          // 检查中文翻译本身是否包含搜索词（如搜"汉"匹配"汉化"）
+          for (const [cnLower, tagKeys] of Object.entries(cnToTag)) {
+            if (cnLower.includes(lower)) {
+              for (const tagKey of tagKeys) {
+                const [ns, tagVal] = tagKey.split(':')
+                if (ns === 'artist' && (g.artists || []).some(a => a.toLowerCase() === tagVal.toLowerCase())) return true
+                if (ns === 'group' && (g.groups || []).some(gr => gr.toLowerCase() === tagVal.toLowerCase())) return true
+                if (ns === 'language' && (g.language || '').toLowerCase() === tagVal.toLowerCase()) return true
+                if (ns === 'category' && (g.category || '').toLowerCase() === tagVal.toLowerCase()) return true
+              }
+            }
+          }
+          // 普通搜索：匹配标题、GID、artists、groups、以及这些标签的中文翻译名
+          if (g.title.toLowerCase().includes(lower)) return true
+          if (String(g.gid).includes(lower)) return true
+          if ((g.artists || []).some(a => {
+            if (a.toLowerCase().includes(lower)) return true
+            const cn = searchTagTransMap[`artist:${a}`]
+            return cn && cn.toLowerCase().includes(lower)
+          })) return true
+          if ((g.groups || []).some(gr => {
+            if (gr.toLowerCase().includes(lower)) return true
+            const cn = searchTagTransMap[`group:${gr}`]
+            return cn && cn.toLowerCase().includes(lower)
+          })) return true
+          if (g.language) {
+            if (g.language.toLowerCase().includes(lower)) return true
+            const cn = searchTagTransMap[`language:${g.language}`]
+            if (cn && cn.toLowerCase().includes(lower)) return true
+          }
+          if (g.category) {
+            if (g.category.toLowerCase().includes(lower)) return true
+            const cn = searchTagTransMap[`category:${g.category}`]
+            if (cn && cn.toLowerCase().includes(lower)) return true
+          }
+          return false
         })
       })
     }
@@ -372,7 +530,7 @@ const setToast = (msg, duration = 2000) => {
       return dir === 'desc' ? -cmp : cmp
     })
     return list
-  }, [galleries, activeGroup, search, sortBy, albumConfig])
+  }, [galleries, activeGroup, search, sortBy, albumConfig, searchTagTransMap])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -383,200 +541,23 @@ const setToast = (msg, duration = 2000) => {
   const handleRedownload = async (gid, title, token) => { try { await redownloadLocalGallery(gid, title, token); setToast('重新下载任务已启动'); setTimeout(() => setToast(null), 1500); setDetail(null) } catch (e) { setToast('重新下载失败: ' + e.message); setTimeout(() => setToast(null), 1500) } }
   const handleBatchRedownload = async () => { setDeleting(true); try { const r = await batchRedownloadLocalGalleries(Array.from(selected)); setBatchRedownloadConfirm(false); setSelected(new Set()); setBatchMode(false); setToast(r ? `批量重新下载: ${r.success} 成功${r.skipped > 0 ? `, ${r.skipped} 跳过` : ''}${r.failed > 0 ? `, ${r.failed} 失败` : ''}` : '批量重新下载任务已启动'); setTimeout(() => setToast(null), 2000) } catch (e) { setToast('批量重新下载失败: ' + e.message); setTimeout(() => setToast(null), 1500) } setDeleting(false) }
 
-  const handleRepairMetadata = async () => {
-    setRepairing(true); setRepairProgress({ repaired: 0, failed: 0, total: 0, title: '' })
-    try {
-      const resp = await fetch(`${API_BASE}/api/local/repair-metadata`, { method: 'POST' })
-      const reader = resp.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
-      while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ')) { try { const d = JSON.parse(line.slice(6)); if (d.type === 'start') setRepairProgress({ repaired: 0, failed: 0, total: d.total, title: '准备中...' }); else if (d.type === 'progress') setRepairProgress({ repaired: d.repaired, failed: d.failed, total: d.total, title: d.title }); else if (d.type === 'done') { setRepairProgress({ repaired: d.repaired, failed: d.failed, total: d.total, title: '完成' }); await loadGalleries(); setTimeout(() => setRepairProgress(null), 3000) } } catch { } } } }
-    } catch (e) { setToast('补全元数据失败: ' + e.message); setTimeout(() => setToast(null), 2000) }
-    setRepairing(false)
-  }
-
   const openDetail = async (gid) => {
+    saveGalleryState() // 保存当前筛选状态，从阅读器返回时可恢复
     setDetailLoading(true)
     try { const d = await fetchLocalGalleryDetail(gid); setDetail(d); if (d?.tagGroups?.length) { const allTags = []; d.tagGroups.forEach(g => { allTags.push(`n:${g.namespace}`); g.tags.forEach(t => allTags.push(`${g.namespace}:${t}`)) }); translateEHTags(allTags).then(r => { const tMap = {}, nsMap = {}; (r.data || []).forEach(item => { if (item.key?.startsWith('n:')) nsMap[item.key.substring(2)] = item.cn; else if (item.cn) tMap[item.key] = item.cn }); setTagTranslations(tMap); setNsTranslations(nsMap) }).catch(() => {}) } } catch (e) { setError(e.message) }
     setDetailLoading(false)
   }
 
-  // 自定义拖拽（mousedown/mousemove/mouseup，绕过浏览器原生 drag 的首次点击问题）
-  const dragMoveRef = useRef(null) // 存储当前 onMove 函数引用，用于 cleanup
-  const dragUpRef = useRef(null)   // 存储当前 onUp 函数引用
-
-  // 用 ref 存储最新的 doSortDrop / doAlbumDrop，避免闭包过期问题
-  const doAlbumDropRef = useRef(null)
-  const doSortDropRef = useRef(null)
-
   // 判断当前是否在专辑自定义排序模式
   const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
-
-  const handleDragMouseDown = useCallback((gid, e) => {
-    if (batchMode) return
-    const card = e.currentTarget.closest('[style*="border-radius"]')
-    if (!card) return
-    e.preventDefault()
-    e.stopPropagation()
-
-    const startX = e.clientX
-    const startY = e.clientY
-    const startTime = Date.now()
-
-    dragGidRef.current = gid
-    setDragGid(gid)
-    const isSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
-    setToast(isSortMode ? '拖拽到目标位置以排序' : '拖拽到专辑标签上以分配')
-
-    // 创建拖拽克隆卡片
-    const clone = card.cloneNode(true)
-    clone.style.position = 'fixed'
-    clone.style.zIndex = '9999'
-    clone.style.pointerEvents = 'none'
-    clone.style.opacity = '0.85'
-    clone.style.width = card.offsetWidth + 'px'
-    clone.style.transform = 'rotate(2deg) scale(0.95)'
-    clone.style.boxShadow = '0 8px 32px rgba(0,0,0,0.6)'
-    clone.style.left = (e.clientX - card.offsetWidth / 2) + 'px'
-    clone.style.top = (e.clientY - 100) + 'px'
-    document.body.appendChild(clone)
-    dragCloneRef.current = clone
-
-    // 高亮当前悬停的 drop zone / 排序位置
-    let currentHoverZone = null
-    let currentSortTarget = null
-    const highlightZone = (zoneEl) => {
-      if (currentHoverZone && currentHoverZone !== zoneEl) {
-        currentHoverZone.style.background = ''
-        currentHoverZone.style.borderColor = ''
-        currentHoverZone.style.outline = ''
-      }
-      if (zoneEl && zoneEl !== currentHoverZone) {
-        zoneEl.style.background = '#f59e0b15'
-        zoneEl.style.borderColor = '#f59e0b'
-        zoneEl.style.outline = '2px solid #f59e0b'
-        zoneEl.style.outlineOffset = '1px'
-      }
-      currentHoverZone = zoneEl
-    }
-    const highlightSortTarget = (sortEl) => {
-      if (currentSortTarget && currentSortTarget !== sortEl) {
-        currentSortTarget.style.outline = ''
-        currentSortTarget.style.outlineOffset = ''
-        currentSortTarget.style.borderLeft = ''
-      }
-      if (sortEl && sortEl !== currentSortTarget) {
-        sortEl.style.outline = '2px solid #10b981'
-        sortEl.style.outlineOffset = '1px'
-        sortEl.style.borderLeft = '4px solid #10b981'
-      }
-      currentSortTarget = sortEl
-    }
-
-    const onMove = (me) => {
-      if (clone) {
-        clone.style.left = (me.clientX - card.offsetWidth / 2) + 'px'
-        clone.style.top = (me.clientY - 100) + 'px'
-      }
-      // 临时隐藏克隆卡片，避免遮挡 elementFromPoint
-      if (clone) clone.style.display = 'none'
-      const el = document.elementFromPoint(me.clientX, me.clientY)
-      if (clone) clone.style.display = ''
-
-      if (el) {
-        // 优先检测专辑 drop zone
-        const zoneBtn = el.closest('[data-drop-zone]')
-        if (zoneBtn) {
-          highlightZone(zoneBtn)
-          highlightSortTarget(null)
-        } else if (isSortMode) {
-          highlightZone(null)
-          // 检测排序位置（其他 gallery card）
-          const sortCard = el.closest('[data-sort-gid]')
-          if (sortCard && sortCard.getAttribute('data-sort-gid') !== String(gid)) {
-            highlightSortTarget(sortCard)
-          } else {
-            highlightSortTarget(null)
-          }
-        } else {
-          highlightZone(null)
-          highlightSortTarget(null)
-        }
-      } else {
-        highlightZone(null)
-        highlightSortTarget(null)
-      }
-    }
-
-    const onUp = (me) => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      highlightZone(null)
-      highlightSortTarget(null)
-      if (clone) { clone.remove(); dragCloneRef.current = null }
-      dragMoveRef.current = null
-      dragUpRef.current = null
-
-      const droppedGid = dragGidRef.current
-      dragGidRef.current = null
-      setDragGid(null)
-
-      if (droppedGid == null) return
-
-      // 检测是否为短点击（移动 < 5px 且 < 200ms）→ 视为普通点击
-      const dx = me.clientX - startX, dy = me.clientY - startY
-      const dt = Date.now() - startTime
-      if (Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 200) {
-        setToast(null)
-        // 模拟卡片点击行为：切换 hoveredGid（显示 overlay 详情/阅读按钮）
-        setHoveredGid(prev => prev === droppedGid ? null : droppedGid)
-        return
-      }
-
-      // 检测 mouseup 时的目标（克隆卡片已移除，无需隐藏）
-      const el = document.elementFromPoint(me.clientX, me.clientY)
-      if (el) {
-        // 优先：检测是否在专辑 drop zone 上
-        const zoneBtn = el.closest('[data-drop-zone]')
-        if (zoneBtn) {
-          const albumKey = zoneBtn.getAttribute('data-drop-zone')
-          if (albumKey) {
-            doAlbumDropRef.current?.(droppedGid, albumKey)
-            return
-          }
-        }
-        // 排序模式：检测是否在另一个卡片上
-        if (isSortMode) {
-          const sortCard = el.closest('[data-sort-gid]')
-          if (sortCard) {
-            const targetGid = parseInt(sortCard.getAttribute('data-sort-gid'))
-            if (targetGid && targetGid !== droppedGid) {
-              doSortDropRef.current?.(droppedGid, targetGid)
-              return
-            }
-          }
-        }
-      }
-
-      // 没有命中任何目标
-      setToast('已取消拖拽')
-      setTimeout(() => setToast(null), 1000)
-    }
-
-    dragMoveRef.current = onMove
-    dragUpRef.current = onUp
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [batchMode, activeGroup, sortBy])
 
   // 专辑 drop 逻辑
   const doAlbumDrop = useCallback((gid, albumKey) => {
     const cfg = { ...albumConfig }
-    // 先从所有专辑中移除
     Object.keys(cfg).forEach(k => { if (cfg[k]) cfg[k] = { ...cfg[k], gids: cfg[k].gids.filter(id => id !== gid) } })
-    // 加入目标专辑（追加到末尾）
     if (!cfg[albumKey]) cfg[albumKey] = { name: albumKey, gids: [], order: [] }
     const existing = cfg[albumKey].gids.filter(id => id !== gid)
     cfg[albumKey] = { ...cfg[albumKey], gids: [...existing, gid] }
-    // 同时更新 order（如果存在）
     if (cfg[albumKey].order) {
       cfg[albumKey].order = [...cfg[albumKey].order.filter(id => id !== gid), gid]
     }
@@ -584,55 +565,40 @@ const setToast = (msg, duration = 2000) => {
     setToast(`已移动到 "${cfg[albumKey]?.name || albumKey}"`)
     setTimeout(() => setToast(null), 1500)
   }, [albumConfig, saveAlbums])
-  doAlbumDropRef.current = doAlbumDrop
 
-  // 专辑内排序拖拽：将 gid 插入到 targetGid 之前
+  // 专辑内排序拖拽
   const doSortDrop = useCallback((gid, targetGid) => {
-    const albumKey = activeGroup.slice(6) // 去掉 "album:" 前缀
+    const albumKey = activeGroup.slice(6)
     const cfg = { ...albumConfig }
     const album = cfg[albumKey]
     if (!album) return
-
-    // 获取当前显示列表（已按 order 或默认排序）
-    const currentOrder = album.order && album.order.length > 0
-      ? album.order
-      : album.gids
-
-    // 移除拖拽的 gid
+    const currentOrder = album.order && album.order.length > 0 ? album.order : album.gids
     const filtered = currentOrder.filter(id => id !== gid)
-    // 找到 targetGid 的位置，将 gid 插入到它前面
     const targetIdx = filtered.indexOf(targetGid)
-    if (targetIdx === -1) {
-      // target 不在列表中，追加到末尾
-      filtered.push(gid)
-    } else {
-      filtered.splice(targetIdx, 0, gid)
-    }
-
+    if (targetIdx === -1) filtered.push(gid)
+    else filtered.splice(targetIdx, 0, gid)
     cfg[albumKey] = { ...album, order: filtered }
     saveAlbums(cfg)
     setToast('排序已更新')
     setTimeout(() => setToast(null), 1500)
   }, [activeGroup, albumConfig, saveAlbums])
-  doSortDropRef.current = doSortDrop
 
-  // 将自动分组转为自定义专辑
-  const convertGroupToAlbum = (grp) => {
-    const gids = filtered.filter(g => {
-      const a = g.artists || []; const gr = g.groups || []
-      if (grp.key === 'multi') return a.length + gr.length > 1
-      if (grp.key === 'unknown') return a.length === 0 && gr.length === 0
-      if (grp.key.startsWith('artist:')) { const n = grp.key.slice(7); return a.length === 1 && a[0] === n && gr.length === 0 }
-      if (grp.key.startsWith('group:')) { const n = grp.key.slice(6); return gr.length === 1 && gr[0] === n && a.length === 0 }
-      return false
-    }).map(g => g.gid)
-    if (gids.length === 0) return
-    const cfg = { ...albumConfig }
-    cfg[grp.name] = { name: grp.name, gids: [...(cfg[grp.name]?.gids || []), ...gids] }
-    saveAlbums(cfg)
-    setToast(`已转换 "${grp.name}" (${gids.length} 部) 为专辑`)
-    setTimeout(() => setToast(null), 1500)
-  }
+  // 拖拽 hook
+  const { dragGidRef, handleDragMouseDown } = useGalleryDrag({
+    isSortMode: isAlbumSortMode,
+    disabled: batchMode,
+    onDropToAlbum: doAlbumDrop,
+    onDropToSort: doSortDrop,
+    onShortClick: (gid) => setHoveredGid(prev => prev === gid ? null : gid),
+    onToast: (msg, duration = 2000) => setToast(msg)
+  })
+
+  // 同步 dragGid 状态（用于 UI 反馈）
+  useEffect(() => {
+    const check = () => setDragGid(dragGidRef.current)
+    const id = setInterval(check, 100)
+    return () => clearInterval(id)
+  }, [dragGidRef])
 
   // 侧边栏鼠标悬停自动展开（也响应 dragover）
   const sidebarEnter = () => {
@@ -688,7 +654,7 @@ const setToast = (msg, duration = 2000) => {
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,0.3)', cursor: 'pointer' }}>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📋 详情</span>
             </div>
-            <Link to={`/reader-local/${g.gid}`} onClick={e => { e.stopPropagation(); try { sessionStorage.setItem('reader-local-list', JSON.stringify(filtered.map(g => g.gid))) } catch { } }}
+            <Link to={`/reader-local/${g.gid}`} onClick={e => { e.stopPropagation(); try { saveGalleryState(); sessionStorage.setItem('reader-local-list', JSON.stringify(filtered.map(g => g.gid))) } catch { } }}
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16,185,129,0.3)', cursor: 'pointer', textDecoration: 'none' }}>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📖 阅读</span>
             </Link>
@@ -771,90 +737,78 @@ const setToast = (msg, duration = 2000) => {
     )
   }
 
-  // 侧边栏内容
-  const sidebarContent = (
-    <div style={{ padding: '12px 0', height: '100%', overflowY: 'auto' }}>
-      <div style={{ padding: '0 14px 10px', fontSize: '0.8rem', fontWeight: 600, color: '#a78bfa', borderBottom: '1px solid #1e1e3a', marginBottom: 8 }}>
-        📁 专辑
-        <button className="btn-sm" onClick={() => {
-          const n = prompt('新建专辑名称（将用于自动匹配下载的漫画）:')
-          if (n && n.trim()) { const cfg = { ...albumConfig }; cfg[n.trim()] = { name: n.trim(), gids: cfg[n.trim()]?.gids || [] }; saveAlbums(cfg); setActiveGroup(`album:${n.trim()}`); setPage(1) }
-        }} style={{ float: 'right', padding: '2px 8px', fontSize: '0.65rem', borderColor: '#10b981', color: '#6ee7b7', background: 'transparent' }}>+ 新建</button>
-      </div>
-      {groups.filter(g => g.type === 'album').length === 0 && (
-        <div style={{ padding: '8px 14px', fontSize: '0.7rem', color: '#555' }}>暂无专辑，可在详情中创建或转换自动分组</div>
-      )}
-      {groups.filter(g => g.type === 'album').map(grp => {
-        const isActive = activeGroup === grp.key
-        const isDropTarget = dragGid != null
-        const realKey = grp.key.slice(6) // 去掉 "album:" 前缀
-        return (
-          <div key={grp.key} style={{ padding: '0 8px' }} className="album-sidebar-row">
-            <div onClick={() => { setActiveGroup(grp.key); setPage(1); setSortBy('custom') }}
-              data-drop-zone={realKey}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-                background: isActive ? '#7c3aed15' : 'transparent',
-                border: `1px solid ${isActive ? '#7c3aed40' : isDropTarget ? '#f59e0b40' : 'transparent'}`,
-                transition: 'all 0.15s', marginBottom: 2, outline: 'none'
-              }}>
-              <span style={{ fontSize: '0.78rem', color: isActive ? '#a78bfa' : '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>📁 {grp.name}</span>
-              <span style={{ fontSize: '0.65rem', color: '#666', marginLeft: 6 }}>{grp.count}</span>
-              <span className="album-actions" style={{ display: 'flex', gap: 2, marginLeft: 4, alignItems: 'center' }}>
-                <button className="btn-sm" onClick={e => { e.stopPropagation(); const n = prompt('修改显示名称:', grp.name); if (n && n.trim() && n.trim() !== grp.name) { const cfg = { ...albumConfig }; if (cfg[realKey]) cfg[realKey] = { ...cfg[realKey], name: n.trim() }; saveAlbums(cfg) } }} style={{ padding: '2px 4px', fontSize: '0.65rem', borderColor: 'transparent', color: '#888', background: 'transparent', cursor: 'pointer' }} title="修改显示名称">✎</button>
-                <button className="btn-sm" onClick={e => { e.stopPropagation(); if (confirm(`删除专辑 "${grp.name}"？画廊将回到自动分组。`)) { const cfg = { ...albumConfig }; delete cfg[realKey]; saveAlbums(cfg) } }} style={{ padding: '2px 4px', fontSize: '0.65rem', borderColor: 'transparent', color: '#fca5a5', background: 'transparent', cursor: 'pointer' }} title="删除">✕</button>
-              </span>
-            </div>
-          </div>
-        )
-      })}
-      <div style={{ padding: '0 14px 10px', marginTop: 12, fontSize: '0.75rem', fontWeight: 600, color: '#888', borderBottom: '1px solid #1e1e3a', marginBottom: 4 }}>自动分组</div>
-      {groups.filter(g => g.type !== 'album').map(grp => (
-        <div key={grp.key} style={{ padding: '0 14px' }}>
-          <div onClick={() => { setActiveGroup(grp.key); setPage(1) }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 6px', borderRadius: 4, cursor: 'pointer', background: activeGroup === grp.key ? '#7c3aed10' : 'transparent', marginBottom: 1 }}>
-            <span style={{ fontSize: '0.75rem', color: activeGroup === grp.key ? '#a78bfa' : '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-              {grp.type === 'artist' ? '👤' : grp.type === 'group' ? '👥' : grp.type === 'multi' ? '👥👤' : '📦'} {grp.name}
-            </span>
-            <span style={{ fontSize: '0.65rem', color: '#555', marginLeft: 6 }}>{grp.count}</span>
-            <button className="btn-sm" onClick={e => { e.stopPropagation(); convertGroupToAlbum(grp) }} style={{ padding: '1px 5px', fontSize: '0.55rem', borderColor: '#8b5cf6', color: '#c4b5fd', background: 'transparent', marginLeft: 4 }} title="转为专辑">+</button>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+  // 将自动分组转为自定义专辑
+  const convertGroupToAlbum = (grp) => {
+    const gids = filtered.filter(g => {
+      const a = g.artists || []; const gr = g.groups || []
+      if (grp.key === 'multi') return a.length + gr.length > 1
+      if (grp.key === 'unknown') return a.length === 0 && gr.length === 0
+      if (grp.key.startsWith('artist:')) {
+        const n = grp.key.slice(7)
+        // 匹配分组逻辑：1 artist + 0 group 或 1 artist + 1 group
+        if (a.length === 1 && a[0] === n && gr.length === 0) return true
+        if (a.length === 1 && a[0] === n && gr.length === 1) return true
+        return false
+      }
+      if (grp.key.startsWith('group:')) {
+        const n = grp.key.slice(6)
+        return gr.length === 1 && gr[0] === n && a.length === 0
+      }
+      return false
+    }).map(g => g.gid)
+    if (gids.length === 0) return
+    const cfg = { ...albumConfig }
+    cfg[grp.name] = { name: grp.name, gids: [...(cfg[grp.name]?.gids || []), ...gids] }
+    saveAlbums(cfg)
+    setToast(`已转换 "${grp.name}" (${gids.length} 部) 为专辑`)
+    setTimeout(() => setToast(null), 1500)
+  }
+
+  const handleCreateAlbum = (name) => {
+    const cfg = { ...albumConfig }
+    cfg[name] = { name, gids: cfg[name]?.gids || [] }
+    saveAlbums(cfg)
+    setActiveGroup(`album:${name}`)
+    setPage(1)
+  }
+
+  const handleRenameAlbum = (key, newName) => {
+    const cfg = { ...albumConfig }
+    if (cfg[key]) cfg[key] = { ...cfg[key], name: newName }
+    saveAlbums(cfg)
+  }
+
+  const handleDeleteAlbum = (key) => {
+    const cfg = { ...albumConfig }
+    delete cfg[key]
+    saveAlbums(cfg)
+  }
+
+  const handleSelectGroup = (key) => {
+    setActiveGroup(key)
+    setPage(1)
+    if (key.startsWith('album:')) setSortBy('custom')
+  }
 
   return (
     <div className="container" style={{ paddingTop: 24, display: 'flex', gap: 0 }}>
       {/* 侧边栏 */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        {/* 悬停触发区 */}
-        <div ref={sidebarZoneRef}
-          onMouseEnter={sidebarEnter} onMouseLeave={sidebarLeave}
-          onDragOver={sidebarDragOver}
-          style={{ position: 'fixed', top: 0, left: 0, width: sidebarOpen ? 240 : 16, height: '100vh', zIndex: 50, transition: 'width 0.25s ease' }}>
-          <div style={{
-            position: 'absolute', top: 0, left: 0, width: 240, height: '100%',
-            background: '#0d0d1a', borderRight: '1px solid #1e1e3a',
-            transform: sidebarOpen ? 'translateX(0)' : 'translateX(-224px)',
-            transition: 'transform 0.25s ease',
-            boxShadow: sidebarOpen ? '4px 0 20px rgba(0,0,0,0.5)' : 'none'
-          }}>
-            <div style={{ padding: '8px 14px', fontSize: '0.75rem', color: '#555', borderBottom: '1px solid #1e1e3a', display: 'flex', justifyContent: 'space-between' }}>
-              <span>📚 画廊管理</span>
-              <button className="btn-sm" onClick={() => setSidebarOpen(false)} style={{ padding: '1px 6px', fontSize: '0.6rem', borderColor: '#444', color: '#888' }}>收起</button>
-            </div>
-            {sidebarContent}
-          </div>
-          {/* 标签触发器 */}
-          {!sidebarOpen && (
-            <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', writingMode: 'vertical-rl', background: '#1a1a3a', color: '#666', padding: '8px 4px', borderRadius: '0 6px 6px 0', fontSize: '0.65rem', cursor: 'pointer', letterSpacing: 2, border: '1px solid #2a2a4a', borderLeft: 'none' }}>
-              📁 专辑
-            </div>
-          )}
-        </div>
-      </div>
+      <AlbumSidebar
+        sidebarOpen={sidebarOpen}
+        groups={groups}
+        activeGroup={activeGroup}
+        albumConfig={albumConfig}
+        dragGid={dragGid}
+        onSelectGroup={handleSelectGroup}
+        onCreateAlbum={handleCreateAlbum}
+        onRenameAlbum={handleRenameAlbum}
+        onDeleteAlbum={handleDeleteAlbum}
+        onConvertToAlbum={convertGroupToAlbum}
+        onMouseEnter={sidebarEnter}
+        onMouseLeave={sidebarLeave}
+        onDragOver={sidebarDragOver}
+        onClose={() => setSidebarOpen(false)}
+      />
 
       {/* 主内容区 */}
       <div style={{ flex: 1, minWidth: 0, marginLeft: sidebarOpen ? 240 : 24, transition: 'margin-left 0.25s ease' }}>
@@ -927,9 +881,7 @@ const setToast = (msg, duration = 2000) => {
                 </div>
               )}
             </div>
-            <button className="btn-sm" onClick={handleRepairMetadata} disabled={repairing} style={{ borderColor: '#a78bfa', color: '#a78bfa', whiteSpace: 'nowrap' }}>{repairing ? '⏳ 补全中...' : '🔧 补全元数据'}</button>
           </div>
-          {repairProgress && <div style={{ fontSize: '0.75rem', color: '#a78bfa', marginBottom: 8 }}>{repairProgress.total > 0 ? `进度: ${repairProgress.repaired}/${repairProgress.total} 完成${repairProgress.failed > 0 ? `, ${repairProgress.failed} 失败` : ''} — ${repairProgress.title}` : '准备中...'}</div>}
           {groups.length > 0 && (
             <div style={{ display: 'flex', gap: 4, marginBottom: 8, overflowX: 'auto', paddingBottom: 4, flexWrap: 'wrap' }}>
               <button className="btn-sm" onClick={() => { setActiveGroup('all'); setPage(1) }}
@@ -996,67 +948,21 @@ const setToast = (msg, duration = 2000) => {
         {/* 详情弹窗 */}
         {detailLoading && <div className="modal-overlay"><div className="modal"><div className="loading">加载详情...</div></div></div>}
         {detail && !detailLoading && (
-          <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setDetail(null) }}>
-            <div className="modal" style={{ maxWidth: 'min(900px, 90vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
-              <div style={{ position: 'relative', background: 'linear-gradient(180deg, #1a1a3a 0%, #0f0f1a 100%)', padding: '20px 24px 16px', borderBottom: '1px solid #2a2a4a' }}>
-                <button className="btn-sm" onClick={() => setDetail(null)} style={{ position: 'absolute', top: 10, right: 10, border: 'none', color: '#888', fontSize: '1.1rem' }}>✕</button>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <div style={{ flexShrink: 0, width: 140, borderRadius: 8, overflow: 'hidden', border: '1px solid #2a2a4a', background: '#1a1a2e' }}><img src={getLocalCoverUrl(detail.gid)} alt="" style={{ width: '100%', display: 'block' }} /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3 style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: '#e0e0e0', fontWeight: 600 }}>{detail.title}</h3>
-                    {detail.titleJpn && <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: 8 }}>{detail.titleJpn}</div>}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                      <span style={{ padding: '2px 10px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600, background: getCategoryColor(detail.category), color: '#fff' }}>{detail.category}</span>
-                      {detail.language && <span style={{ padding: '2px 10px', borderRadius: 10, fontSize: '0.72rem', background: '#2a2a4a', color: '#aaa' }}>{detail.language}</span>}
-                      {detail.favoriteCount > 0 && <span style={{ padding: '2px 10px', borderRadius: 10, fontSize: '0.72rem', background: '#f59e0b20', color: '#fbbf24', border: '1px solid #f59e0b40' }}>♥ {detail.favoriteCount}</span>}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#888', lineHeight: 1.6 }}>
-                      {detail.uploader && <div>上传者: <span style={{ color: '#a78bfa' }}>{detail.uploader}</span></div>}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>GID: {detail.gid} · {detail.fileCount} 页 · {formatSize(detail.totalSize)}<Link to={`/ehentai?open=${detail.gid}${detail.token ? '_' + detail.token : ''}`} onClick={() => setDetail(null)} style={{ fontSize: '0.68rem', color: '#a78bfa', textDecoration: 'none', padding: '1px 8px', borderRadius: 8, border: '1px solid #7c3aed40', background: '#7c3aed10' }} title="在线详情">🔗 在线详情</Link></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ padding: '12px 24px', borderBottom: '1px solid #1a1a3a', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                {[{ label: '页数', value: detail.fileCount }, { label: '大小', value: formatSize(detail.totalSize) }, { label: '评分', value: detail.rating !== '0' ? `${detail.rating}${detail.ratingCount > 0 ? ` (${detail.ratingCount})` : ''}` : '-' }, { label: '语言', value: detail.language || '-' }].map((m, i) => (
-                  <div key={i} style={{ textAlign: 'center', minWidth: 50 }}><div style={{ fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: 2 }}>{m.label}</div><div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#ccc' }}>{m.value}</div></div>
-                ))}
-              </div>
-              {detail.tagGroups?.length > 0 && (
-                <div style={{ padding: '12px 24px', borderBottom: '1px solid #1a1a3a' }}>
-                  {detail.tagGroups.map((grp, gi) => (
-                    <div key={gi} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-                      <span style={{ flexShrink: 0, padding: '2px 10px', borderRadius: 4, background: '#7c3aed20', color: '#a78bfa', fontSize: '0.7rem', fontWeight: 600, lineHeight: '20px', marginTop: 2 }}>{nsTranslations[grp.namespace] || grp.namespace}</span>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>{grp.tags.map((t, ti) => <span key={ti} title={t} style={{ padding: '2px 10px', borderRadius: 4, background: '#1a1a3a', color: '#ccc', fontSize: '0.72rem', border: '1px solid #2a2a4a' }}>{tagTranslations[`${grp.namespace}:${t}`] || t}</span>)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ padding: '14px 24px', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <Link to={`/reader-local/${detail.gid}`} onClick={() => { try { sessionStorage.setItem('reader-local-list', JSON.stringify(filtered.map(g => g.gid))) } catch { } }} className="btn-sm" style={{ textDecoration: 'none', borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</Link>
-                  {detail.token && <a href={`https://e-hentai.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer" className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 E-Hentai 查看</a>}
-                  <button className="btn-sm" onClick={() => {
-                    const tags = []; detail.tagGroups?.forEach(grp => { const ns = grp.namespace.toLowerCase(); if (ns === 'artist' || ns === 'group' || ns === 'other') grp.tags.forEach(t => tags.push({ ns: grp.namespace, tag: t })) })
-                    setAlbumModal({ gid: detail.gid, title: detail.title, tags }); setDetail(null)
-                  }} style={{ borderColor: '#8b5cf6', color: '#c4b5fd' }}>📁 添加到专辑</button>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn-sm" onClick={async () => {
-                    const tags = await fetchGalleryMetaTags(detail.gid)
-                    setEditTagsForm({
-                      title: detail.title, category: detail.category || 'other',
-                      language: detail.language || '', tags: tags || {}
-                    })
-                    setEditTagsModal({ gid: detail.gid, title: detail.title })
-                    setDetail(null)
-                  }} style={{ borderColor: '#f59e0b', color: '#fbbf24' }}>🏷 编辑标签</button>
-                  {detail.token && <button className="btn-sm" onClick={() => handleRedownload(detail.gid, detail.title, detail.token)} style={{ borderColor: '#f59e0b', color: '#fbbf24' }}>🔄 重新下载</button>}
-                  <button className="btn-sm" onClick={() => setDeleteConfirm({ gid: detail.gid, title: detail.title })} style={{ borderColor: '#ef4444', color: '#fca5a5' }}>🗑 删除</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <GalleryDetail
+            detail={detail}
+            tagTranslations={tagTranslations}
+            nsTranslations={nsTranslations}
+            filtered={filtered}
+            albumConfig={albumConfig}
+            galleries={galleries}
+            onClose={() => setDetail(null)}
+            onEditTags={async (gid) => {
+              const tags = await fetchGalleryMetaTags(gid)
+              setEditTagsForm({ title: detail.title, category: detail.category || 'other', language: detail.language || '', tags: tags || {} })
+              setEditTagsModal({ gid, title: detail.title })
+            }}
+            onAddToAlbum={(info) => setAlbumModal(info)}
+          />
         )}
 
         {/* 删除确认 */}
@@ -1069,19 +975,151 @@ const setToast = (msg, duration = 2000) => {
         {batchRedownloadConfirm && <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setBatchRedownloadConfirm(false) }}><div className="modal" style={{ maxWidth: 400 }}><h3 style={{ color: '#fbbf24', marginBottom: 12 }}>批量重新下载确认</h3><p style={{ fontSize: '0.9rem', color: '#ccc', marginBottom: 8 }}>将重新下载选中的 <strong style={{ color: '#fbbf24' }}>{selected.size}</strong> 部画廊。</p><p style={{ fontSize: '0.78rem', color: '#888', marginBottom: 16 }}>需要有效的 .eh 元文件（含 token）。</p><div className="modal-actions" style={{ justifyContent: 'flex-end' }}><button className="btn-sm" onClick={() => setBatchRedownloadConfirm(false)} style={{ borderColor: '#444', color: '#888' }}>取消</button><button className="btn-sm" onClick={handleBatchRedownload} disabled={deleting} style={{ borderColor: '#f59e0b', color: '#fbbf24', background: '#78350f20' }}>{deleting ? '处理中...' : `确认重新下载 ${selected.size} 部`}</button></div></div></div>}
 
         {/* 添加到专辑 */}
-        {albumModal && (
+        {albumModal && (() => {
+          const matchedAlbums = albumModal.matchedAlbums || []
+          // 获取当前作品的标签，用于新建专辑时选择关键标签
+          const gTags = albumModal.tags || []
+          // 只取 artist 和 group 标签作为可选关键标签
+          const keyTagOptions = gTags.filter(t => t.ns === 'artist' || t.ns === 'group')
+          return (
           <div className="modal-overlay" onClick={() => setAlbumModal(null)}>
-            <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
               <h3 style={{ marginBottom: 4 }}>📁 添加到专辑</h3>
               <p style={{ fontSize: '0.8rem', color: '#888', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumModal.title}</p>
-              {Object.keys(albumConfig).length > 0 && <div style={{ marginBottom: 12 }}><div style={{ fontSize: '0.75rem', color: '#666', marginBottom: 6 }}>选择已有专辑：</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{Object.entries(albumConfig).map(([key, val]) => { const gids = val.gids || []; const displayName = val.name || key; return <button key={key} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; cfg[key] = { ...cfg[key], gids: [...gids.filter(id => id !== albumModal.gid), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${displayName}"`); setTimeout(() => setToast(null), 1500) }} style={{ borderColor: '#8b5cf6', color: '#c4b5fd', fontSize: '0.72rem' }}>📁 {displayName} ({gids.length})</button> })}</div></div>}
-              <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: 6 }}>用标签创建新专辑：</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>{albumModal.tags.map((t, i) => <button key={i} className="btn-sm" onClick={() => { const key = t.tag; const cfg = { ...albumConfig }; cfg[key] = { name: key, gids: [...(cfg[key]?.gids || []), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已创建专辑 "${key}"`); setTimeout(() => setToast(null), 1500) }} style={{ borderColor: '#f59e0b', color: '#fbbf24', fontSize: '0.72rem' }}>{t.ns === 'artist' ? '👤' : t.ns === 'group' ? '👥' : '📦'} {t.tag}</button>)}</div>
-              <div style={{ display: 'flex', gap: 6 }}><input id="new-album-name" type="text" placeholder="或手动输入专辑名..." style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #2a2a4a', background: '#0f0f1a', color: '#e0e0e0', fontSize: '0.8rem', outline: 'none' }} onKeyDown={e => { if (e.key === 'Enter') { const v = e.target.value.trim(); if (v) { const cfg = { ...albumConfig }; cfg[v] = { name: v, gids: [...(cfg[v]?.gids || []), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已创建专辑 "${v}"`); setTimeout(() => setToast(null), 1500) } } }} /><button className="btn-sm" onClick={() => { const v = document.getElementById('new-album-name')?.value?.trim(); if (v) { const cfg = { ...albumConfig }; cfg[v] = { name: v, gids: [...(cfg[v]?.gids || []), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已创建专辑 "${v}"`); setTimeout(() => setToast(null), 1500) } }} style={{ borderColor: '#10b981', color: '#6ee7b7' }}>创建</button></div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}><button className="btn-sm" onClick={() => setAlbumModal(null)} style={{ borderColor: '#444', color: '#888' }}>取消</button></div>
+
+              {/* 匹配的专辑（标签属性匹配） */}
+              {matchedAlbums.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#fbbf24', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    🔗 匹配的专辑（标签属性一致）
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {matchedAlbums.map(({ key, name, count }) => (
+                      <button key={key} className="btn-sm" onClick={() => {
+                        const cfg = { ...albumConfig }
+                        if (!cfg[key]) cfg[key] = { name: key, gids: [], order: [] }
+                        const gids = cfg[key].gids || []
+                        cfg[key] = { ...cfg[key], gids: [...gids.filter(id => id !== albumModal.gid), albumModal.gid] }
+                        if (cfg[key].order) cfg[key].order = [...cfg[key].order.filter(id => id !== albumModal.gid), albumModal.gid]
+                        saveAlbums(cfg)
+                        setAlbumModal(null)
+                        setToast(`已添加到 "${name}"`)
+                        setTimeout(() => setToast(null), 1500)
+                      }} style={{ borderColor: '#f59e0b', color: '#fbbf24', fontSize: '0.72rem' }}>
+                        📁 {name} ({count})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 其他已有专辑 */}
+              {Object.keys(albumConfig).length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: 6 }}>选择已有专辑：</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {Object.entries(albumConfig).map(([key, val]) => {
+                      const gids = val.gids || []
+                      const displayName = val.name || key
+                      // 跳过已匹配的专辑（已在上方显示）
+                      const isMatched = matchedAlbums.some(m => m.key === key)
+                      const btnStyle = isMatched
+                        ? { borderColor: '#f59e0b30', color: '#fbbf2450', fontSize: '0.72rem', opacity: 0.5 }
+                        : { borderColor: '#8b5cf6', color: '#c4b5fd', fontSize: '0.72rem' }
+                      return (
+                        <button key={key} className="btn-sm" onClick={() => {
+                          const cfg = { ...albumConfig }
+                          cfg[key] = { ...cfg[key], gids: [...gids.filter(id => id !== albumModal.gid), albumModal.gid] }
+                          saveAlbums(cfg)
+                          setAlbumModal(null)
+                          setToast(`已添加到 "${displayName}"`)
+                          setTimeout(() => setToast(null), 1500)
+                        }} style={btnStyle}>
+                          📁 {displayName} ({gids.length})
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 用标签创建新专辑（必须选择一个关键标签属性） */}
+              {keyTagOptions.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: 6 }}>
+                    🏷 选择关键标签创建新专辑：
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                    {keyTagOptions.map((t, i) => (
+                      <button key={i} className="btn-sm" onClick={() => {
+                        const key = t.tag
+                        const cfg = { ...albumConfig }
+                        cfg[key] = { name: key, gids: [...(cfg[key]?.gids || []), albumModal.gid], order: [...(cfg[key]?.order || []), albumModal.gid] }
+                        saveAlbums(cfg)
+                        setAlbumModal(null)
+                        setToast(`已创建专辑 "${key}"`)
+                        setTimeout(() => setToast(null), 1500)
+                      }} style={{ borderColor: '#10b981', color: '#6ee7b7', fontSize: '0.72rem' }}>
+                        {t.ns === 'artist' ? '👤' : '👥'} {t.tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 自定义关键标签名称（选择一个标签作为Key，可自定义显示名称） */}
+              {keyTagOptions.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: 6 }}>✏️ 选择关键标签并自定义专辑名称：</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select id="new-album-key-tag" style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #2a2a4a', background: '#0f0f1a', color: '#e0e0e0', fontSize: '0.8rem', outline: 'none', maxWidth: 200 }}>
+                      {keyTagOptions.map((t, i) => (
+                        <option key={i} value={t.tag}>{t.ns === 'artist' ? '👤' : '👥'} {t.tag}</option>
+                      ))}
+                    </select>
+                    <input id="new-album-display-name" type="text" placeholder="显示名称（可选）..."
+                      style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #2a2a4a', background: '#0f0f1a', color: '#e0e0e0', fontSize: '0.8rem', outline: 'none' }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const selectEl = document.getElementById('new-album-key-tag')
+                          const key = selectEl?.value?.trim()
+                          const displayName = document.getElementById('new-album-display-name')?.value?.trim()
+                          if (key) {
+                            const cfg = { ...albumConfig }
+                            cfg[key] = { name: displayName || key, gids: [...(cfg[key]?.gids || []), albumModal.gid], order: [...(cfg[key]?.order || []), albumModal.gid] }
+                            saveAlbums(cfg)
+                            setAlbumModal(null)
+                            setToast(`已创建专辑 "${displayName || key}"`)
+                            setTimeout(() => setToast(null), 1500)
+                          }
+                        }
+                      }} />
+                    <button className="btn-sm" onClick={() => {
+                      const selectEl = document.getElementById('new-album-key-tag')
+                      const key = selectEl?.value?.trim()
+                      const displayName = document.getElementById('new-album-display-name')?.value?.trim()
+                      if (key) {
+                        const cfg = { ...albumConfig }
+                        cfg[key] = { name: displayName || key, gids: [...(cfg[key]?.gids || []), albumModal.gid], order: [...(cfg[key]?.order || []), albumModal.gid] }
+                        saveAlbums(cfg)
+                        setAlbumModal(null)
+                        setToast(`已创建专辑 "${displayName || key}"`)
+                        setTimeout(() => setToast(null), 1500)
+                      }
+                    }} style={{ borderColor: '#10b981', color: '#6ee7b7' }}>
+                      创建
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                <button className="btn-sm" onClick={() => setAlbumModal(null)} style={{ borderColor: '#444', color: '#888' }}>取消</button>
+              </div>
             </div>
           </div>
-        )}
+          )
+        })()}
       </div>
 
       {/* 导入外部作品对话框 */}

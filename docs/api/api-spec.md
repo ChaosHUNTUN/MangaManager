@@ -79,37 +79,6 @@
 
 ---
 
-## 阅读器接口（NeeView 集成）
-
-### GET /neeview/status
-检查 NeeView 可用性
-```json
-// 响应
-{
-  "available": true,
-  "path": "D:\\Program Files (x86)\\NeeView44.0-Beta0805-fd\\NeeView44.0-Beta0805-fd\\NeeView.exe",
-  "version": "44.0"
-}
-```
-
-### POST /open/{chapterId}
-使用 NeeView 打开章节
-```json
-// 请求体（可选）
-{
-  "fullscreen": true,
-  "slideshow": false
-}
-
-// 响应
-{
-  "success": true,
-  "message": "NeeView 已启动"
-}
-```
-
-> 实现：后端 `Process.Start(neeViewPath, $"\"{chapterPath}\" --window=full")`
-
 ---
 
 ## 阅读进度接口
@@ -126,8 +95,6 @@
   "pageIndex": 12
 }
 ```
-
-> 注意：NeeView 内部也会在 `Profile/History.json` 中记录阅读位置，后期可实现双向同步
 
 ---
 

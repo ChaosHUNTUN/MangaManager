@@ -59,20 +59,28 @@ public class EhentaiController : ControllerBase
         }));
     }
 
-    /// <summary>连通性检测</summary>
+    /// <summary>连通性检测（表站+里站）</summary>
     [HttpGet("connectivity")]
     public async Task<IActionResult> CheckConnectivity()
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            var resp = await client.GetAsync("https://e-hentai.org/", cts.Token);
-            return Ok(new ApiResponse<object>(true, new { reachable = true, status = (int)resp.StatusCode }));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            
+            // 检查表站
+            bool eReachable = false;
+            try { var r = await client.GetAsync("https://e-hentai.org/", cts.Token); eReachable = r.IsSuccessStatusCode; } catch { }
+            
+            // 检查里站
+            bool exReachable = false;
+            try { var r = await client.GetAsync("https://exhentai.org/", cts.Token); exReachable = r.IsSuccessStatusCode; } catch { }
+            
+            return Ok(new ApiResponse<object>(true, new { reachable = eReachable || exReachable, eReachable, exReachable }));
         }
         catch (TaskCanceledException)
         {
-            return Ok(new ApiResponse<object>(true, new { reachable = false, hint = "连接超时。e-hentai.org 不可直接访问，需要配置代理。" }));
+            return Ok(new ApiResponse<object>(true, new { reachable = false, hint = "连接超时。E-Hentai 不可直接访问，需要配置代理。" }));
         }
         catch (HttpRequestException ex)
         {
@@ -110,7 +118,7 @@ public class EhentaiController : ControllerBase
                 categoryMask, minRating, pageFrom, pageTo, advSearch, popular);
             return Ok(new ApiResponse<object>(true, new
             {
-                r.Page, r.TotalPages, r.NextCursor, r.Galleries
+                r.Page, r.TotalPages, r.NextCursor, r.IsExhentai, r.Galleries
             }));
         }
         catch (TaskCanceledException)

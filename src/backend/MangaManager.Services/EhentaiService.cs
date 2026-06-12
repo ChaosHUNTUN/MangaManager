@@ -176,7 +176,9 @@ public class EhentaiService
 
         var resp = await _http.GetAsync(url);
         var html = await resp.Content.ReadAsStringAsync();
-        return ParseList(html, host, page);
+        var result = ParseList(html, host, page);
+        result.IsExhentai = exhentai;
+        return result;
     }
 
     private GalleryListResult ParseList(string html, string host, int page)
@@ -273,7 +275,8 @@ public class EhentaiService
             r.Galleries.Add(new GalleryItem
             {
                 Gid = gid, Token = token, Title = title, ThumbUrl = thumbUrl,
-                FileCount = fileCount, Rating = rating, Category = category
+                FileCount = fileCount, Rating = rating, Category = category,
+                IsExhentai = host == HOST_EX
             });
         }
 
@@ -385,15 +388,26 @@ public class EhentaiService
 
     public async Task<GalleryDetail> GetGalleryDetailAsync(int gid, string token)
     {
-        // 第1步：GET HTML 页面，提取 apiuid 和 apikey（EhViewer 策略）
+        // 第1步：先尝试表站，如果不可用则尝试里站
         var host = HOST_E; // 表站优先
         var htmlUrl = $"{host}/g/{gid}/{token}/";
         string? apiUid = null, apiKey = null;
+        bool isExhentai = false;
 
         try
         {
             var htmlResp = await _http.GetAsync(htmlUrl);
             var html = await htmlResp.Content.ReadAsStringAsync();
+
+            // 如果表站返回 "This gallery is unavailable"，尝试里站
+            if (html.Contains("This gallery is unavailable") || html.Contains("Gallery Not Available"))
+            {
+                host = HOST_EX;
+                htmlUrl = $"{host}/g/{gid}/{token}/";
+                htmlResp = await _http.GetAsync(htmlUrl);
+                html = await htmlResp.Content.ReadAsStringAsync();
+                isExhentai = true;
+            }
 
             // 提取 apiuid 和 apikey
             var uidMatch = Regex.Match(html, @"var\s+apiuid\s*=\s*(\d+)");
@@ -464,7 +478,8 @@ public class EhentaiService
                     TagGroups = tagGroups, Language = language,
                     RatingCount = ratingCount, FavoriteCount = favoriteCount,
                     IsFavorited = isFavorited, FavoriteName = favoriteName,
-                    TorrentCount = torrentCount, ParentGallery = parentGallery, Visible = visible
+                    TorrentCount = torrentCount, ParentGallery = parentGallery, Visible = visible,
+                    IsExhentai = isExhentai
                 };
             }
         }
@@ -578,7 +593,8 @@ public class EhentaiService
                 ThumbUrl = thumb, Tags = tags, TagGroups = tagGroups,
                 Language = language, RatingCount = ratingCount, FavoriteCount = favoriteCount,
                 IsFavorited = isFavorited, FavoriteName = isFavorited ? favText : null,
-                TorrentCount = torrentCount, ParentGallery = parentGallery, Visible = visible
+                TorrentCount = torrentCount, ParentGallery = parentGallery, Visible = visible,
+                IsExhentai = isExhentai
             };
         }
         catch (Exception ex)
@@ -1378,8 +1394,8 @@ public class EhentaiService
     }
 
     public record ValidateResult(bool LoggedIn, bool Exhentai, string? Error);
-    public class GalleryListResult { public int Page { get; set; } public int TotalPages { get; set; } public string? NextCursor { get; set; } public List<GalleryItem> Galleries { get; set; } = new(); }
-    public class GalleryItem { public int Gid { get; set; } public string Token { get; set; } = ""; public string? Title { get; set; } public string? ThumbUrl { get; set; } public int FileCount { get; set; } public double Rating { get; set; } public string? Category { get; set; } }
+    public class GalleryListResult { public int Page { get; set; } public int TotalPages { get; set; } public string? NextCursor { get; set; } public bool IsExhentai { get; set; } public List<GalleryItem> Galleries { get; set; } = new(); }
+    public class GalleryItem { public int Gid { get; set; } public string Token { get; set; } = ""; public string? Title { get; set; } public string? ThumbUrl { get; set; } public int FileCount { get; set; } public double Rating { get; set; } public string? Category { get; set; } public bool IsExhentai { get; set; } }
     public class TagGroup { public string Namespace { get; set; } = ""; public List<string> Tags { get; set; } = new(); }
     public class GalleryDetail
     {
@@ -1399,6 +1415,7 @@ public class EhentaiService
         public int TorrentCount { get; set; }
         public string? ParentGallery { get; set; }
         public string? Visible { get; set; }
+        public bool IsExhentai { get; set; }
     }
     public class PageItem { public int Index { get; set; } public string ImageUrl { get; set; } = ""; public int Width { get; set; } public int Height { get; set; } public long FileSize { get; set; } }
     public record PageResult(List<PageItem> Pages, string ImgKey, string ShowKey);

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import PageImage from '../components/PageImage'
+import EhentaiReader from '../components/EhentaiReader'
 import {
   fetchEHentaiCookie, updateEHentaiCookie, validateEHentaiCookie,
   fetchEHGalleries, fetchEHGalleryDetail, checkEHConnectivity,
-  fetchEHGalleryPages, downloadEHGallery, getEHImageProxyUrl,
+  downloadEHGallery, getEHImageProxyUrl,
   translateEHTags, fetchBlockedTags, addBlockedTag, removeBlockedTag,
   API_BASE, checkDownloaded, suggestEHTags, addDownloadTask
 } from '../api'
@@ -372,64 +372,22 @@ export default function EHentai() {
   }
 
   // ===== 在线阅读 =====
-  const [readerPages, setReaderPages] = useState(null)
-  const [readerIndex, setReaderIndex] = useState(0)
-  const [readerLoading, setReaderLoading] = useState(false)
-  const [ehFitMode, setEhFitMode] = useState('fit-width')
-  const [ehTransition, setEhTransition] = useState('fade')
-  const [ehReadMode, setEhReadMode] = useState('paged')
-  const [ehShowUI, setEhShowUI] = useState(true)
-  const ehScrollRef = useRef(null)
-  const [ehVisibleRange, setEhVisibleRange] = useState({ start: 0, end: 20 })
+  const [readerDetail, setReaderDetail] = useState(null) // 打开阅读器时设置
 
-  const FIT_MODES = [
-    { key: 'fit-width', label: '适应宽度', icon: '↔' },
-    { key: 'fit-height', label: '适应高度', icon: '↕' },
-    { key: 'fit-both', label: '适应页面', icon: '⊡' },
-    { key: 'original', label: '原始大小', icon: '1:1' },
-  ]
-  const TRANSITIONS = [
-    { key: 'fade', label: '淡入淡出', icon: '🌫' },
-    { key: 'slide', label: '滑动', icon: '⇢' },
-    { key: 'none', label: '无效果', icon: '▯' },
-  ]
-  const READ_MODES = [
-    { key: 'paged', label: '翻页', icon: '📖' },
-    { key: 'scroll', label: '滚动', icon: '📜' },
-  ]
-
-  useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('reader-settings') || '{}')
-      if (s.fitMode) setEhFitMode(s.fitMode)
-      if (s.transition) setEhTransition(s.transition)
-      if (s.readMode) setEhReadMode(s.readMode)
-    } catch { }
-  }, [])
-
-  const saveEhSetting = (k, v) => {
-    try { const s = JSON.parse(localStorage.getItem('reader-settings') || '{}'); s[k] = v; localStorage.setItem('reader-settings', JSON.stringify(s)) } catch { }
+  const openReader = (d) => {
+    setDetail(null)
+    setReaderDetail(d)
   }
 
-  const openReader = async (d) => {
-    setDetail(null); setReaderLoading(true)
-    try {
-      const localResp = await fetch(`${API_BASE}/api/ehentai/gallery/${d.gid}/local?title=${encodeURIComponent(d.title)}`)
-      const localData = await localResp.json()
-      if (localData.data?.downloaded && localData.data?.pages?.length > 0) {
-        setReaderPages(localData.data.pages.map((url, i) => ({
-          index: i + 1,
-          imageUrl: url,
-          local: true
-        })))
-        setReaderIndex(0)
-      } else {
-        const r = await fetchEHGalleryPages(d.gid, d.token)
-        setReaderPages((r.pages || []).map(p => ({ ...p, local: false })))
-        setReaderIndex(0)
-      }
-    } catch (e) { setError(e.message) }
-    setReaderLoading(false)
+  // 如果阅读器打开，渲染阅读器组件
+  if (readerDetail) {
+    return (
+      <EhentaiReader
+        detail={readerDetail}
+        onClose={() => setReaderDetail(null)}
+        onError={(msg) => { setError(msg); setReaderDetail(null) }}
+      />
+    )
   }
 
   const handleDownload = async (d) => {
@@ -446,155 +404,6 @@ export default function EHentai() {
   }
 
   const formatSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b + ' B'
-
-  // 阅读器键盘快捷键
-  const readerActionsRef = useRef({ goPrev: null, goNext: null, close: null })
-  useEffect(() => {
-    if (!readerPages) return
-    const handler = (e) => {
-      if (e.key === 'ArrowLeft' || e.key === 'a') readerActionsRef.current.goPrev?.()
-      else if (e.key === 'ArrowRight' || e.key === 'd') readerActionsRef.current.goNext?.()
-      else if (e.key === 'Escape') readerActionsRef.current.close?.()
-      else if (e.key === 'f' || e.key === 'F') {
-        const modes = FIT_MODES.map(m => m.key)
-        const idx = modes.indexOf(ehFitMode)
-        setEhFitMode(modes[(idx + 1) % modes.length])
-        saveEhSetting('fitMode', modes[(idx + 1) % modes.length])
-        requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
-      }
-      else if (e.key === 'm' || e.key === 'M') {
-        setEhReadMode(p => { const n = p === 'paged' ? 'scroll' : 'paged'; saveEhSetting('readMode', n); return n })
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [!!readerPages, ehFitMode])
-
-  // 滚动模式处理
-  useEffect(() => {
-    if (!readerPages || ehReadMode !== 'scroll') return
-    const c = ehScrollRef.current; if (!c) return
-    const onScroll = () => {
-      const pageH = window.innerHeight * 0.95
-      const start = Math.max(0, Math.floor(c.scrollTop / pageH) - 2)
-      const end = Math.min(readerPages.length, Math.ceil((c.scrollTop + c.clientHeight) / pageH) + 2)
-      setEhVisibleRange({ start, end })
-      setReaderIndex(Math.round(c.scrollTop / pageH))
-    }
-    c.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
-    return () => c.removeEventListener('scroll', onScroll)
-  }, [readerPages, ehReadMode])
-
-  // ===== 阅读器视图 =====
-  if (readerPages) {
-    const p = readerPages[readerIndex]
-    const getImgUrl = (page) => {
-      if (!page) return ''
-      if (page.local) return page.imageUrl.startsWith('http') ? page.imageUrl : `${API_BASE}${page.imageUrl}`
-      return getEHImageProxyUrl(page.imageUrl || '')
-    }
-    const imgUrl = p ? getImgUrl(p) : null
-    const isLocal = p?.local
-    const progressPct = ((readerIndex + 1) / readerPages.length * 100).toFixed(1)
-    const goPrev = () => setReaderIndex(i => Math.max(0, i - 1))
-    const goNext = () => setReaderIndex(i => Math.min(readerPages.length - 1, i + 1))
-    readerActionsRef.current = { goPrev, goNext, close: () => setReaderPages(null) }
-
-    const preloadPages = []
-    for (let d = -3; d <= 3; d++) {
-      const idx = readerIndex + d
-      if (idx !== readerIndex && idx >= 0 && idx < readerPages.length) {
-        preloadPages.push({ idx, url: getImgUrl(readerPages[idx]) })
-      }
-    }
-
-    return (
-      <div className="reader-root">
-        {/* 顶栏 */}
-        <div className={`reader-topbar ${ehShowUI ? '' : 'hidden'}`}>
-          <div className="reader-topbar-left">
-            <button className="reader-back-btn" onClick={() => setReaderPages(null)}>← 返回</button>
-          </div>
-          <div className="reader-topbar-right">
-            <span className="reader-page-num">{readerIndex + 1} / {readerPages.length}</span>
-          </div>
-        </div>
-
-        {/* 底栏 */}
-        <div className={`reader-bottombar ${ehShowUI ? '' : 'hidden'}`}>
-          <div className="reader-progress-track" onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect()
-            setReaderIndex(Math.round((e.clientX - rect.left) / rect.width * (readerPages.length - 1)))
-          }}>
-            <div className="reader-progress-fill" style={{ width: `${progressPct}%` }} />
-          </div>
-          <div className="reader-controls">
-            <div className="reader-controls-left">
-              <button className="reader-btn" onClick={goPrev} disabled={readerIndex <= 0}>◀</button>
-            </div>
-            <div className="reader-controls-center">
-              <span className="reader-page-indicator">{readerIndex + 1} / {readerPages.length}</span>
-            </div>
-            <div className="reader-controls-right">
-              <select className="reader-select" value={ehReadMode} onChange={e => { setEhReadMode(e.target.value); saveEhSetting('readMode', e.target.value) }}>
-                {READ_MODES.map(m => <option key={m.key} value={m.key}>{m.icon} {m.label}</option>)}
-              </select>
-              <select className="reader-select" value={ehFitMode} onChange={e => { setEhFitMode(e.target.value); saveEhSetting('fitMode', e.target.value); requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))) }}>
-                {FIT_MODES.map(m => <option key={m.key} value={m.key}>{m.icon} {m.label}</option>)}
-              </select>
-              <select className="reader-select" value={ehTransition} onChange={e => { setEhTransition(e.target.value); saveEhSetting('transition', e.target.value) }}>
-                {TRANSITIONS.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
-              </select>
-              <button className="reader-btn" onClick={goNext} disabled={readerIndex >= readerPages.length - 1}>▶</button>
-            </div>
-          </div>
-        </div>
-
-        {/* 主内容 */}
-        {ehReadMode === 'scroll' ? (
-          <div className="reader-scroll-container" ref={ehScrollRef}>
-            <div className="reader-scroll-inner" style={{ height: readerPages.length * window.innerHeight * 0.95 }}>
-              {readerPages.map((rp, i) => {
-                const inRange = i >= ehVisibleRange.start && i <= ehVisibleRange.end
-                const pageUrl = getImgUrl(rp)
-                return (
-                  <div key={i} className="reader-scroll-page" style={{ height: window.innerHeight * 0.95, position: 'absolute', top: i * window.innerHeight * 0.95, left: 0, right: 0 }}>
-                    {inRange ? <PageImage src={pageUrl} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={i} scrollMode /> : <div className="reader-scroll-placeholder" />}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="reader-hotzone reader-hotzone-left" onClick={goPrev} />
-            <div className="reader-hotzone reader-hotzone-right" onClick={goNext} />
-            <div className="reader-image-area" onMouseMove={() => setEhShowUI(true)}>
-              <div className="reader-transition-wrapper">
-                {ehTransition === 'slide' ? (
-                  <>
-                    <PageImage src={getImgUrl(readerPages[readerIndex - 1])} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex - 1} />
-                    <PageImage src={getImgUrl(p)} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex} />
-                    <PageImage src={getImgUrl(readerPages[readerIndex + 1])} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex + 1} />
-                  </>
-                ) : (
-                  <PageImage src={getImgUrl(p)} fitMode={ehFitMode} transition={ehTransition} current={readerIndex} index={readerIndex} />
-                )}
-              </div>
-              {isLocal && (
-                <div style={{ position: 'absolute', top: 48, right: 16, background: 'rgba(16,185,129,0.2)', color: '#10b981', padding: '3px 10px', borderRadius: 10, fontSize: '0.7rem', zIndex: 15 }}>本地文件</div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* 预加载 */}
-        {preloadPages.map(pp => <link key={pp.idx} rel="preload" as="image" href={pp.url} />)}
-        {preloadPages.map(pp => <img key={'pre' + pp.idx} src={pp.url} style={{ display: 'none' }} alt="" />)}
-      </div>
-    )
-  }
 
   // ===== 主界面 =====
   return (
@@ -1128,8 +937,8 @@ export default function EHentai() {
 
             {/* 操作按钮 */}
             <div style={{ padding: '14px 24px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <a href={`https://e-hentai.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer"
-                className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 E-Hentai 打开</a>
+              <a href={`https://${detail.isExhentai ? 'exhentai' : 'e-hentai'}.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer"
+                className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 {detail.isExhentai ? 'ExHentai' : 'E-Hentai'} 打开</a>
               <button className="btn-sm" onClick={() => openReader(detail)} style={{ borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</button>
               {localGids.has(detail.gid) ? (
                 <button className="btn-sm" disabled style={{ borderColor: '#10b981', color: '#6ee7b7', opacity: 0.7 }}>✅ 已下载</button>

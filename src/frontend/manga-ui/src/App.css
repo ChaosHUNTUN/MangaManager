@@ -197,6 +197,28 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f1a; colo
   100% { background-position: 200% 0; }
 }
 
+/* 画廊卡片骨架屏 */
+.gallery-skeleton {
+  background: #1a1a2e; border-radius: 10px; overflow: hidden;
+}
+.gallery-skeleton-cover {
+  width: 100%; padding-bottom: 140%;
+  background: linear-gradient(90deg, #1a1a2e 0%, #252545 50%, #1a1a2e 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+}
+.gallery-skeleton-title {
+  height: 14px; border-radius: 4px; background: #252545; width: 80%; margin-bottom: 6px;
+}
+.gallery-skeleton-meta {
+  height: 10px; border-radius: 3px; background: #1e1e3a; width: 50%;
+}
+
+/* 详情弹窗响应式 */
+@media (min-width: 1200px) {
+  .modal { max-width: 640px; }
+}
+
 @media (max-width: 480px) {
   .grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .card-cover, .card-cover-placeholder { height: 160px; min-height: 160px; }

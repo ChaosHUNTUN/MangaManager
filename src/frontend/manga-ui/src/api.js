@@ -31,9 +31,7 @@ export async function fetchMangaList(search, tagIds, page = 1, pageSize = 50) {
   if (tagIds?.length) params.set('tags', tagIds.join(','))
   params.set('page', String(page))
   params.set('pageSize', String(pageSize))
-  const qs = params.toString()
-  const res = await fetch(`${API_BASE}/api/manga?${qs}`)
-  const json = await res.json()
+  const json = await request(`/api/manga?${params.toString()}`)
   return json.data || { items: [], total: 0 }
 }
 
@@ -269,19 +267,6 @@ export async function removeBlockedTag(tag) {
 }
 
 // === 阅读 ===
-export async function openInNeeView(mangaId, fullscreen = true) {
-  return request(`/api/open/${mangaId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fullscreen })
-  })
-}
-
-export async function pollReadingStatus(mangaId) {
-  const json = await request(`/api/open/status/${mangaId}`)
-  return json.data
-}
-
 export function getCoverUrl(mangaId) {
   return `${API_BASE}/api/cover/${mangaId}`
 }
@@ -413,15 +398,14 @@ export async function saveReadingProgress(items) {
 // ==================== 阅读器设置 ====================
 export async function fetchReaderSettings() {
   try {
-    const resp = await fetch(`${API_BASE}/api/settings/reader`)
-    const json = await resp.json()
+    const json = await request('/api/settings/reader')
     return json.data || null
   } catch { return null }
 }
 
 export async function saveReaderSettings(settings) {
   try {
-    await fetch(`${API_BASE}/api/settings/reader`, {
+    await request('/api/settings/reader', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings)
@@ -432,25 +416,15 @@ export async function saveReaderSettings(settings) {
 // ==================== 专辑配置 ====================
 export async function fetchAlbumConfig() {
   try {
-    const resp = await fetch(`${API_BASE}/api/albums`)
-    const json = await resp.json()
+    const json = await request('/api/albums')
     return json.data || {}
   } catch { return null }
 }
 
 export async function saveAlbumConfig(config) {
-  try {
-    const resp = await fetch(`${API_BASE}/api/albums`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
-    })
-    if (!resp.ok) {
-      const text = await resp.text()
-      throw new Error(`保存专辑失败 (${resp.status}): ${text}`)
-    }
-  } catch (e) {
-    console.error('[saveAlbumConfig]', e)
-    throw e
-  }
+  return request('/api/albums', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  })
 }

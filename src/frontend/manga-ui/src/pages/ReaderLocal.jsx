@@ -52,6 +52,18 @@ export default function ReaderLocal() {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
     hideTimerRef.current = setTimeout(() => setShowUI(false), 3000)
   }, [])
+
+  // 页面关闭时用 sendBeacon 确保进度保存
+  useEffect(() => {
+    const handler = () => {
+      const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+      if (items.length > 0) {
+        navigator.sendBeacon(`${API_BASE}/api/readingprogress`, JSON.stringify(items))
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
   useEffect(() => {
     return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current) }
   }, [])
@@ -112,8 +124,17 @@ export default function ReaderLocal() {
   const goNextPage = () => setIndex(i => Math.min(pages.length - 1, i + 1))
 
   // index 变化时实时更新阅读进度（ref 用于退出时批量保存）
+  // 同时 2 秒防抖自动保存，避免退出时丢失
+  const saveTimerRef = useRef(null)
   useEffect(() => {
     progressRef.current[currentGid] = index
+    // 2 秒防抖自动保存
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+      saveReadingProgress(items)
+    }, 2000)
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [index, currentGid])
 
   const goPrevGallery = () => {
@@ -400,6 +421,7 @@ export default function ReaderLocal() {
           <button className="reader-btn" onClick={goPrevGallery} disabled={!hasPrevGallery} title="上一部 (↑)">▲</button>
           <button className="reader-btn" onClick={goNextGallery} disabled={!hasNextGallery} title="下一部 (↓)">▼</button>
           <span className="reader-page-num">{currentIdx + 1}/{displayGalleries.length} 部 · {index + 1}/{pages.length} 页</span>
+          <button className="reader-btn" onClick={() => setShowHelp(s => !s)} title="快捷键 (?/H)" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>?</button>
         </div>
       </div>
 

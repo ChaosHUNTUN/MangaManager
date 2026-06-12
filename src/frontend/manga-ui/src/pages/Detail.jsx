@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { fetchMangaDetail, fetchAllTags, fetchTagCategories, fetchMangaTags, setMangaTags, createTag, updateTag, renameManga, deleteManga, openInNeeView, pollReadingStatus, getCoverUrl } from '../api'
+import { fetchMangaDetail, fetchAllTags, fetchTagCategories, fetchMangaTags, setMangaTags, createTag, updateTag, renameManga, deleteManga, getCoverUrl } from '../api'
 
 const TAG_COLORS = ['#8b5cf6','#f59e0b','#06b6d4','#ec4899','#10b981','#ef4444','#f97316','#3b82f1','#6366f1','#14b8a6','#d946ef','#84cc16']
 
@@ -11,10 +11,6 @@ export default function Detail() {
   const [categories, setCategories] = useState([])
   const [mangaTagIds, setMangaTagIds] = useState([])
   const [loading, setLoading] = useState(true)
-  const [opening, setOpening] = useState(false)
-  const [statusMsg, setStatusMsg] = useState(null)
-  const pollingRef = useRef(null)
-
   // 标签编辑
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0])
@@ -31,7 +27,6 @@ export default function Detail() {
       })
       .catch(() => setLoading(false))
 
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current) }
   }, [id])
 
   // 标签操作
@@ -117,33 +112,6 @@ export default function Detail() {
       setTagError(r.message || '创建失败')
       setTimeout(() => setTagError(null), 3000)
     }
-  }
-
-  // NeeView 阅读
-  const handleOpen = async () => {
-    setOpening(true); setStatusMsg(null)
-    try {
-      const result = await openInNeeView(id)
-      if (result.success) {
-        setStatusMsg({ type: 'success', text: '📖 NeeView 已启动' })
-        startPolling()
-      } else {
-        setStatusMsg({ type: 'error', text: `❌ ${result.message}` })
-      }
-    } catch { setStatusMsg({ type: 'error', text: '❌ 启动失败' }) }
-    setOpening(false)
-  }
-
-  const startPolling = () => {
-    if (pollingRef.current) clearInterval(pollingRef.current)
-    pollingRef.current = setInterval(async () => {
-      try {
-        const s = await pollReadingStatus(id)
-        if (s.isReadingManga) setStatusMsg({ type: 'success', text: '📖 正在阅读...' })
-        else if (s.isRunning) setStatusMsg({ type: 'success', text: '📖 NeeView 运行中' })
-        else { setStatusMsg(null); clearInterval(pollingRef.current); pollingRef.current = null }
-      } catch { setStatusMsg(null); clearInterval(pollingRef.current); pollingRef.current = null }
-    }, 1500)
   }
 
   if (loading) return <div className="loading">加载中...</div>
@@ -255,15 +223,8 @@ export default function Detail() {
               <div className="read-modes-label">选择阅读方式</div>
               <div className="read-modes-btns">
                 <Link to={`/reader/${id}`} className="btn-green">🌐 网页阅读</Link>
-                <button className="btn-primary" onClick={handleOpen} disabled={opening} style={{ marginTop: 0 }}>
-                  📖 {opening ? '启动中...' : 'NeeView 阅读'}
-                </button>
               </div>
             </div>
-
-            {statusMsg && (
-              <div className={`status-msg ${statusMsg.type}`}>{statusMsg.text}</div>
-            )}
           </div>
 
           {/* 右侧：元数据 + 标签编辑 */}

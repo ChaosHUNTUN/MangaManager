@@ -64,9 +64,6 @@ $appSettings = @"
   "ConnectionStrings": {
     "Default": "Data Source=manga.db"
   },
-  "NeeView": {
-    "Path": ""
-  },
   "Urls": "http://0.0.0.0:5000"
 }
 "@
@@ -81,8 +78,7 @@ MangaManager v$Version
   1. 双击 MangaManager.Api.exe 启动服务
   2. 本机浏览器打开 http://localhost:5000
   3. 局域网设备访问 http://你的电脑IP:5000
-  3. 在设置中配置 NeeView 路径（可选）
-  4. 点击「扫描入库」导入漫画
+  4. 使用网页阅读器在线阅读漫画
 
 数据存储：
   - 漫画数据：manga.db（SQLite 数据库）

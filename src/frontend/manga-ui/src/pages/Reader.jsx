@@ -586,8 +586,9 @@ export default function Reader() {
           <Link to={`/manga/${id}`} className="reader-back-btn">← 返回</Link>
           <span className="reader-title" title={mangaTitle}>{mangaTitle}</span>
         </div>
-        <div className="reader-topbar-right">
+        <div className="reader-topbar-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="reader-page-num">{current + 1} / {pages.length}</span>
+          <button className="reader-btn" onClick={() => setShowHelp(s => !s)} title="快捷键 (?/H)" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>?</button>
         </div>
       </div>
 

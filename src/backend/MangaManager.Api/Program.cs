@@ -31,7 +31,6 @@ else
 
 // 服务注册
 builder.Services.AddScoped<MangaService>();
-builder.Services.AddSingleton<NeeViewService>();
 builder.Services.AddSingleton<LocalGalleryService>();
 builder.Services.AddSingleton<DownloadManager>();
 

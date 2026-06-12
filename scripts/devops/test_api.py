@@ -65,18 +65,13 @@ test('GET /reader/manga/{mid}/page/0', f'{BASE}/reader/manga/{mid}/page/0')
 test('GET 无效漫画页', f'{BASE}/reader/manga/99999/page/0', expected_status=404)
 test('GET 越界页码', f'{BASE}/reader/manga/{mid}/page/99999', expected_status=404)
 
-# 5. NeeView
-print('\n--- 5. NeeView 接口 ---')
-test('GET 可用性检查', f'{BASE}/open/neeview/status')
-test('GET 阅读状态', f'{BASE}/open/status/{mid}')
-
-# 6. 扫描（空目录/无效目录）
-print('\n--- 6. 扫描接口 ---')
+# 5. 扫描（空目录/无效目录）
+print('\n--- 5. 扫描接口 ---')
 test('POST 无效目录', f'{BASE}/manga/scan', 'POST', {'directory':'X:\\不存在的路径'}, expected_status=400)
 test('POST 空目录', f'{BASE}/manga/scan', 'POST', {'directory':'D:\\MangaManager\\docs'}, expected_status=400)
 
-# 7. 边界条件
-print('\n--- 7. 边界条件 ---')
+# 6. 边界条件
+print('\n--- 6. 边界条件 ---')
 test('标签设置超过100个', f'{BASE}/manga/{mid}/tags', 'PUT', list(range(1,102)), expected_status=400)
 test('空标签名创建', f'{BASE}/tag', 'POST', {'name':'', 'color':'#000'}, expected_status=400)
 
