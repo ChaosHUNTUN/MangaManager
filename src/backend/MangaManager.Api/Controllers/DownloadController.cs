@@ -1,4 +1,3 @@
-using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
@@ -185,47 +184,6 @@ public class DownloadController : ControllerBase
         catch (OperationCanceledException) { }
     }
 
-    // ==================== WebSocket 实时推送 ====================
-
-    /// <summary>WebSocket 进度推送</summary>
-    [HttpGet("ws")]
-    public async Task WebSocket()
-    {
-        if (!HttpContext.WebSockets.IsWebSocketRequest)
-        {
-            HttpContext.Response.StatusCode = 400;
-            return;
-        }
-
-        var ws = await HttpContext.WebSockets.AcceptWebSocketAsync();
-        var clientId = Guid.NewGuid().ToString();
-        _dm.RegisterWebSocket(clientId, ws);
-
-        try
-        {
-            // 发送初始状态
-            var tasks = _dm.GetAllTasks();
-            var initJson = JsonSerializer.Serialize(new { type = "download_init", data = tasks });
-            await ws.SendAsync(
-                new ArraySegment<byte>(Encoding.UTF8.GetBytes(initJson)),
-                WebSocketMessageType.Text, true, HttpContext.RequestAborted);
-
-            // 保持连接
-            var buffer = new byte[1024];
-            while (ws.State == WebSocketState.Open)
-            {
-                var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), HttpContext.RequestAborted);
-                if (result.MessageType == WebSocketMessageType.Close) break;
-            }
-        }
-        catch (OperationCanceledException) { }
-        finally
-        {
-            _dm.UnregisterWebSocket(clientId);
-            if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed", CancellationToken.None);
-        }
-    }
 }
 
 public record AddDownloadRequest(int Gid, string Token, string? Title, string? CoverUrl);

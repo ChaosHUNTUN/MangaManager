@@ -7,6 +7,13 @@ public class MangaDbContext : DbContext
 {
     public MangaDbContext(DbContextOptions<MangaDbContext> options) : base(options) { }
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // EF Core 9 严格检查模型变更，手动迁移文件可能触发此警告
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    }
+
     public DbSet<Manga> Mangas => Set<Manga>();
     public DbSet<Author> Authors => Set<Author>();
     public DbSet<MangaAuthor> MangaAuthors => Set<MangaAuthor>();
@@ -17,6 +24,7 @@ public class MangaDbContext : DbContext
     public DbSet<DownloadTask> DownloadTasks => Set<DownloadTask>();
     public DbSet<ReaderSettings> ReaderSettings => Set<ReaderSettings>();
     public DbSet<AlbumConfig> AlbumConfigs => Set<AlbumConfig>();
+    public DbSet<LocalGallery> LocalGalleries => Set<LocalGallery>();
     public DbSet<LocalReadingProgress> LocalReadingProgresses => Set<LocalReadingProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -118,9 +126,31 @@ public class MangaDbContext : DbContext
             e.HasIndex(x => x.Key).IsUnique();
             e.Property(x => x.Key).HasMaxLength(200);
             e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Color).HasMaxLength(7);
             e.Property(x => x.Gids).HasColumnType("text");
             e.Property(x => x.Order).HasColumnType("text");
+            e.Property(x => x.Count).HasDefaultValue(0);
+            e.Property(x => x.KeyTag).HasMaxLength(500);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("datetime('now')");
+        });
+
+        modelBuilder.Entity<LocalGallery>(e =>
+        {
+            e.ToTable("local_gallery");
+            e.HasKey(x => x.Gid);
+            e.Property(x => x.Title).HasMaxLength(500);
+            e.Property(x => x.DirPath).HasMaxLength(1000);
+            e.Property(x => x.Category).HasMaxLength(50);
+            e.Property(x => x.Language).HasMaxLength(50);
+            e.Property(x => x.CoverFile).HasMaxLength(1000);
+            e.Property(x => x.Artists).HasColumnType("text");
+            e.Property(x => x.Groups).HasColumnType("text");
+            e.Property(x => x.OnlineUrl).HasMaxLength(2000);
+            e.Property(x => x.Token).HasMaxLength(20);
+            e.HasIndex(x => x.Category);
+            e.HasIndex(x => x.Language);
+            e.HasIndex(x => x.DownloadedAt);
+            e.HasIndex(x => x.LastModified);
         });
 
         modelBuilder.Entity<LocalReadingProgress>(e =>

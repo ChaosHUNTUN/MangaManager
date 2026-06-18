@@ -1068,6 +1068,9 @@ public class EhentaiService
 
     private static Dictionary<string, string>? _tagTranslations;
     private static readonly object _tagLock = new();
+
+    /// <summary>搜索倒排索引：词片段 → 匹配的 tag 条目列表</summary>
+    private static List<(string Key, string Cn, string Ns, string Tag, string EhSyntax)>? _tagSearchIndex;
     private const string TAG_DB_URL = "https://raw.githubusercontent.com/xiaojieonly/EhTagTranslation/main/tag-translations/tag-translations-zh-rCN.json";
     private static string TagDbPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "eh_tag_translations.json");
 
@@ -1081,7 +1084,15 @@ public class EhentaiService
             {
                 var json = await File.ReadAllTextAsync(TagDbPath);
                 var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                if (dict != null && dict.Count > 0) { lock (_tagLock) _tagTranslations = dict; return; }
+                if (dict != null && dict.Count > 0)
+                {
+                    lock (_tagLock)
+                    {
+                        _tagTranslations = dict;
+                        _tagSearchIndex = BuildSearchIndex(dict);
+                    }
+                    return;
+                }
             }
 
             // 从 GitHub 下载二进制格式数据（EhViewer 格式：4字节大端长度头 + 文本行）
@@ -1095,11 +1106,43 @@ public class EhentaiService
                 // 缓存为 JSON 格式
                 await File.WriteAllTextAsync(TagDbPath, JsonSerializer.Serialize(decoded));
             }
+
+            // 构建搜索倒排索引
+            lock (_tagLock)
+            {
+                if (_tagTranslations != null)
+                    _tagSearchIndex = BuildSearchIndex(_tagTranslations);
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[EH] 标签翻译加载失败: {ex.Message}");
         }
+    }
+
+    /// <summary>预构建搜索用扁平列表（避免每次搜索遍历字典）</summary>
+    private static List<(string Key, string Cn, string Ns, string Tag, string EhSyntax)> BuildSearchIndex(Dictionary<string, string> dict)
+    {
+        var list = new List<(string, string, string, string, string)>(dict.Count);
+        foreach (var kv in dict)
+        {
+            var key = kv.Key;
+            var cn = kv.Value;
+            var colonIdx = key.IndexOf(':');
+            var nsPrefix = colonIdx > 0 ? key[..(colonIdx + 1)] : "";
+            var tagName = colonIdx > 0 ? key[(colonIdx + 1)..] : key;
+            var nsFull = nsPrefix switch
+            {
+                "a:" => "artist", "c:" => "character", "cos:" => "cosplayer",
+                "f:" => "female", "g:" => "group", "l:" => "language",
+                "m:" => "male", "x:" => "mixed", "o:" => "other",
+                "p:" => "parody", "r:" => "reclass", "n:" => "rows",
+                "temp:" => "temp", _ => ""
+            };
+            var ehSyntax = string.IsNullOrEmpty(nsFull) ? tagName : $"{nsFull}:{tagName.Replace(" ", "_")}";
+            list.Add((key, cn, nsFull, tagName, ehSyntax));
+        }
+        return list;
     }
 
     /// <summary>解析 EhViewer 二进制标签翻译格式</summary>
@@ -1167,52 +1210,25 @@ public class EhentaiService
         return TranslateTag($"n:{ns}");
     }
 
-    /// <summary>搜索标签建议（对标 EhViewer TagSuggestion），同时搜索中英文</summary>
+    /// <summary>搜索标签建议（对标 EhViewer TagSuggestion），使用预构建索引避免全表扫描</summary>
     public static List<TagSuggestion> SuggestTags(string query, int limit = 30)
     {
         var results = new List<TagSuggestion>();
-        Dictionary<string, string>? dict;
-        lock (_tagLock) dict = _tagTranslations;
-        if (dict == null || string.IsNullOrWhiteSpace(query)) return results;
+        List<(string Key, string Cn, string Ns, string Tag, string EhSyntax)>? index;
+        lock (_tagLock) index = _tagSearchIndex;
+        if (index == null || string.IsNullOrWhiteSpace(query)) return results;
 
         var q = query.ToLowerInvariant().Trim();
         var seen = new HashSet<string>();
 
-        foreach (var kv in dict)
+        foreach (var (key, cn, nsFull, tagName, ehSyntax) in index)
         {
-            if (results.Count >= limit) break;
-
-            var key = kv.Key;    // e.g. "f:big breasts"
-            var cn = kv.Value;   // e.g. "巨乳"
-
-            // 搜索：英文标签、中文翻译、命名空间前缀都匹配
-            var keyLower = key.ToLowerInvariant();
-            var cnLower = cn.ToLowerInvariant();
-
-            bool keyMatch = keyLower.Contains(q);
-            bool cnMatch = cnLower.Contains(q);
+            // 搜索：英文标签名、中文翻译
+            bool keyMatch = tagName.Contains(q, StringComparison.OrdinalIgnoreCase);
+            bool cnMatch = cn.Contains(q, StringComparison.OrdinalIgnoreCase);
 
             if (!keyMatch && !cnMatch) continue;
 
-            // 解析 namespace 前缀和标签名
-            var colonIdx = key.IndexOf(':');
-            var nsPrefix = colonIdx > 0 ? key[..(colonIdx + 1)] : "";  // "f:"
-            var tagName = colonIdx > 0 ? key[(colonIdx + 1)..] : key;  // "big breasts"
-
-            // 反向映射：短前缀 → 全名
-            var nsFull = nsPrefix switch
-            {
-                "a:" => "artist", "c:" => "character", "cos:" => "cosplayer",
-                "f:" => "female", "g:" => "group", "l:" => "language",
-                "m:" => "male", "x:" => "mixed", "o:" => "other",
-                "p:" => "parody", "r:" => "reclass", "n:" => "rows",
-                "temp:" => "temp", _ => ""
-            };
-
-            // 构建 E-Hentai 搜索语法：namespace:tag
-            var ehSyntax = string.IsNullOrEmpty(nsFull) ? tagName : $"{nsFull}:{tagName.Replace(" ", "_")}";
-
-            // 去重（同一 ehSyntax 只保留一个）
             if (!seen.Add(ehSyntax.ToLowerInvariant())) continue;
 
             results.Add(new TagSuggestion
@@ -1224,16 +1240,17 @@ public class EhentaiService
                 EhSyntax = ehSyntax,
                 MatchType = cnMatch ? "cn" : "en"
             });
+
+            if (results.Count >= limit * 3) break; // 多收集一些再排序截取
         }
 
-        // 排序：中文匹配优先，然后按匹配位置排序
         results = results
             .OrderByDescending(r => r.MatchType == "cn" ? 1 : 0)
             .ThenBy(r =>
             {
                 var idx = r.MatchType == "cn"
-                    ? r.Cn.ToLowerInvariant().IndexOf(q, StringComparison.Ordinal)
-                    : r.Key.ToLowerInvariant().IndexOf(q, StringComparison.Ordinal);
+                    ? r.Cn.IndexOf(q, StringComparison.OrdinalIgnoreCase)
+                    : r.Tag.IndexOf(q, StringComparison.OrdinalIgnoreCase);
                 return idx < 0 ? int.MaxValue : idx;
             })
             .Take(limit)

@@ -39,10 +39,10 @@ export default function EHentai() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(null)
-  const [exhentai, setExhentai] = useState(false)
+  const [exhentai, setExhentai] = useState(true)
   const loadMoreRef = useRef(null)
   const currentSearchRef = useRef('')
-  const currentExRef = useRef(false)
+  const currentExRef = useRef(true)
   const currentFiltersRef = useRef({})
 
   // 标签翻译缓存
@@ -119,8 +119,8 @@ export default function EHentai() {
     setFilters(f => ({ ...f, advSearch: f.advSearch ^ bit }))
   }
 
-  // 热门模式
-  const [popularMode, setPopularMode] = useState(false)
+  // 热门模式（默认开启）
+  const [popularMode, setPopularMode] = useState(true)
 
   const buildFiltersObj = (isPopular = false) => {
     const f = {}
@@ -144,57 +144,48 @@ export default function EHentai() {
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
-    loadCookie(); checkNet()
-    // 检查 URL 参数 ?open=gid 或 ?open=gid_token，来自本地画廊跳转
-    const params = new URLSearchParams(window.location.search)
-    const openParam = params.get('open')
-    if (openParam) {
-      const parts = openParam.split('_')
-      const gid = parseInt(parts[0])
-      const token = parts.length > 1 ? parts[1] : null
-      if (gid) {
-        window.history.replaceState({}, '', '/ehentai')
-        // 正常加载热门列表
-        setExhentai(true); setPopularMode(true)
-        currentSearchRef.current = ''; currentExRef.current = true
-        const filterObj = { popular: true }
-        currentFiltersRef.current = filterObj
-        setLoading(true)
-        fetchEHGalleries('', 0, true, null, filterObj).then(r => {
-          const gals = r.galleries || []
-          setGalleries(gals)
+    // 先检查 Cookie 和网络，再决定是否加载列表
+    const init = async () => {
+      await loadCookie()
+      checkNet() // 不阻塞
+
+      // 检查 URL 参数 ?open=gid 或 ?open=gid_token，来自本地画廊跳转
+      const params = new URLSearchParams(window.location.search)
+      const openParam = params.get('open')
+      if (openParam) {
+        const parts = openParam.split('_')
+        const gid = parseInt(parts[0])
+        const token = parts.length > 1 ? parts[1] : null
+        if (gid) {
+          window.history.replaceState({}, '', '/ehentai')
+          if (token) {
+            setDetailLoading(true)
+            fetchEHGalleryDetail(gid, token).then(d => {
+              setDetail(d)
+              translateDetailTags(d)
+              loadBlockedTags()
+            }).catch(e => setError(e.message))
+            .finally(() => setDetailLoading(false))
+          }
+          return
+        }
+      }
+
+      // 默认加载热门+里站内容
+      setLoading(true)
+      currentFiltersRef.current = { popular: true }
+      fetchEHGalleries('', 0, true, null, { popular: true })
+        .then(r => {
+          setGalleries(r.galleries || [])
           setHasMore(!!r.nextCursor)
           setNextCursor(r.nextCursor || null)
-          if (gals.length > 0) checkDownloaded(gals.map(g => g.gid)).then(d => setLocalGids(new Set(d))).catch(() => {})
-        }).catch(e => setError(e.message))
+          const gids = (r.galleries || []).map(g => g.gid)
+          if (gids.length > 0) checkDownloaded(gids).then(d => setLocalGids(new Set(d))).catch(() => {})
+        })
+        .catch(e => setError(e.message))
         .finally(() => setLoading(false))
-        // 直接调用 API 打开详情（不依赖列表数据）
-        if (token) {
-          setDetailLoading(true)
-          fetchEHGalleryDetail(gid, token).then(d => {
-            setDetail(d)
-            translateDetailTags(d)
-            loadBlockedTags()
-          }).catch(e => setError(e.message))
-          .finally(() => setDetailLoading(false))
-        }
-        return
-      }
     }
-    // 默认加载里站热门
-    setExhentai(true); setPopularMode(true)
-    currentSearchRef.current = ''; currentExRef.current = true
-    const filterObj = { popular: true }
-    currentFiltersRef.current = filterObj
-    setLoading(true)
-    fetchEHGalleries('', 0, true, null, filterObj).then(r => {
-      const gals = r.galleries || []
-      setGalleries(gals)
-      setHasMore(!!r.nextCursor)
-      setNextCursor(r.nextCursor || null)
-      if (gals.length > 0) checkDownloaded(gals.map(g => g.gid)).then(d => setLocalGids(new Set(d))).catch(() => {})
-    }).catch(e => setError(e.message))
-    .finally(() => setLoading(false))
+    init()
   }, [])
 
   const checkNet = async () => {
@@ -208,7 +199,27 @@ export default function EHentai() {
     setCookieValidating(true); setCookieMsg(null)
     try {
       const r = await updateEHentaiCookie(cookieForm)
-      if (r.success) { setCookieMsg({ type: 'success', text: '已保存' }); await loadCookie(); const vr = await validateEHentaiCookie(); setValidateResult(vr.data) }
+      if (r.success) {
+        setCookieMsg({ type: 'success', text: '已保存' })
+        await loadCookie()
+        const vr = await validateEHentaiCookie()
+        setValidateResult(vr.data)
+        // Cookie 保存成功后自动加载热门列表
+        setExhentai(true); setPopularMode(true)
+        currentSearchRef.current = ''; currentExRef.current = true
+        const filterObj = { popular: true }
+        currentFiltersRef.current = filterObj
+        setLoading(true)
+        fetchEHGalleries('', 0, true, null, filterObj).then(r => {
+          const gals = r.galleries || []
+          setGalleries(gals)
+          setHasMore(!!r.nextCursor)
+          setNextCursor(r.nextCursor || null)
+          if (gals.length > 0) checkDownloaded(gals.map(g => g.gid)).then(d => setLocalGids(new Set(d))).catch(() => {})
+          setError(null)
+        }).catch(e => setError(e.message))
+        .finally(() => setLoading(false))
+      }
       else setCookieMsg({ type: 'error', text: r.message })
     } catch (e) { setCookieMsg({ type: 'error', text: e.message }) }
     setCookieValidating(false)
@@ -673,10 +684,18 @@ export default function EHentai() {
         </div>
       )}
 
+      {/* Cookie 未配置提示 */}
+      {!loading && galleries.length === 0 && !error && !cookieInfo && (
+        <div style={{ background: '#7f1d1d20', border: '1px solid #ef444440', borderRadius: 8, padding: 16, marginBottom: 14, fontSize: '0.85rem', color: '#fca5a5', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>未配置 E-Hentai Cookie</p>
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#888' }}>请点击上方 <b>🍪 Cookie</b> 按钮配置后再使用在线功能</p>
+          <button className="btn-primary" onClick={() => setShowCookie(true)} style={{ fontSize: '0.8rem' }}>配置 Cookie</button>
+        </div>
+      )}
       {/* 错误 */}
       {error && <div className="status-msg error" style={{ marginBottom: 12 }}>⚠ {error} <button className="btn-sm" onClick={() => browse(search, exhentai)} style={{ marginLeft: 12, borderColor: '#f87171', color: '#fca5a5' }}>重试</button></div>}
       {loading && <div className="loading">加载中...</div>}
-      {!loading && galleries.length === 0 && !error && <div className="empty"><p>输入关键词搜索或浏览</p></div>}
+      {!loading && galleries.length === 0 && !error && cookieInfo && <div className="empty"><p>输入关键词搜索或浏览</p></div>}
 
       {/* 画廊列表 */}
       <div className="eh-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
@@ -749,7 +768,7 @@ export default function EHentai() {
               </div>
             </div>
             <div style={{ padding: '10px 12px' }}>
-              <div style={{ fontSize: '0.85rem', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', color: '#ccc', fontWeight: 500 }}>
+              <div title={g.title || `#${g.gid}`} style={{ fontSize: '0.85rem', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', color: '#ccc', fontWeight: 500 }}>
                 {g.title || `#${g.gid}`}
               </div>
               {/* 评分 + 页数 */}
@@ -822,7 +841,7 @@ export default function EHentai() {
                 </div>
                 {/* 标题 & 元信息 */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: '#e0e0e0', fontWeight: 600 }}>{detail.title}</h3>
+                  <h3 title={detail.title} style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: '#e0e0e0', fontWeight: 600 }}>{detail.title}</h3>
                   {detail.titleJpn && <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: 8 }}>{detail.titleJpn}</div>}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                     <span style={{ padding: '2px 10px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600,

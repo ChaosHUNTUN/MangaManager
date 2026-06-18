@@ -12,11 +12,46 @@ public class LocalGalleryController : ControllerBase
 
     public LocalGalleryController(LocalGalleryService svc) => _svc = svc;
 
-    /// <summary>扫描本地画廊列表</summary>
+    /// <summary>扫描本地画廊列表（旧接口，保留兼容）</summary>
     [HttpGet("galleries")]
     public IActionResult GetGalleries()
     {
         var list = _svc.ScanLocalGalleries();
+        return Ok(new ApiResponse<object>(true, list));
+    }
+
+    /// <summary>获取轻量元数据列表（仅 gid+artists+groups+category+language，用于侧边栏分组和标签池）</summary>
+    [HttpGet("galleries/meta")]
+    public IActionResult GetGalleryMetas()
+    {
+        var list = _svc.GetGalleryMetas();
+        return Ok(new ApiResponse<object>(true, list));
+    }
+
+    /// <summary>分页获取画廊摘要（含筛选+排序+分页），一次返回 total+当前页数据</summary>
+    [HttpPost("galleries/paged")]
+    public IActionResult GetGalleriesPaged([FromBody] PagedRequest req)
+    {
+        var result = _svc.GetPagedGalleries(
+            req.Group, req.Search, req.Sort,
+            req.Page, req.PageSize,
+            req.AlbumGids, req.AlbumOrder);
+        return Ok(new ApiResponse<object>(true, result));
+    }
+
+    /// <summary>随机抽取 N 部作品（无视筛选条件）</summary>
+    [HttpGet("galleries/random")]
+    public IActionResult GetRandomGalleries([FromQuery] int count = 20)
+    {
+        var result = _svc.GetRandomGalleries(count);
+        return Ok(new ApiResponse<object>(true, result));
+    }
+
+    /// <summary>获取侧边栏分组信息（自动分组统计，不含自定义专辑）</summary>
+    [HttpGet("groups")]
+    public IActionResult GetGroups()
+    {
+        var list = _svc.GetGalleryGroups();
         return Ok(new ApiResponse<object>(true, list));
     }
 
@@ -35,14 +70,14 @@ public class LocalGalleryController : ControllerBase
         }
     }
 
-    /// <summary>获取本地画廊的图片页面列表</summary>
+    /// <summary>获取本地画廊的图片页面列表（直接从文件系统获取）</summary>
     [HttpGet("gallery/{gid}/pages")]
-    public async Task<IActionResult> GetPages(int gid)
+    public IActionResult GetPages(int gid)
     {
         try
         {
-            var d = await _svc.GetDetailAsync(gid);
-            return Ok(new ApiResponse<object>(true, d.Pages));
+            var pages = _svc.GetGalleryPages(gid);
+            return Ok(new ApiResponse<object>(true, pages));
         }
         catch (Exception ex)
         {
@@ -71,29 +106,20 @@ public class LocalGalleryController : ControllerBase
         return PhysicalFile(filePath, ct);
     }
 
-    /// <summary>提供本地封面图片</summary>
+    /// <summary>提供本地封面图片（使用扫描缓存，不重复读磁盘）</summary>
     [HttpGet("gallery/{gid}/cover")]
     public IActionResult GetCover(int gid)
     {
         try
         {
-            var dir = Directory.GetDirectories(EhentaiService.DefaultDownloadDir, $"{gid}-*").FirstOrDefault();
-            if (dir == null) return NotFound();
+            var item = _svc.GetCachedItem(gid);
+            if (item == null || string.IsNullOrEmpty(item.CoverFile) || !System.IO.File.Exists(item.CoverFile))
+                return NotFound();
 
-            var files = Directory.GetFiles(dir)
-                .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-                         || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-                         || f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(f => f)
-                .ToList();
-
-            if (files.Count == 0) return NotFound();
-            var cover = files.FirstOrDefault(f => Path.GetFileNameWithoutExtension(f).EndsWith("0001")) ?? files[0];
-
-            var ext = Path.GetExtension(cover).ToLower();
+            var ext = Path.GetExtension(item.CoverFile).ToLower();
             var ct = ext switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
             Response.Headers["Cache-Control"] = "public, max-age=86400";
-            return PhysicalFile(cover, ct);
+            return PhysicalFile(item.CoverFile, ct);
         }
         catch (Exception ex)
         {
@@ -129,6 +155,7 @@ public class LocalGalleryController : ControllerBase
         try
         {
             Directory.Delete(dir, true);
+            LocalGalleryService.InvalidateScanCache();
             return Ok(new ApiResponse<object>(true, new { message = "已删除" }));
         }
         catch (Exception ex)
@@ -151,6 +178,8 @@ public class LocalGalleryController : ControllerBase
             try { Directory.Delete(dir, true); }
             catch (Exception ex) { return BadRequest(new ApiResponse<object>(false, null, $"删除旧文件失败: {ex.Message}")); }
         }
+
+        LocalGalleryService.InvalidateScanCache();
 
         // 触发重新下载
         var ehSvc = HttpContext.RequestServices.GetRequiredService<EhentaiService>();
@@ -219,6 +248,8 @@ public class LocalGalleryController : ControllerBase
             results.Add(new { gid, status = "ok" });
         }
 
+        LocalGalleryService.InvalidateScanCache();
+
         return Ok(new ApiResponse<object>(true, new
         {
             total = req.Gids.Count,
@@ -244,6 +275,7 @@ public class LocalGalleryController : ControllerBase
                 req.SourceDir, req.Title, req.Category, req.Language,
                 req.Artists, req.Groups, req.OtherTags, req.CopyFiles);
 
+            LocalGalleryService.InvalidateScanCache();
             return Ok(new ApiResponse<object>(true, item, "导入成功"));
         }
         catch (Exception ex)
@@ -272,6 +304,7 @@ public class LocalGalleryController : ControllerBase
                 return BadRequest(new ApiResponse<object>(false, null, "请提供父目录路径"));
 
             var results = await _svc.BatchImportAsync(req.ParentDir, req.CopyFiles);
+            LocalGalleryService.InvalidateScanCache();
             int success = results.Count(r => ((dynamic)r).success == true);
             int failed = results.Count(r => ((dynamic)r).success == false);
             return Ok(new ApiResponse<object>(true, new { success, failed, total = results.Count, results }));
@@ -288,6 +321,7 @@ public class LocalGalleryController : ControllerBase
         try
         {
             await _svc.UpdateMetaTagsAsync(gid, req.Tags ?? new(), req.Title, req.Category, req.Language);
+            LocalGalleryService.InvalidateScanCache();
             return Ok(new ApiResponse<object>(true, null, "标签已更新"));
         }
         catch (Exception ex)
@@ -414,4 +448,14 @@ public record UpdateMetaTagsRequest(
     string? Title,
     string? Category,
     string? Language
+);
+
+public record PagedRequest(
+    string? Group,
+    string? Search,
+    string? Sort,
+    int Page = 1,
+    int PageSize = 20,
+    List<int>? AlbumGids = null,
+    List<int>? AlbumOrder = null
 );

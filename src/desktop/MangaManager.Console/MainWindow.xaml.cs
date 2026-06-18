@@ -14,9 +14,15 @@ namespace MangaManager.Console;
 
 public partial class MainWindow : Window
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
+    private static readonly HttpClient _http = new(new SocketsHttpHandler
+    {
+        ConnectTimeout = TimeSpan.FromSeconds(2),  // TCP 连接最多等 2 秒
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+    })
+    { Timeout = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _downloadTimer;
+    private volatile bool _timersPaused;  // 服务启停期间暂停轮询，防止 UI 线程堆积
     private readonly string _apiUrl = "http://localhost:5000";
     private readonly string _apiProject;
     private readonly string _uiDir;
@@ -133,8 +139,9 @@ public partial class MainWindow : Window
 
     private async Task RefreshServiceStatus()
     {
-        bool apiRunning = await IsPortOpen(5000, "/health");
-        bool uiRunning = await IsPortOpen(5173, "/");
+        if (_timersPaused) return;
+        bool apiRunning = await Task.Run(() => IsPortOpen(5000, "/health"));
+        bool uiRunning = await Task.Run(() => IsPortOpen(5173, "/"));
 
         UpdateServiceUI(apiRunning, TxtApiStatus, BtnApiStart, BtnApiStop, ApiStatusDot);
         UpdateServiceUI(uiRunning, TxtUiStatus, BtnUiStart, BtnUiStop, UiStatusDot);
@@ -215,7 +222,7 @@ public partial class MainWindow : Window
 
     private async void BtnApiStart_Click(object sender, RoutedEventArgs e) { _ = StartApiAsync(); }
     private async void BtnApiStop_Click(object sender, RoutedEventArgs e) => await StopApi();
-    private async void BtnApiRestart_Click(object sender, RoutedEventArgs e) { await StopApi(); await Task.Delay(1500); _ = StartApiAsync(); }
+    private async void BtnApiRestart_Click(object sender, RoutedEventArgs e) { await StopApi(); await Task.Delay(1500); await StartApiAsync(); }
 
     private async void BtnUiStart_Click(object sender, RoutedEventArgs e) { _ = StartUiAsync(); }
     private async void BtnUiStop_Click(object sender, RoutedEventArgs e) => await StopUi();
@@ -228,18 +235,30 @@ public partial class MainWindow : Window
     {
         try
         {
+            _timersPaused = true;
             Log("正在启动 API 后端...");
             await Task.Run(() => KillPort(5000));
             await Task.Delay(500);
             _apiProcess = StartProcess("dotnet", $"run --project \"{_apiProject}\" --urls http://0.0.0.0:5000");
+
+            // 等待 API 就绪后恢复轮询
+            for (int i = 0; i < 20; i++)
+            {
+                await Task.Delay(500);
+                if (await IsPortOpen(5000, "/health")) break;
+            }
+            _timersPaused = false;
+            await RefreshServiceStatus();
+            await RefreshDownloadTasks();
         }
-        catch (Exception ex) { Log($"启动 API 失败: {ex.Message}"); }
+        catch (Exception ex) { Log($"启动 API 失败: {ex.Message}"); _timersPaused = false; }
     }
 
     private async Task StopApi()
     {
         try
         {
+            _timersPaused = true;  // 立即暂停轮询，防止 HTTP 调用堆积
             Log("正在停止 API 后端...");
             BtnApiStop.IsEnabled = false;
 
@@ -364,10 +383,12 @@ public partial class MainWindow : Window
 
     private async Task RefreshDownloadTasks()
     {
+        if (_timersPaused) return;
         try
         {
-            var json = await _http.GetFromJsonAsync<ApiResponse<List<DownloadTaskVm>>>(
-                $"{_apiUrl}/api/download/tasks", JsonOpts);
+            var json = await Task.Run(() =>
+                _http.GetFromJsonAsync<ApiResponse<List<DownloadTaskVm>>>(
+                    $"{_apiUrl}/api/download/tasks", JsonOpts));
 
             if (json?.Data == null) return;
 

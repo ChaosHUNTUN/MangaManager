@@ -109,7 +109,7 @@ public class EhentaiController : ControllerBase
         [FromQuery] bool popular = false)
     {
         if (!_svc.HasCookie())
-            return BadRequest(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
+            return Unauthorized(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
 
         try
         {
@@ -140,7 +140,7 @@ public class EhentaiController : ControllerBase
     public async Task<IActionResult> GetDetail(int gid, string token)
     {
         if (!_svc.HasCookie())
-            return BadRequest(new ApiResponse<object>(false, null, "请先配置 Cookie"));
+            return Unauthorized(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
         try
         {
             var r = await _svc.GetGalleryDetailAsync(gid, token);
@@ -165,7 +165,7 @@ public class EhentaiController : ControllerBase
     public async Task<IActionResult> GetPages(int gid, string token)
     {
         if (!_svc.HasCookie())
-            return BadRequest(new ApiResponse<object>(false, null, "请先配置 Cookie"));
+            return Unauthorized(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
         try
         {
             var r = await _svc.GetPagesAsync(gid, token);
@@ -318,7 +318,7 @@ public class EhentaiController : ControllerBase
     public IActionResult Download(int gid, string token, [FromQuery] string? title)
     {
         if (!_svc.HasCookie())
-            return BadRequest(new ApiResponse<object>(false, null, "请先配置 Cookie"));
+            return Unauthorized(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
         var dm = HttpContext.RequestServices.GetRequiredService<DownloadManager>();
         var task = dm.AddTask(gid, token, title ?? $"Gallery {gid}");
         return Ok(new ApiResponse<object>(true, (object?)task ?? new { message = "已加入下载队列" }));
@@ -341,7 +341,7 @@ public class EhentaiController : ControllerBase
     public async Task<IActionResult> ProxyPage(int gid, string token, [FromQuery] int p = 0)
     {
         if (!_svc.HasCookie())
-            return BadRequest(new ApiResponse<object>(false, null, "请先配置 Cookie"));
+            return Unauthorized(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
         try
         {
             var (html, contentType) = await _svc.GetGalleryPageHtmlAsync(gid, token, p);

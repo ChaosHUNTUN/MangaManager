@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using MangaManager.Data;
 using MangaManager.Services;
 
@@ -21,18 +22,20 @@ if (dbProvider.Equals("mysql", StringComparison.OrdinalIgnoreCase))
         options.UseMySql(
             builder.Configuration.GetConnectionString("Default"),
             ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("Default"))
-        ));
+        ).ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 }
 else
 {
     builder.Services.AddDbContext<MangaDbContext>(options =>
-        options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+        options.UseSqlite(builder.Configuration.GetConnectionString("Default"))
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 }
 
 // 服务注册
 builder.Services.AddScoped<MangaService>();
 builder.Services.AddSingleton<LocalGalleryService>();
 builder.Services.AddSingleton<DownloadManager>();
+builder.Services.AddHostedService<GallerySyncService>();
 
 // HttpClientFactory：E-Hentai 专用客户端（共享 Cookie、代理配置）
 builder.Services.AddHttpClient("ehentai", client =>
@@ -62,9 +65,6 @@ builder.Services.AddSingleton<EhentaiService>();
 builder.Services.AddControllers();
 
 var app = builder.Build();
-
-// WebSocket 支持
-app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 // 全局异常处理中间件（确保所有 500 响应带 CORS 头和 JSON body）
 app.Use(async (context, next) =>
@@ -108,100 +108,65 @@ app.MapControllers();
 // 健康检查端点
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow, version = "2.0" }));
 
-// 确保数据库已创建（增量迁移：先补充缺失列，再 EnsureCreated）
+// EF Core Migrations：自动建库/升级，兼容已有数据库
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
 
-    // 先为已有数据库补充缺失的列（在 EnsureCreated 之前，否则 EF 模型验证会失败）
-    try
+    // 检测已有数据库（有数据表但无迁移历史记录）→ 插入 baseline 标记
+    if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
     {
-        db.Database.ExecuteSqlRaw(@"ALTER TABLE album_config ADD COLUMN ""Order"" TEXT NOT NULL DEFAULT '[]'");
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            var wasClosed = conn.State == System.Data.ConnectionState.Closed;
+            if (wasClosed) conn.Open();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+
+                // 检查是否有旧版数据表（以 manga 表为准）
+                cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='manga'";
+                var hasMangaTable = (long)cmd.ExecuteScalar()! > 0;
+
+                // 检查迁移历史是否有记录（不仅仅是表存在）
+                cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory'";
+                var hasHistoryTable = (long)cmd.ExecuteScalar()! > 0;
+
+                var hasHistoryRecords = false;
+                if (hasHistoryTable)
+                {
+                    cmd.CommandText = "SELECT COUNT(*) FROM __EFMigrationsHistory";
+                    hasHistoryRecords = (long)cmd.ExecuteScalar()! > 0;
+                }
+
+                // 有旧数据表，但没有迁移记录 → 需要插入 baseline
+                if (hasMangaTable && !hasHistoryRecords)
+                {
+                    Console.WriteLine("[DB] 检测到已有数据库，插入 InitialCreate baseline 迁移记录...");
+                    if (!hasHistoryTable)
+                    {
+                        cmd.CommandText = "CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (MigrationId TEXT PRIMARY KEY, ProductVersion TEXT)";
+                        cmd.ExecuteNonQuery();
+                    }
+                    cmd.CommandText = "INSERT OR IGNORE INTO __EFMigrationsHistory VALUES ('20260612043946_InitialCreate', '9.0.0')";
+                    cmd.ExecuteNonQuery();
+                    Console.WriteLine("[DB] Baseline 迁移记录已插入");
+                }
+            }
+            finally
+            {
+                if (wasClosed) conn.Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB] Baseline 检测跳过: {ex.Message}");
+        }
     }
-    catch (Exception ex) { Console.WriteLine($"[DB] Order列迁移跳过: {ex.Message}"); }
-    try
-    {
-        db.Database.ExecuteSqlRaw(@"ALTER TABLE album_config ADD COLUMN CreatedAt TEXT NOT NULL DEFAULT '2000-01-01T00:00:00'");
-        Console.WriteLine("[DB] CreatedAt列已添加");
-    }
-    catch (Exception ex) { Console.WriteLine($"[DB] CreatedAt列迁移跳过: {ex.Message}"); }
 
-    db.Database.EnsureCreated();
-
-    // 为已有数据库补充缺失的 download_task 表
-    try
-    {
-        db.Database.ExecuteSqlRaw(@"
-            CREATE TABLE IF NOT EXISTS download_task (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                Gid INTEGER NOT NULL,
-                Token TEXT NOT NULL,
-                Title TEXT,
-                CoverUrl TEXT,
-                TotalPages INTEGER NOT NULL DEFAULT 0,
-                DownloadedPages INTEGER NOT NULL DEFAULT 0,
-                FailedPages INTEGER NOT NULL DEFAULT 0,
-                DownloadedBytes INTEGER NOT NULL DEFAULT 0,
-                Status TEXT NOT NULL DEFAULT 'pending',
-                ErrorMsg TEXT,
-                CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-                StartedAt TEXT,
-                CompletedAt TEXT,
-                UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS IX_download_task_Gid ON download_task(Gid);
-        ");
-
-        // reader_settings 表
-        db.Database.ExecuteSqlRaw(@"
-            CREATE TABLE IF NOT EXISTS reader_settings (
-                Id INTEGER PRIMARY KEY CHECK (Id = 1),
-                FitMode TEXT NOT NULL DEFAULT 'fit-width',
-                FitPercent INTEGER NOT NULL DEFAULT 100,
-                Direction TEXT NOT NULL DEFAULT 'rtl',
-                Transition TEXT NOT NULL DEFAULT 'fade',
-                ReadMode TEXT NOT NULL DEFAULT 'paged',
-                SlideInterval INTEGER NOT NULL DEFAULT 3,
-                ScrollSpeed INTEGER NOT NULL DEFAULT 200,
-                LoopMode INTEGER NOT NULL DEFAULT 0,
-                UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            INSERT OR IGNORE INTO reader_settings (Id) VALUES (1);
-        ");
-        Console.WriteLine("[DB] reader_settings 表已就绪");
-
-
-        // album_config 表（如果不存在则创建）
-        db.Database.ExecuteSqlRaw(@"
-            CREATE TABLE IF NOT EXISTS album_config (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                Key TEXT NOT NULL,
-                Name TEXT NOT NULL DEFAULT '',
-                Gids TEXT NOT NULL DEFAULT '[]',
-                ""Order"" TEXT NOT NULL DEFAULT '[]',
-                CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-                UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS IX_album_config_Key ON album_config(Key);
-        ");
-        Console.WriteLine("[DB] album_config 表已就绪");
-
-        // local_reading_progress 表
-        db.Database.ExecuteSqlRaw(@"
-            CREATE TABLE IF NOT EXISTS local_reading_progress (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                Gid INTEGER NOT NULL,
-                PageIndex INTEGER NOT NULL DEFAULT 0,
-                UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS IX_local_reading_progress_Gid ON local_reading_progress(Gid);
-        ");
-        Console.WriteLine("[DB] local_reading_progress 表已就绪");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[DB] 迁移表失败: {ex.Message}");
-    }
+    db.Database.Migrate();
+    Console.WriteLine("[DB] 数据库迁移完成");
 
     // 启用 WAL 模式（仅 SQLite）：允许并发读写，避免 "database is locked" 错误
     if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))

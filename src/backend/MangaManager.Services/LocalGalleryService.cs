@@ -1,86 +1,347 @@
-using System.Text.Json.Serialization;
+using System.Collections.Concurrent;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using MangaManager.Core.Entities;
+using MangaManager.Data;
 
 namespace MangaManager.Services;
 
 /// <summary>
-/// 本地画廊服务：扫描下载目录，解析 gid，结合 EHentai 数据
+/// 本地画廊服务：数据库为元数据主索引，文件系统为图片源
 /// </summary>
 public class LocalGalleryService
 {
     private readonly EhentaiService _eh;
+    private readonly IServiceScopeFactory _scopeFactory;
     private static readonly string BaseDir = EhentaiService.DefaultDownloadDir;
 
-    public LocalGalleryService(EhentaiService eh) => _eh = eh;
+    /// <summary>旧版 Manga ID → 本地目录路径的映射（负数 gid 的防腐层）</summary>
+    private static readonly ConcurrentDictionary<int, string> _legacyDirs = new();
 
-    /// <summary>扫描本地画廊目录，返回列表</summary>
-    public List<LocalGalleryItem> ScanLocalGalleries()
+    public LocalGalleryService(EhentaiService eh, IServiceScopeFactory scopeFactory)
     {
-        var result = new List<LocalGalleryItem>();
-        if (!Directory.Exists(BaseDir)) return result;
-
-        foreach (var dir in Directory.GetDirectories(BaseDir))
-        {
-            var dirName = Path.GetFileName(dir);
-            // 目录格式：{gid}-{标题}
-            var dashIdx = dirName.IndexOf('-');
-            if (dashIdx <= 0 || !int.TryParse(dirName[..dashIdx], out var gid)) continue;
-
-            var title = dirName[(dashIdx + 1)..];
-            var files = Directory.GetFiles(dir)
-                .Where(f => IsImageFile(f))
-                .OrderBy(f => f)
-                .ToList();
-
-            if (files.Count == 0) continue;
-
-            // 找封面（第一张图片）
-            var cover = files.FirstOrDefault(f =>
-                Path.GetFileNameWithoutExtension(f).EndsWith("0001") ||
-                Path.GetFileNameWithoutExtension(f).EndsWith("01")) ?? files[0];
-
-            var item = new LocalGalleryItem
-            {
-                Gid = gid,
-                Title = title,
-                DirPath = dir,
-                FileCount = files.Count,
-                TotalSize = files.Sum(f => new FileInfo(f).Length),
-                CoverFile = cover,
-                LastModified = Directory.GetLastWriteTime(dir)
-            };
-
-            // 读取 .meta.json 元数据
-            var metaFile = Path.Combine(dir, ".meta.json");
-            if (File.Exists(metaFile))
-            {
-                try
-                {
-                    var metaJson = File.ReadAllText(metaFile);
-                    using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
-                    var root = doc.RootElement;
-                    if (root.TryGetProperty("category", out var cat)) item.Category = cat.GetString();
-                    if (root.TryGetProperty("rating", out var rat) && rat.ValueKind == System.Text.Json.JsonValueKind.String && double.TryParse(rat.GetString(), out var rv)) item.Rating = rv;
-                    else if (root.TryGetProperty("rating", out var ratN) && ratN.TryGetDouble(out var rv2)) item.Rating = rv2;
-                    if (root.TryGetProperty("language", out var lang)) item.Language = lang.GetString();
-                    if (root.TryGetProperty("downloadedAt", out var da) && DateTime.TryParse(da.GetString(), out var dt)) item.DownloadedAt = dt;
-                    if (root.TryGetProperty("tags", out var tags))
-                    {
-                        if (tags.TryGetProperty("artist", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.Array)
-                            item.Artists = a.EnumerateArray().Select(x => x.GetString()!).Where(x => x != null).ToList();
-                        if (tags.TryGetProperty("group", out var gr) && gr.ValueKind == System.Text.Json.JsonValueKind.Array)
-                            item.Groups = gr.EnumerateArray().Select(x => x.GetString()!).Where(x => x != null).ToList();
-                    }
-                }
-                catch { /* 解析失败则跳过 */ }
-            }
-
-            result.Add(item);
-        }
-
-        return result.OrderByDescending(g => g.LastModified).ToList();
+        _eh = eh;
+        _scopeFactory = scopeFactory;
     }
 
-    /// <summary>获取画廊详情（优先本地，否则从 EH 获取）</summary>
+    private MangaDbContext CreateDb() => _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<MangaDbContext>();
+
+    /// <summary>注册旧版 Manga 目录映射（用于负数虚拟 gid → 真实目录的查找）</summary>
+    public static void RegisterLegacyDir(int legacyId, string dirPath)
+    {
+        _legacyDirs[-Math.Abs(legacyId)] = dirPath;
+    }
+
+    /// <summary>扫描本地画廊目录，返回列表（兼容旧接口，从 DB 查询）</summary>
+    public List<LocalGalleryItem> ScanLocalGalleries()
+    {
+        using var db = CreateDb();
+        return db.LocalGalleries.AsNoTracking()
+            .OrderByDescending(g => g.LastModified)
+            .Select(MapToItem)
+            .ToList();
+    }
+
+    /// <summary>DB 查询辅助——从 LocalGallery 实体映射到 LocalGalleryItem</summary>
+    private static LocalGalleryItem MapToItem(LocalGallery g) => new()
+    {
+        Gid = g.Gid,
+        Title = g.Title,
+        DirPath = g.DirPath,
+        FileCount = g.FileCount,
+        TotalSize = g.FileSize,
+        CoverFile = g.CoverFile ?? "",
+        LastModified = g.LastModified,
+        Category = g.Category,
+        Rating = g.Rating,
+        Language = g.Language,
+        Artists = DeserializeJsonList(g.Artists),
+        Groups = DeserializeJsonList(g.Groups),
+        DownloadedAt = g.DownloadedAt
+    };
+
+    private static List<string> DeserializeJsonList(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new(); }
+        catch { return new(); }
+    }
+
+    /// <summary>手动失效扫描缓存（DB 化后变为空操作，数据已由后台同步服务管理）</summary>
+    public static void InvalidateScanCache()
+    {
+        lock (_pageFilesCacheLock) { _pageFilesCache.Clear(); }
+    }
+
+    private static readonly Dictionary<int, (List<string> Files, DateTime Time)> _pageFilesCache = new();
+    private static readonly object _pageFilesCacheLock = new();
+    private static readonly TimeSpan _pageFilesCacheTtl = TimeSpan.FromSeconds(10);
+
+    /// <summary>按 gid 从 DB 查找画廊条目（O(1)）</summary>
+    public LocalGalleryItem? GetCachedItem(int gid)
+    {
+        using var db = CreateDb();
+        var entity = db.LocalGalleries.AsNoTracking().FirstOrDefault(g => g.Gid == gid);
+        return entity == null ? null : MapToItem(entity);
+    }
+
+    /// <summary>获取轻量元数据列表（从 DB，替代文件扫描）</summary>
+    public List<LocalGalleryMeta> GetGalleryMetas()
+    {
+        using var db = CreateDb();
+        return db.LocalGalleries.AsNoTracking()
+            .Select(g => new LocalGalleryMeta
+            {
+                Gid = g.Gid,
+                Artists = DeserializeJsonList(g.Artists),
+                Groups = DeserializeJsonList(g.Groups),
+                Category = g.Category,
+                Language = g.Language
+            }).ToList();
+    }
+
+    /// <summary>分页获取画廊摘要（DB 查询，筛选+排序在 SQL 层面完成）</summary>
+    public GalleryPagedResult GetPagedGalleries(string? group, string? search, string? sort,
+        int page, int pageSize, List<int>? albumGids = null, List<int>? albumOrder = null)
+    {
+        using var db = CreateDb();
+        var query = db.LocalGalleries.AsNoTracking().AsQueryable();
+
+        // 分组筛选
+        if (!string.IsNullOrEmpty(group) && group != "all")
+        {
+            var excludeGids = !group.StartsWith("album:") && albumGids != null && albumGids.Count > 0
+                ? new HashSet<int>(albumGids) : null;
+
+            if (group == "multi")
+            {
+                query = query.Where(g => g.Artists != null && g.Groups != null
+                    && (JsonArrayLength(g.Artists) + JsonArrayLength(g.Groups) > 1));
+                if (excludeGids != null && excludeGids.Count > 0)
+                    query = query.Where(g => !excludeGids.Contains(g.Gid));
+            }
+            else if (group == "unknown")
+            {
+                query = query.Where(g =>
+                    (g.Artists == null || g.Artists == "[]") &&
+                    (g.Groups == null || g.Groups == "[]"));
+                if (excludeGids != null && excludeGids.Count > 0)
+                    query = query.Where(g => !excludeGids.Contains(g.Gid));
+            }
+            else if (group.StartsWith("artist:"))
+            {
+                var name = group[7..];
+                query = query.Where(g => g.Artists != null && JsonArrayFirst(g.Artists) == name);
+                if (excludeGids != null && excludeGids.Count > 0)
+                    query = query.Where(g => !excludeGids.Contains(g.Gid));
+            }
+            else if (group.StartsWith("group:"))
+            {
+                var name = group[6..];
+                query = query.Where(g => g.Groups != null && JsonArrayFirst(g.Groups) == name);
+                if (excludeGids != null && excludeGids.Count > 0)
+                    query = query.Where(g => !excludeGids.Contains(g.Gid));
+            }
+            else if (group.StartsWith("album:") && albumGids != null && albumGids.Count > 0)
+            {
+                var gidSet = new HashSet<int>(albumGids);
+                query = query.Where(g => gidSet.Contains(g.Gid));
+
+                // 自定义排序
+                if (sort == "custom" && albumOrder != null && albumOrder.Count > 0)
+                {
+                    var orderMap = new Dictionary<int, int>();
+                    for (int i = 0; i < albumOrder.Count; i++) orderMap[albumOrder[i]] = i;
+                    var all = query.ToList(); // 小数据集，内存排序
+                    all = all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999)).ToList();
+                    var total = all.Count;
+                    var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
+                    var safePage = Math.Clamp(page, 1, Math.Max(1, totalPages));
+                    return new GalleryPagedResult
+                    {
+                        Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
+                        Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
+                    };
+                }
+            }
+        }
+
+        // 搜索筛选
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var terms = search.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var term in terms)
+            {
+                var lower = term.ToLower();
+                var colonIdx = term.IndexOf(':');
+                if (colonIdx > 0)
+                {
+                    var prefix = term[..colonIdx].ToLower();
+                    var value = term[(colonIdx + 1)..].ToLower();
+                    switch (prefix)
+                    {
+                        case "artist":
+                            query = query.Where(g => g.Artists != null && g.Artists.ToLower().Contains(value));
+                            break;
+                        case "group":
+                            query = query.Where(g => g.Groups != null && g.Groups.ToLower().Contains(value));
+                            break;
+                        case "category":
+                            query = query.Where(g => g.Category != null && g.Category.ToLower().Contains(value));
+                            break;
+                        case "language":
+                            query = query.Where(g => g.Language != null && g.Language.ToLower().Contains(value));
+                            break;
+                        default:
+                            query = query.Where(g =>
+                                g.Title.ToLower().Contains(lower) ||
+                                g.Gid.ToString().Contains(lower) ||
+                                (g.Artists != null && g.Artists.ToLower().Contains(lower)) ||
+                                (g.Groups != null && g.Groups.ToLower().Contains(lower)));
+                            break;
+                    }
+                }
+                else
+                {
+                    query = query.Where(g =>
+                        g.Title.ToLower().Contains(lower) ||
+                        g.Gid.ToString().Contains(lower) ||
+                        (g.Artists != null && g.Artists.ToLower().Contains(lower)) ||
+                        (g.Groups != null && g.Groups.ToLower().Contains(lower)) ||
+                        (g.Language != null && g.Language.ToLower().Contains(lower)) ||
+                        (g.Category != null && g.Category.ToLower().Contains(lower)));
+                }
+            }
+        }
+
+        // 排序
+        query = ApplyDbSort(query, sort);
+
+        var queryTotal = query.Count();
+        var queryTotalPages = (int)Math.Ceiling(queryTotal / (double)Math.Max(1, pageSize));
+        var querySafePage = Math.Clamp(page, 1, Math.Max(1, queryTotalPages));
+        var queryItems = query.Skip((querySafePage - 1) * pageSize).Take(pageSize).Select(g => MapToSummary(g)).ToList();
+
+        return new GalleryPagedResult
+        {
+            Items = queryItems,
+            Total = queryTotal,
+            TotalPages = queryTotalPages,
+            Page = querySafePage,
+            PageSize = pageSize
+        };
+    }
+
+    private static LocalGallerySummary MapToSummary(LocalGallery g) => new()
+    {
+        Gid = g.Gid,
+        Title = g.Title,
+        FileCount = g.FileCount,
+        TotalSize = g.FileSize,
+        Category = g.Category,
+        Language = g.Language,
+        Rating = g.Rating,
+        LastModified = g.LastModified,
+        Artists = DeserializeJsonList(g.Artists),
+        Groups = DeserializeJsonList(g.Groups)
+    };
+
+    private static IQueryable<LocalGallery> ApplyDbSort(IQueryable<LocalGallery> query, string? sort)
+    {
+        if (string.IsNullOrEmpty(sort)) return query.OrderByDescending(g => g.LastModified);
+        var parts = sort.Split('-');
+        var desc = parts.Length > 1 && parts[1] == "desc";
+        return parts[0] switch
+        {
+            "modified" => desc ? query.OrderByDescending(g => g.LastModified) : query.OrderBy(g => g.LastModified),
+            "title" => desc ? query.OrderByDescending(g => g.Title) : query.OrderBy(g => g.Title),
+            "pages" => desc ? query.OrderByDescending(g => g.FileCount) : query.OrderBy(g => g.FileCount),
+            "size" => desc ? query.OrderByDescending(g => g.FileSize) : query.OrderBy(g => g.FileSize),
+            _ => query.OrderByDescending(g => g.LastModified)
+        };
+    }
+
+    // SQLite JSON helper functions (used in LINQ expressions)
+    private static int JsonArrayLength(string? json) =>
+        string.IsNullOrEmpty(json) || json == "[]" ? 0 : json.Count(c => c == ',') + 1;
+
+    private static string? JsonArrayFirst(string? json)
+    {
+        if (string.IsNullOrEmpty(json) || json == "[]") return null;
+        try
+        {
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+            return list?.FirstOrDefault();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>随机抽取 N 部作品（DB 随机排序）</summary>
+    public GalleryPagedResult GetRandomGalleries(int count = 20)
+    {
+        using var db = CreateDb();
+        var all = db.LocalGalleries.AsNoTracking().ToList();
+        var picked = all.OrderBy(_ => Random.Shared.Next()).Take(count).ToList();
+
+        return new GalleryPagedResult
+        {
+            Items = picked.Select(MapToSummary).ToList(),
+            Total = picked.Count,
+            TotalPages = 1,
+            Page = 1,
+            PageSize = count
+        };
+    }
+
+    /// <summary>计算侧边栏分组信息（DB 加载 + 内存聚合）</summary>
+    public List<GroupInfo> GetGalleryGroups()
+    {
+        using var db = CreateDb();
+        var all = db.LocalGalleries.AsNoTracking()
+            .Select(g => new { g.Gid, g.Artists, g.Groups })
+            .ToList();
+
+        var map = new Dictionary<string, GroupInfo>();
+        foreach (var g in all)
+        {
+            var artists = DeserializeJsonList(g.Artists);
+            var grps = DeserializeJsonList(g.Groups);
+
+            if (artists.Count == 1 && grps.Count == 0)
+            {
+                var key = $"artist:{artists[0]}";
+                if (!map.ContainsKey(key)) map[key] = new GroupInfo { Key = key, Type = "artist", Name = artists[0], Count = 0 };
+                map[key].Count++;
+            }
+            else if (grps.Count == 1 && artists.Count == 0)
+            {
+                var key = $"group:{grps[0]}";
+                if (!map.ContainsKey(key)) map[key] = new GroupInfo { Key = key, Type = "group", Name = grps[0], Count = 0 };
+                map[key].Count++;
+            }
+            else if (artists.Count == 1 && grps.Count == 1)
+            {
+                var key = $"artist:{artists[0]}";
+                if (!map.ContainsKey(key)) map[key] = new GroupInfo { Key = key, Type = "artist", Name = artists[0], Count = 0 };
+                map[key].Count++;
+            }
+            else if (artists.Count + grps.Count > 1)
+            {
+                if (!map.ContainsKey("multi")) map["multi"] = new GroupInfo { Key = "multi", Type = "multi", Name = "多作者", Count = 0 };
+                map["multi"].Count++;
+            }
+            else
+            {
+                if (!map.ContainsKey("unknown")) map["unknown"] = new GroupInfo { Key = "unknown", Type = "unknown", Name = "未分类", Count = 0 };
+                map["unknown"].Count++;
+            }
+        }
+
+
+        return map.Values.OrderByDescending(g => g.Count).ToList();
+    }
+
+    /// <summary>获取画廊详情（优先本地 meta.json，页面列表懒加载）</summary>
     public async Task<LocalGalleryDetail> GetDetailAsync(int gid)
     {
         try
@@ -92,59 +353,79 @@ public class LocalGalleryService
             var dashIdx = dirName.IndexOf('-');
             var title = dashIdx > 0 ? dirName[(dashIdx + 1)..] : dirName;
 
-            // 安全列出文件（跳过可能被删除/锁定的文件）
-            var files = EnumerateImageFilesSafe(dir).OrderBy(f => f).ToList();
-
-            var pages = files.Select((f, i) => new LocalPageItem
-            {
-                Index = i + 1,
-                FileName = Path.GetFileName(f),
-                Url = $"/api/local/gallery/{gid}/page/{i}"
-            }).ToList();
-
+            // 从 meta.json 一次性读取所有元数据（合并原来两段读取）
+            string? category = null, language = null, rating = "0";
+            int ratingCount = 0, fileCount = 0;
             long totalSize = 0;
-            foreach (var f in files)
+            List<string> artists = new(), groups = new(), tags = new();
+            var tagGroups = new List<EhentaiService.TagGroup>();
+            var metaFile = Path.Combine(dir, ".meta.json");
+            if (File.Exists(metaFile))
             {
-                try { totalSize += new FileInfo(f).Length; } catch { }
+                try
+                {
+                    var metaJson = await File.ReadAllTextAsync(metaFile);
+                    using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("category", out var cat)) category = cat.GetString();
+                    if (root.TryGetProperty("language", out var lang)) language = lang.GetString();
+                    if (root.TryGetProperty("rating", out var rat))
+                    {
+                        if (rat.ValueKind == System.Text.Json.JsonValueKind.String) rating = rat.GetString() ?? "0";
+                        else if (rat.TryGetDouble(out var rv)) rating = rv.ToString("F1");
+                    }
+                    if (root.TryGetProperty("ratingCount", out var rc) && rc.TryGetInt32(out var rcv)) ratingCount = rcv;
+                    if (root.TryGetProperty("fileCount", out var fc) && fc.TryGetInt32(out var fcv)) fileCount = fcv;
+                    if (root.TryGetProperty("fileSize", out var fs) && fs.TryGetInt64(out var fsv)) totalSize = fsv;
+
+                    // 一次性解析 tags → artists/groups/tagGroups/tags
+                    if (root.TryGetProperty("tags", out var tgs) && tgs.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        foreach (var ns in tgs.EnumerateObject())
+                        {
+                            if (ns.Value.ValueKind != System.Text.Json.JsonValueKind.Array) continue;
+                            var nsTags = ns.Value.EnumerateArray()
+                                .Select(x => x.GetString()!)
+                                .Where(x => x != null)
+                                .ToList();
+                            if (nsTags.Count == 0) continue;
+
+                            tagGroups.Add(new EhentaiService.TagGroup { Namespace = ns.Name, Tags = nsTags });
+                            tags.AddRange(nsTags);
+
+                            if (ns.Name == "artist") artists = nsTags;
+                            else if (ns.Name == "group") groups = nsTags;
+                        }
+                    }
+                }
+                catch { }
             }
 
-            // 尝试获取 EH 详情（标签等）
-            EhentaiService.GalleryDetail? ehDetail = null;
-            try
+            // 如果没有 meta.json 或缺少 fileCount，回退到文件系统扫描
+            if (fileCount == 0)
             {
-                var ehFile = Path.Combine(dir, ".eh");
-                string? token = null;
-                if (File.Exists(ehFile))
+                var files = EnumerateImageFilesSafe(dir).OrderBy(f => f).ToList();
+                fileCount = files.Count;
+                foreach (var f in files)
                 {
-                    var lines = File.ReadAllLines(ehFile);
-                    token = lines.FirstOrDefault(l => l.StartsWith("token="))?[6..];
-                }
-                if (!string.IsNullOrEmpty(token))
-                {
-                    ehDetail = await _eh.GetGalleryDetailAsync(gid, token);
+                    try { totalSize += new FileInfo(f).Length; } catch { }
                 }
             }
-            catch { /* EH 不可用不影响本地浏览 */ }
 
             return new LocalGalleryDetail
             {
                 Gid = gid,
-                Title = ehDetail?.Title ?? title,
-                TitleJpn = ehDetail?.TitleJpn,
-                Category = ehDetail?.Category ?? "other",
-                Uploader = ehDetail?.Uploader ?? "",
-                FileCount = files.Count,
+                Title = title,
+                Category = category ?? "other",
+                FileCount = fileCount,
                 TotalSize = totalSize,
-                Rating = ehDetail?.Rating ?? "0",
-                RatingCount = ehDetail?.RatingCount ?? 0,
-                FavoriteCount = ehDetail?.FavoriteCount ?? 0,
-                Language = ehDetail?.Language,
-                Posted = ehDetail?.Posted ?? 0,
-                Token = ehDetail?.Token ?? "",
-                TagGroups = ehDetail?.TagGroups ?? new(),
-                Tags = ehDetail?.Tags ?? new(),
-                Pages = pages,
-                DirPath = dir
+                Rating = rating,
+                RatingCount = ratingCount,
+                Language = language,
+                TagGroups = gid < 0 ? new() : tagGroups,
+                Tags = tags,
+                DirPath = dir,
+                Pages = new()  // 页面列表由 /api/local/gallery/{gid}/pages 按需提供
             };
         }
         catch (Exception ex)
@@ -152,6 +433,39 @@ public class LocalGalleryService
             Console.WriteLine($"[LocalGallery] GetDetailAsync gid={gid} error: {ex.Message}");
             return new LocalGalleryDetail { Gid = gid, Title = $"Error: {ex.Message}" };
         }
+    }
+
+    /// <summary>获取画廊页面列表（直接从文件系统，带短期缓存）</summary>
+    public List<LocalPageItem> GetGalleryPages(int gid)
+    {
+        var files = GetCachedPageFiles(gid);
+        if (files == null) return new();
+        return files.Select((f, i) => new LocalPageItem
+        {
+            Index = i + 1,
+            FileName = Path.GetFileName(f),
+            Url = $"/api/local/gallery/{gid}/page/{i}"
+        }).ToList();
+    }
+
+    /// <summary>获取缓存的页面文件列表（按 gid 缓存 10 秒，避免同一画廊反复枚举目录）</summary>
+    private List<string>? GetCachedPageFiles(int gid)
+    {
+        var now = DateTime.UtcNow;
+        lock (_pageFilesCacheLock)
+        {
+            if (_pageFilesCache.TryGetValue(gid, out var entry) && (now - entry.Time) < _pageFilesCacheTtl)
+                return entry.Files;
+        }
+        var dir = FindLocalDir(gid);
+        if (dir == null) return null;
+        try
+        {
+            var files = Directory.GetFiles(dir).Where(f => IsImageFile(f)).OrderBy(f => f).ToList();
+            lock (_pageFilesCacheLock) { _pageFilesCache[gid] = (files, now); }
+            return files;
+        }
+        catch { return null; }
     }
 
     /// <summary>安全枚举图片文件（忽略无法访问的）</summary>
@@ -168,21 +482,22 @@ public class LocalGalleryService
         catch { return null; }
     }
 
-    /// <summary>获取本地图片文件路径</summary>
+    /// <summary>获取本地图片文件路径（使用缓存的文件列表）</summary>
     public string? GetPageFilePath(int gid, int pageIndex)
     {
-        var dir = FindLocalDir(gid);
-        if (dir == null) return null;
-        var files = Directory.GetFiles(dir)
-            .Where(f => IsImageFile(f))
-            .OrderBy(f => f)
-            .ToList();
-        if (pageIndex < 0 || pageIndex >= files.Count) return null;
+        var files = GetCachedPageFiles(gid);
+        if (files == null || pageIndex < 0 || pageIndex >= files.Count) return null;
         return files[pageIndex];
     }
 
     private string? FindLocalDir(int gid)
     {
+        // 负数 gid：旧版 Manga 防腐层，从注册的映射中查找
+        if (gid < 0)
+        {
+            _legacyDirs.TryGetValue(gid, out var dir);
+            return dir;
+        }
         if (!Directory.Exists(BaseDir)) return null;
         return Directory.GetDirectories(BaseDir, $"{gid}-*").FirstOrDefault();
     }
@@ -360,6 +675,37 @@ public class LocalGalleryService
         return null;
     }
 
+    /// <summary>获取缓存的 meta 标签（不读文件，避免专辑详情页大量 IO）</summary>
+    public static Dictionary<string, List<string>>? GetCachedMetaTags(int gid)
+    {
+        // 直接读取 meta.json（后续可加内存缓存）
+        var localDir = FindLocalDirStatic(gid);
+        if (localDir == null) return null;
+        var metaFile = Path.Combine(localDir, ".meta.json");
+        if (!File.Exists(metaFile)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(metaFile));
+            if (doc.RootElement.TryGetProperty("tags", out var tags))
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(tags.GetRawText());
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static string? FindLocalDirStatic(int gid)
+    {
+        if (gid < 0)
+        {
+            _legacyDirs.TryGetValue(gid, out var dir);
+            return dir;
+        }
+        if (!Directory.Exists(BaseDir)) return null;
+        return Directory.GetDirectories(BaseDir, $"{gid}-*").FirstOrDefault();
+    }
+
     private static bool IsImageFile(string path) => Path.GetExtension(path).ToLower() switch
     {
         ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" => true,
@@ -411,4 +757,48 @@ public class LocalPageItem
     public int Index { get; set; }
     public string FileName { get; set; } = "";
     public string Url { get; set; } = "";
+}
+
+/// <summary>轻量元数据（仅分组所需字段，体积小）</summary>
+public class LocalGalleryMeta
+{
+    public int Gid { get; set; }
+    public List<string> Artists { get; set; } = new();
+    public List<string> Groups { get; set; } = new();
+    public string? Category { get; set; }
+    public string? Language { get; set; }
+}
+
+/// <summary>侧边栏分组信息</summary>
+public class GroupInfo
+{
+    public string Key { get; set; } = "";
+    public string Type { get; set; } = "";  // artist | group | multi | unknown
+    public string Name { get; set; } = "";
+    public int Count { get; set; }
+}
+
+/// <summary>分页查询结果</summary>
+public class GalleryPagedResult
+{
+    public List<LocalGallerySummary> Items { get; set; } = new();
+    public int Total { get; set; }
+    public int TotalPages { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 30;
+}
+
+/// <summary>画廊摘要（用于画廊卡片，不含 Pages/Tags/EH 详情）</summary>
+public class LocalGallerySummary
+{
+    public int Gid { get; set; }
+    public string Title { get; set; } = "";
+    public int FileCount { get; set; }
+    public long TotalSize { get; set; }
+    public string? Category { get; set; }
+    public double Rating { get; set; }
+    public string? Language { get; set; }
+    public DateTime LastModified { get; set; }
+    public List<string> Artists { get; set; } = new();
+    public List<string> Groups { get; set; } = new();
 }

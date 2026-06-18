@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import LocalGallery from './pages/LocalGallery'
-import Detail from './pages/Detail'
-import Reader from './pages/Reader'
+import ReaderRedirect from './pages/ReaderRedirect'
 import EHentai from './pages/EHentai'
 import ReaderLocal from './pages/ReaderLocal'
 import DownloadMonitor from './pages/DownloadMonitor'
@@ -44,8 +43,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LocalGallery />} />
         <Route path="/local" element={<LocalGallery />} />
-        <Route path="/manga/:id" element={<Detail />} />
-        <Route path="/reader/:id" element={<Reader />} />
+        <Route path="/reader/:id" element={<ReaderRedirect />} />
         <Route path="/reader-local/:gid" element={<ReaderLocal />} />
         <Route path="/ehentai" element={<EHentai />} />
         <Route path="/downloads" element={<DownloadMonitor />} />

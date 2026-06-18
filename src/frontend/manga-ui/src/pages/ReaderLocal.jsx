@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { fetchLocalGalleries, fetchLocalGalleryPagesAbortable, API_BASE, fetchReadingProgressAbortable, saveReadingProgress } from '../api'
+import { fetchLocalGalleriesPaged, fetchLocalGalleryPagesAbortable, API_BASE, fetchReadingProgressAbortable, saveReadingProgress } from '../api'
 import { useReaderSettings } from '../useReaderSettings'
 import PageImage from '../components/PageImage'
 
@@ -28,7 +28,8 @@ export default function ReaderLocal() {
   const [pages, setPages] = useState([])
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [galleries, setGalleries] = useState([])
+  // 画廊间导航上下文（从 LocalGallery 传入的筛选参数 + 当前分页 GID 列表）
+  const [readerContext, setReaderContext] = useState(null)  // { group, search, sort, pageSize, page, gids }
   const [toast, setToast] = useState(null)
   const [showUI, setShowUI] = useState(true)
   const hideTimerRef = useRef(null)
@@ -72,10 +73,15 @@ export default function ReaderLocal() {
   const { settings, updateSetting } = useReaderSettings()
   const { fitMode, fitPercent, transition, readMode, slideInterval, scrollSpeed, loopMode } = settings
 
-  // 加载画廊列表（模块级缓存，避免每次切换都请求）
+  // 从 sessionStorage 获取筛选上下文（由 LocalGallery 传入）
   useEffect(() => {
-    fetchLocalGalleries().then(list => setGalleries(list)).catch(() => { })
-  }, [])
+    try {
+      const ctx = JSON.parse(sessionStorage.getItem('reader-local-context') || 'null')
+      if (ctx && Array.isArray(ctx.gids) && ctx.gids.length > 0) {
+        setReaderContext(ctx)
+      }
+    } catch { }
+  }, [gid])
 
   // 加载当前漫画的阅读进度（只在 gid 变化时请求，取消旧请求）
   useEffect(() => {
@@ -91,7 +97,6 @@ export default function ReaderLocal() {
   }, [currentGid])
 
   useEffect(() => {
-    // 取消上一次未完成的请求
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -106,19 +111,38 @@ export default function ReaderLocal() {
       .catch(() => setLoading(false))
   }, [gid])
 
-  // 从 sessionStorage 获取筛选后的 gid 列表（由 LocalGallery 传入）
-  const [readerList, setReaderList] = useState(null)
-  useEffect(() => {
+  // 请求相邻分页的 GID 列表（到达边界时）
+  const fetchAdjacentPage = useCallback(async (direction) => {
+    if (!readerContext || readerContext.group === undefined) return null
+    const newPage = (readerContext.page || 1) + (direction === 'prev' ? -1 : 1)
+    if (newPage < 1) return null
     try {
-      const list = JSON.parse(sessionStorage.getItem('reader-local-list') || 'null')
-      if (Array.isArray(list) && list.length > 0) setReaderList(list)
+      const result = await fetchLocalGalleriesPaged({
+        group: readerContext.group || 'all',
+        search: readerContext.search || '',
+        sort: readerContext.sort || 'modified-desc',
+        page: newPage,
+        pageSize: readerContext.pageSize || 30
+      })
+      if (result && result.items && result.items.length > 0) {
+        // 更新上下文：替换 GID 列表和页码
+        setReaderContext(prev => ({
+          ...prev,
+          page: newPage,
+          gids: result.items.map(g => g.gid),
+          total: result.total,
+          totalPages: result.totalPages
+        }))
+        return direction === 'prev' ? result.items.map(g => g.gid).reverse() : result.items.map(g => g.gid)
+      }
     } catch { }
-  }, [gid])
+    return null
+  }, [readerContext])
 
-  const currentIdx = readerList ? readerList.indexOf(currentGid) : galleries.findIndex(g => g.gid === currentGid)
-  const displayGalleries = readerList || galleries
-  const hasPrevGallery = currentIdx > 0
-  const hasNextGallery = currentIdx < displayGalleries.length - 1
+  const displayGids = readerContext?.gids || []
+  const currentIdx = displayGids.indexOf(currentGid)
+  const hasPrevGallery = currentIdx > 0 || (readerContext?.page > 1)
+  const hasNextGallery = currentIdx < displayGids.length - 1 || (readerContext?.page < (readerContext?.totalPages || 1))
 
   const goPrevPage = () => setIndex(i => Math.max(0, i - 1))
   const goNextPage = () => setIndex(i => Math.min(pages.length - 1, i + 1))
@@ -137,17 +161,35 @@ export default function ReaderLocal() {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [index, currentGid])
 
-  const goPrevGallery = () => {
-    if (hasPrevGallery) {
-      navigate(`/reader-local/${displayGalleries[currentIdx - 1]}`)
+  const goPrevGallery = async () => {
+    if (currentIdx > 0) {
+      navigate(`/reader-local/${displayGids[currentIdx - 1]}`)
+    } else if (readerContext?.page > 1) {
+      // 到达当前分页边界，请求上一分页
+      const adjGids = await fetchAdjacentPage('prev')
+      if (adjGids && adjGids.length > 0) {
+        navigate(`/reader-local/${adjGids[adjGids.length - 1]}`)
+      } else {
+        setToast('已经是第一部'); setTimeout(() => setToast(null), 1500)
+      }
+    } else {
+      setToast('已经是第一部'); setTimeout(() => setToast(null), 1500)
     }
-    else { setToast('已经是第一部'); setTimeout(() => setToast(null), 1500) }
   }
-  const goNextGallery = () => {
-    if (hasNextGallery) {
-      navigate(`/reader-local/${displayGalleries[currentIdx + 1]}`)
+  const goNextGallery = async () => {
+    if (currentIdx < displayGids.length - 1) {
+      navigate(`/reader-local/${displayGids[currentIdx + 1]}`)
+    } else if (readerContext?.page < (readerContext?.totalPages || 1)) {
+      // 到达当前分页边界，请求下一分页
+      const adjGids = await fetchAdjacentPage('next')
+      if (adjGids && adjGids.length > 0) {
+        navigate(`/reader-local/${adjGids[0]}`)
+      } else {
+        setToast('已经是最后一部'); setTimeout(() => setToast(null), 1500)
+      }
+    } else {
+      setToast('已经是最后一部'); setTimeout(() => setToast(null), 1500)
     }
-    else { setToast('已经是最后一部'); setTimeout(() => setToast(null), 1500) }
   }
 
   const setFitModeAndSave = (m) => { updateSetting('fitMode', m); requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))) }
@@ -241,10 +283,11 @@ export default function ReaderLocal() {
       else if (e.ctrlKey && e.key === 'ArrowDown') { e.preventDefault(); actionsRef.current.goNextGallery() }
       else if (e.key === 'Escape') {
         e.preventDefault()
-        // 保存所有阅读进度后退出
+        // 保存所有阅读进度后退出到画廊页（使用进入前的完整 URL，不依赖浏览器历史）
         const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
         saveReadingProgress(items)
-        navigate('/')
+        const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
+        navigate(`/local${returnUrl}`, { replace: true })
       }
       else if (e.key === ' ') { e.preventDefault(); setSlideshow(s => !s) }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault() }
@@ -378,7 +421,7 @@ export default function ReaderLocal() {
     return (
       <div style={{ position: 'fixed', inset: 0, background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
         <div style={{ color: '#888' }}>暂无图片</div>
-        <Link to="/" className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>← 返回</Link>
+        <button className="btn-sm" onClick={() => { const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''; navigate(`/local${returnUrl}`, { replace: true }) }} style={{ color: '#a78bfa', borderColor: '#7c3aed' }}>← 返回</button>
       </div>
     )
   }
@@ -409,18 +452,19 @@ export default function ReaderLocal() {
       {/* 顶栏 */}
       <div className={`reader-topbar ${showUI ? '' : 'hidden'}`}>
         <div className="reader-topbar-left">
-          <a href="/" className="reader-back-btn" onClick={e => {
+          <a href="/local" className="reader-back-btn" onClick={e => {
             e.preventDefault()
             const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
             saveReadingProgress(items)
-            navigate('/')
+            const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
+            navigate(`/local${returnUrl}`, { replace: true })
           }}>← 返回</a>
-          <span className="reader-title" style={{ maxWidth: 300 }}>{(readerList ? galleries.find(g => g.gid === currentGid) : galleries[currentIdx])?.title || `GID ${gid}`}</span>
+          <span className="reader-title" style={{ maxWidth: 300 }}>GID {gid}</span>
         </div>
         <div className="reader-topbar-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="reader-btn" onClick={goPrevGallery} disabled={!hasPrevGallery} title="上一部 (↑)">▲</button>
           <button className="reader-btn" onClick={goNextGallery} disabled={!hasNextGallery} title="下一部 (↓)">▼</button>
-          <span className="reader-page-num">{currentIdx + 1}/{displayGalleries.length} 部 · {index + 1}/{pages.length} 页</span>
+          <span className="reader-page-num">{readerContext?.total ? `P${readerContext.page} ` : ''}{currentIdx + 1}/{displayGids.length} 部 · {index + 1}/{pages.length} 页</span>
           <button className="reader-btn" onClick={() => setShowHelp(s => !s)} title="快捷键 (?/H)" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>?</button>
         </div>
       </div>

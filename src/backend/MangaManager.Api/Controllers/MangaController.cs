@@ -98,6 +98,30 @@ public class MangaController : ControllerBase
         }));
     }
 
+    /// <summary>
+    /// 防腐层：将旧版 Manga (Id) 转换为新版 LocalGallery 的虚拟 gid，
+    /// 使旧版数据能通过 ReaderLocal 统一阅读
+    /// </summary>
+    [HttpGet("{id}/as-local-gallery")]
+    public async Task<IActionResult> AsLocalGallery(int id)
+    {
+        var manga = await _mangaService.GetDetailAsync(id);
+        if (manga == null)
+            return NotFound(new ApiResponse<object>(false, null, "漫画不存在"));
+
+        // 使用负数 ID 作为虚拟 gid（避免与 E-Hentai gid 冲突）
+        int virtualGid = -Math.Abs(id);
+        LocalGalleryService.RegisterLegacyDir(id, manga.FolderPath);
+
+        return Ok(new ApiResponse<object>(true, new
+        {
+            gid = virtualGid,
+            title = manga.Title,
+            fileCount = manga.FileCount,
+            folderPath = manga.FolderPath
+        }));
+    }
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id, [FromQuery] bool deleteFolder = false)
     {

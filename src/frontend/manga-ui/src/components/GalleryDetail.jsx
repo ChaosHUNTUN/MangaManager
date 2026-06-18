@@ -73,7 +73,7 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
           <div style={{ display: 'flex', gap: 16 }}>
             <div style={{ flexShrink: 0, width: 140, borderRadius: 8, overflow: 'hidden', border: '1px solid #2a2a4a', background: '#1a1a2e' }}><img src={getLocalCoverUrl(detail.gid)} alt="" style={{ width: '100%', display: 'block' }} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: '#e0e0e0', fontWeight: 600 }}>{detail.title}</h3>
+              <h3 title={detail.title} style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: '#e0e0e0', fontWeight: 600 }}>{detail.title}</h3>
               {detail.titleJpn && <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: 8 }}>{detail.titleJpn}</div>}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 <span style={{ padding: '2px 10px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600, background: getCategoryColor(detail.category), color: '#fff' }}>{detail.category}</span>
@@ -104,7 +104,7 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
         )}
         <div style={{ padding: '14px 24px', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Link to={`/reader-local/${detail.gid}`} onClick={() => { try { sessionStorage.setItem('reader-local-list', JSON.stringify(filtered.map(g => g.gid))) } catch { } }} className="btn-sm" style={{ textDecoration: 'none', borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</Link>
+            <Link to={`/reader-local/${detail.gid}`} onClick={() => { try { sessionStorage.setItem('reader-local-context', JSON.stringify({ gids: filtered.map(g => g.gid) })) } catch { } }} className="btn-sm" style={{ textDecoration: 'none', borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</Link>
             {detail.token && <a href={`https://${detail.isExhentai ? 'exhentai' : 'e-hentai'}.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer" className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 {detail.isExhentai ? 'ExHentai' : 'E-Hentai'} 查看</a>}
             {/* 只在作品未处于任何自定义专辑时显示"添加到专辑" */}
             {!inCustomAlbum && (

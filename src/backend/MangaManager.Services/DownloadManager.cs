@@ -9,7 +9,7 @@ namespace MangaManager.Services;
 
 /// <summary>
 /// 下载管理器：队列管理、并发控制、进度追踪、异常重启
-/// 通过 WebSocket 向所有连接的客户端广播下载状态更新
+/// 通过 SSE 事件流向所有连接的客户端广播下载状态更新
 /// </summary>
 public class DownloadManager
 {
@@ -21,8 +21,7 @@ public class DownloadManager
     private CancellationTokenSource? _cts;
     private Task? _workerTask;
 
-    // WebSocket 客户端集合
-    private readonly ConcurrentDictionary<string, System.Net.WebSockets.WebSocket> _wsClients = new();
+    // SSE 通道集合（用于向 HTTP 长连接客户端推送下载进度）
     private readonly ConcurrentDictionary<int, System.Threading.Channels.Channel<string>> _sseChannels = new();
 
     // 进度广播事件
@@ -266,19 +265,7 @@ public class DownloadManager
         return task;
     }
 
-    /// <summary>注册 WebSocket 客户端</summary>
-    public void RegisterWebSocket(string clientId, System.Net.WebSockets.WebSocket ws)
-    {
-        _wsClients[clientId] = ws;
-    }
-
-    /// <summary>注销 WebSocket 客户端</summary>
-    public void UnregisterWebSocket(string clientId)
-    {
-        _wsClients.TryRemove(clientId, out _);
-    }
-
-    /// <summary>获取 SSE 通道（用于 HTTP 长轮询降级方案）</summary>
+    /// <summary>获取或创建 SSE 通道（用于 HTTP 长连接进度推送）</summary>
     public System.Threading.Channels.Channel<string> GetOrCreateSseChannel(int? gid = null)
     {
         var key = gid ?? 0;
@@ -312,20 +299,6 @@ public class DownloadManager
         // SSE 广播（全局通道 + 单任务通道）
         BroadcastSse(0, json);
         BroadcastSse(task.Gid, json);
-
-        // WebSocket 广播
-        foreach (var (_, ws) in _wsClients)
-        {
-            if (ws.State == System.Net.WebSockets.WebSocketState.Open)
-            {
-                try
-                {
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-                    ws.SendAsync(new ArraySegment<byte>(bytes), System.Net.WebSockets.WebSocketMessageType.Text, true, CancellationToken.None);
-                }
-                catch { }
-            }
-        }
     }
 
     private void BroadcastSse(int key, string data)
@@ -577,12 +550,11 @@ public class DownloadManager
                     t.Title = $"Gallery {t.Gid}";
                 }
 
-                // 中断的任务标记为 failed，下次可重启
+                // 中断的任务自动恢复（断点续传：.progress 文件保留已下载页码）
                 if (t.Status == "downloading")
                 {
-                    t.Status = "failed";
-                    t.ErrorMsg = "上次下载被中断";
-                    t.CompletedAt = DateTime.UtcNow;
+                    t.Status = "pending";
+                    t.ErrorMsg = null;
                     t.UpdatedAt = DateTime.UtcNow;
                 }
                 _tasks[t.Gid] = t;

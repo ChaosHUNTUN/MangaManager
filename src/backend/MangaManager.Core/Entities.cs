@@ -155,9 +155,33 @@ public class AlbumConfig
     public int Id { get; set; }
     public string Key { get; set; } = "";       // 匹配键（不可变）
     public string Name { get; set; } = "";       // 显示名称（可修改）
+    public string Color { get; set; } = "";      // 专辑颜色 (#RRGGBB)
     public string Gids { get; set; } = "[]";     // JSON 数组: [1,2,3]
     public string Order { get; set; } = "[]";    // JSON 数组: 自定义排序 [2,1,3]
+    public int Count { get; set; }               // 专辑内容数量（与 Gids 长度同步）
+    public string? KeyTag { get; set; }           // EH 标准标签，如 "artist:haiboku"
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>本地画廊作品的数据库缓存（主存储为 .meta.json，此表为元数据索引加速查询）</summary>
+public class LocalGallery
+{
+    public int Gid { get; set; }                // EHentai Gallery ID（主键）
+    public string Title { get; set; } = "";
+    public string DirPath { get; set; } = "";   // 本地目录路径
+    public string? Category { get; set; }
+    public string? Language { get; set; }
+    public double Rating { get; set; }
+    public int FileCount { get; set; }
+    public long FileSize { get; set; }
+    public string? CoverFile { get; set; }      // 封面图片路径
+    public string? Artists { get; set; }         // JSON: ["wada","hoge"]
+    public string? Groups { get; set; }          // JSON: ["circle"]
+    public string? OnlineUrl { get; set; }       // EH 页面链接
+    public string? Token { get; set; }           // EH token
+    public DateTime? DownloadedAt { get; set; }
+    public DateTime LastModified { get; set; }
+    public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
 }

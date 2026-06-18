@@ -280,6 +280,35 @@ export async function fetchLocalGalleries() {
   const json = await request('/api/local/galleries')
   return json.data || []
 }
+
+/// 获取轻量元数据列表（仅 gid+artists+groups+category+language）
+export async function fetchLocalGalleryMetas() {
+  const json = await request('/api/local/galleries/meta')
+  return json.data || []
+}
+
+/// 分页获取画廊摘要（POST body 传参，避免 albumGids 过长导致 414 URI Too Long）
+export async function fetchLocalGalleriesPaged({ group, search, sort, page = 1, pageSize = 20, albumGids, albumOrder } = {}) {
+  const json = await request('/api/local/galleries/paged', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ group, search, sort, page, pageSize, albumGids, albumOrder })
+  })
+  return json.data || { items: [], total: 0, totalPages: 0, page: 1, pageSize: 20 }
+}
+
+/// 随机抽取 N 部作品
+export async function fetchLocalGalleriesRandom(count = 20) {
+  const json = await request(`/api/local/galleries/random?count=${count}`)
+  return json.data || { items: [], total: 0, totalPages: 0 }
+}
+
+/// 获取侧边栏自动分组信息
+export async function fetchLocalGalleryGroups() {
+  const json = await request('/api/local/groups')
+  return json.data || []
+}
+
 export async function fetchLocalGalleryDetail(gid) {
   const json = await request(`/api/local/gallery/${gid}`)
   return json.data
@@ -426,5 +455,46 @@ export async function saveAlbumConfig(config) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config)
+  })
+}
+
+export async function renameAlbum(key, name) {
+  return request(`/api/albums/${encodeURIComponent(key)}/rename`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  })
+}
+
+/// 获取单个专辑详情（含关联标签及翻译）
+export async function fetchAlbumDetail(key) {
+  try {
+    const json = await request(`/api/albums/${encodeURIComponent(key)}`)
+    return json.data  // 含 key, name, color, count, gidCount, createdAt, updatedAt, keyTag, gids
+  } catch { return null }
+}
+
+/// 查询所有专辑简略信息（key, name, color, count, createdAt）
+export async function fetchAlbumSummary() {
+  try {
+    const json = await request('/api/albums/summary')
+    return json.data || []
+  } catch { return [] }
+}
+
+/// 根据 Key 查询专辑详细信息（简略信息 + gid 列表 + keyTag）
+export async function fetchAlbumDetailV2(key) {
+  try {
+    const json = await request(`/api/albums/${encodeURIComponent(key)}/detail`)
+    return json.data
+  } catch { return null }
+}
+
+/// 更新专辑属性（名称、颜色）
+export async function updateAlbum(key, { name, color }) {
+  return request(`/api/albums/${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color })
   })
 }
