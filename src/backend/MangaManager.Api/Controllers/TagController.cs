@@ -14,7 +14,7 @@ public class TagController : ControllerBase
 
     public TagController(MangaDbContext db) => _db = db;
 
-    // 获取所有标签（可按分类筛选）
+    /// <summary>获取所有标签（可按分类筛选）</summary>
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? category)
     {
@@ -28,7 +28,7 @@ public class TagController : ControllerBase
         return Ok(new ApiResponse<List<TagDto>>(true, tags));
     }
 
-    // 获取标签分类定义
+    /// <summary>获取标签分类定义</summary>
     [HttpGet("categories")]
     public IActionResult GetCategories()
     {
@@ -46,7 +46,7 @@ public class TagController : ControllerBase
         return Ok(new ApiResponse<object>(true, categories));
     }
 
-    // 创建标签（带分类）
+    /// <summary>创建标签（带分类）</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTagRequest req)
     {
@@ -68,7 +68,7 @@ public class TagController : ControllerBase
         return Ok(new ApiResponse<TagDto>(true, new TagDto(tag.Id, tag.Name, tag.Color, tag.Category)));
     }
 
-    // 编辑标签（修改名称/颜色/分类，影响所有关联漫画）
+    /// <summary>编辑标签（修改名称/颜色/分类，影响所有关联漫画）</summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateTagRequest req)
     {
@@ -89,7 +89,7 @@ public class TagController : ControllerBase
         return Ok(new ApiResponse<TagDto>(true, new TagDto(tag.Id, tag.Name, tag.Color, tag.Category)));
     }
 
-    // 删除标签
+    /// <summary>删除标签</summary>
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
@@ -103,84 +103,3 @@ public class TagController : ControllerBase
 
 public record CreateTagRequest(string Name, string? Color, string? Category);
 public record UpdateTagRequest(string? Name, string? Color, string? Category);
-
-// 漫画标签操作
-[ApiController]
-[Route("api/manga/{mangaId}/tags")]
-public class MangaTagController : ControllerBase
-{
-    private readonly MangaDbContext _db;
-
-    public MangaTagController(MangaDbContext db) => _db = db;
-
-    [HttpGet]
-    public async Task<IActionResult> GetTags(int mangaId)
-    {
-        var tags = await _db.MangaTags
-            .Where(mt => mt.MangaId == mangaId)
-            .Include(mt => mt.Tag)
-            .Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category))
-            .ToListAsync();
-        return Ok(new ApiResponse<List<TagDto>>(true, tags));
-    }
-
-    [HttpPut]
-    public async Task<IActionResult> SetTags(int mangaId, [FromBody] List<int> tagIds)
-    {
-        if (tagIds.Count > 100)
-            return BadRequest(new ApiResponse<object>(false, null, "最多 100 个标签"));
-
-        var manga = await _db.Mangas.FindAsync(mangaId);
-        if (manga == null) return NotFound();
-
-        var oldTags = await _db.MangaTags.Where(mt => mt.MangaId == mangaId).ToListAsync();
-        _db.MangaTags.RemoveRange(oldTags);
-
-        foreach (var tagId in tagIds.Distinct())
-        {
-            var tag = await _db.Tags.FindAsync(tagId);
-            if (tag != null)
-                _db.MangaTags.Add(new MangaTag { MangaId = mangaId, TagId = tagId });
-        }
-        await _db.SaveChangesAsync();
-
-        var tags = await _db.MangaTags
-            .Where(mt => mt.MangaId == mangaId)
-            .Include(mt => mt.Tag)
-            .Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category))
-            .ToListAsync();
-
-        return Ok(new ApiResponse<List<TagDto>>(true, tags));
-    }
-}
-
-public record BatchTagRequest(List<int> MangaIds, List<int> TagIds);
-
-[ApiController]
-[Route("api/manga/batch/tags")]
-public class BatchTagController : ControllerBase
-{
-    private readonly MangaDbContext _db;
-
-    public BatchTagController(MangaDbContext db) => _db = db;
-
-    [HttpPost]
-    public async Task<IActionResult> BatchAddTags([FromBody] BatchTagRequest req)
-    {
-        foreach (var mangaId in req.MangaIds)
-        {
-            foreach (var tagId in req.TagIds)
-            {
-                var exists = await _db.MangaTags.AnyAsync(mt => mt.MangaId == mangaId && mt.TagId == tagId);
-                if (!exists)
-                {
-                    var tag = await _db.Tags.FindAsync(tagId);
-                    if (tag != null)
-                        _db.MangaTags.Add(new MangaTag { MangaId = mangaId, TagId = tagId });
-                }
-            }
-        }
-        await _db.SaveChangesAsync();
-        return Ok(new ApiResponse<object>(true, new { count = req.MangaIds.Count * req.TagIds.Count }));
-    }
-}
