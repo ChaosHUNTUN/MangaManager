@@ -37,9 +37,9 @@ public class EhLocalController : ControllerBase
     [HttpGet("local-image/{gid}/{filename}")]
     public IActionResult ServeLocalImage(int gid, string filename)
     {
-        if (Directory.Exists(EhentaiService.DefaultDownloadDir))
+        if (Directory.Exists(EhentaiFileHelper.DefaultDownloadDir))
         {
-            var dirs = Directory.GetDirectories(EhentaiService.DefaultDownloadDir, $"{gid}-*");
+            var dirs = Directory.GetDirectories(EhentaiFileHelper.DefaultDownloadDir, $"{gid}-*");
             foreach (var dir in dirs)
             {
                 var filePath = Path.Combine(dir, filename);

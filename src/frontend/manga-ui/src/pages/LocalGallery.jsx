@@ -764,13 +764,15 @@ const setToast = (msg, duration = 2000) => {
           {ribbonText}
         </div>
       )}
-      <div style={{ position: 'relative', width: '100%', paddingBottom: '140%', background: '#1a1a2e' }}>
+      <div style={{ position: 'relative', width: '100%', paddingBottom: '140%', background: 'linear-gradient(135deg, #1a1a2e 25%, #252545 50%, #1a1a2e 75%)', backgroundSize: '200% 200%', animation: 'shimmer 1.5s ease-in-out infinite' }}>
         {/* 封面用 onMouseDown 触发自定义拖拽 */}
         <img src={getLocalCoverUrl(g.gid)} alt={g.title}
           draggable={false}
           onMouseDown={!batchMode ? e => handleDragMouseDown(g.gid, e) : undefined}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', cursor: batchMode ? 'default' : 'grab' }}
-          loading="lazy" onError={e => { e.target.style.display = 'none' }} />
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', cursor: batchMode ? 'default' : 'grab', opacity: 0, transition: 'opacity 0.3s' }}
+          loading="lazy"
+          onLoad={e => { e.target.style.opacity = '1'; e.target.parentElement.style.background = '#1a1a2e'; e.target.parentElement.style.backgroundSize = 'auto'; e.target.parentElement.style.animation = 'none' }}
+          onError={e => { e.target.style.display = 'none'; e.target.parentElement.style.background = '#1a1a2e'; e.target.parentElement.style.backgroundSize = 'auto'; e.target.parentElement.style.animation = 'none' }} />
         {/* 点击触发的 hover 层 — 覆盖在图片上，阻止拖拽穿透到图片 */}
         {!batchMode && showOverlay && (
           <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', background: 'rgba(0,0,0,0.3)', zIndex: 5 }}>

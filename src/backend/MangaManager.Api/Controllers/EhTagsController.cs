@@ -26,7 +26,7 @@ public class EhTagsController : ControllerBase
         {
             foreach (var tag in req.Tags)
             {
-                var cn = EhentaiService.TranslateTag(tag);
+                var cn = EhentaiTagService.TranslateTag(tag);
                 result.Add(new { key = tag, cn });
             }
         }
@@ -37,7 +37,7 @@ public class EhTagsController : ControllerBase
     [HttpGet("tags/translate-ns")]
     public IActionResult TranslateNamespace([FromQuery] string ns)
     {
-        var cn = EhentaiService.TranslateNamespace(ns);
+        var cn = EhentaiTagService.TranslateNamespace(ns);
         return Ok(new ApiResponse<object>(true, new { ns, cn }));
     }
 
@@ -47,7 +47,7 @@ public class EhTagsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 1)
             return Ok(new ApiResponse<object>(true, Array.Empty<object>()));
-        var results = EhentaiService.SuggestTags(q, Math.Clamp(limit, 1, 100));
+        var results = EhentaiTagService.SuggestTags(q, Math.Clamp(limit, 1, 100));
         return Ok(new ApiResponse<object>(true, results));
     }
 

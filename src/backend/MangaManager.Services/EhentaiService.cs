@@ -7,6 +7,7 @@ using System.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace MangaManager.Services;
 
@@ -17,6 +18,7 @@ namespace MangaManager.Services;
 public class EhentaiService
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<EhentaiService> _logger;
     private readonly CookieContainer _cookieContainer;
     private readonly string _cookieFile;
 
@@ -34,9 +36,10 @@ public class EhentaiService
     /// <summary>获取共享的 HttpClient（由 IHttpClientFactory 管理）</summary>
     private HttpClient _http => _httpClientFactory.CreateClient("ehentai");
 
-    public EhentaiService(IHttpClientFactory httpClientFactory, IWebHostEnvironment env,
+    public EhentaiService(IHttpClientFactory httpClientFactory, IWebHostEnvironment env, ILogger<EhentaiService> logger,
         [FromKeyedServices("EhentaiCookies")] CookieContainer cookieContainer)
     {
+        _logger = logger;
         _httpClientFactory = httpClientFactory;
         _cookieContainer = cookieContainer;
         _cookieFile = Path.Combine(env.ContentRootPath, "ehentai_cookies.json");
@@ -636,7 +639,7 @@ public class EhentaiService
             {
                 var numStr = totalMatch.Groups[1].Value.Replace(",", "");
                 int.TryParse(numStr, out totalImages);
-                Console.WriteLine($"[EH] Total pages from 'Length': {totalImages}");
+                _logger.LogInformation($"[EH] Total pages from 'Length': {totalImages}");
             }
 
             if (totalImages <= 0)
@@ -649,18 +652,18 @@ public class EhentaiService
                 {
                     var numStr = sm.Groups[1].Value.Replace(",", "");
                     int.TryParse(numStr, out totalImages);
-                    Console.WriteLine($"[EH] Total pages from 'Showing': {totalImages}");
+                    _logger.LogInformation($"[EH] Total pages from 'Showing': {totalImages}");
                 }
             }
 
             // 解析第一页缩略图
             var firstPageMatches = ParsePreviewMatches(firstHtml);
-            Console.WriteLine($"[EH] p=0 found {firstPageMatches.Count} preview URLs");
+            _logger.LogInformation($"[EH] p=0 found {firstPageMatches.Count} preview URLs");
             pages.AddRange(firstPageMatches);
 
             // 计算每页缩略图数量（动态计算，因为用户可能设置了20/40张）
             int previewPerPage = firstPageMatches.Count > 0 ? firstPageMatches.Count : 40;
-            Console.WriteLine($"[EH] previewPerPage = {previewPerPage}");
+            _logger.LogInformation($"[EH] previewPerPage = {previewPerPage}");
 
             // 如果总页数未知，尝试从分页导航中推断
             if (totalImages <= 0)
@@ -677,7 +680,7 @@ public class EhentaiService
                 if (maxPageIdx > 0)
                 {
                     totalImages = (maxPageIdx + 1) * previewPerPage;
-                    Console.WriteLine($"[EH] Estimated total from page nav: {totalImages} (maxPageIdx={maxPageIdx})");
+                    _logger.LogInformation($"[EH] Estimated total from page nav: {totalImages} (maxPageIdx={maxPageIdx})");
                 }
             }
 
@@ -686,29 +689,29 @@ public class EhentaiService
             if (totalImages > 0 && previewPerPage > 0)
             {
                 int totalPreviewPages = (totalImages + previewPerPage - 1) / previewPerPage;
-                Console.WriteLine($"[EH] Need to fetch {totalPreviewPages} preview pages total");
+                _logger.LogInformation($"[EH] Need to fetch {totalPreviewPages} preview pages total");
 
                 for (int p = 1; p < totalPreviewPages; p++)
                 {
                     try
                     {
-                        Console.WriteLine($"[EH] Fetching preview page p={p}...");
+                        _logger.LogInformation($"[EH] Fetching preview page p={p}...");
                         var (pageHtml, _) = await GetGalleryPageHtmlAsync(gid, token, p);
                         var pageMatches = ParsePreviewMatches(pageHtml);
-                        Console.WriteLine($"[EH] p={p} found {pageMatches.Count} preview URLs");
+                        _logger.LogInformation($"[EH] p={p} found {pageMatches.Count} preview URLs");
                         pages.AddRange(pageMatches);
                         await Task.Delay(300);
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[EH] GetPages p={p} error: {ex.Message}");
+                        _logger.LogInformation($"[EH] GetPages p={p} error: {ex.Message}");
                     }
                 }
             }
             else
             {
                 // 兜底：如果总页数未知，持续遍历直到没有新图片
-                Console.WriteLine($"[EH] Unknown total, iterating until empty...");
+                _logger.LogInformation($"[EH] Unknown total, iterating until empty...");
                 int p = 1;
                 while (true)
                 {
@@ -716,7 +719,7 @@ public class EhentaiService
                     {
                         var (pageHtml, _) = await GetGalleryPageHtmlAsync(gid, token, p);
                         var pageMatches = ParsePreviewMatches(pageHtml);
-                        Console.WriteLine($"[EH] p={p} found {pageMatches.Count} preview URLs");
+                        _logger.LogInformation($"[EH] p={p} found {pageMatches.Count} preview URLs");
                         if (pageMatches.Count == 0) break;
                         pages.AddRange(pageMatches);
                         p++;
@@ -724,7 +727,7 @@ public class EhentaiService
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[EH] GetPages p={p} error: {ex.Message}");
+                        _logger.LogInformation($"[EH] GetPages p={p} error: {ex.Message}");
                         break;
                     }
                 }
@@ -733,9 +736,9 @@ public class EhentaiService
             pages = pages.GroupBy(p => p.Index).Select(g => g.First())
                          .OrderBy(p => p.Index).ToList();
         }
-        catch (Exception ex) { Console.WriteLine($"[EH] GetPages error: {ex.Message}"); }
+        catch (Exception ex) { _logger.LogInformation($"[EH] GetPages error: {ex.Message}"); }
 
-        Console.WriteLine($"[EH] Total pages: {pages.Count}");
+        _logger.LogInformation($"[EH] Total pages: {pages.Count}");
         return new PageResult(pages, "", "");
     }
 
@@ -843,11 +846,11 @@ public class EhentaiService
     private async Task<string> PostJson(string url, object payload)
     {
         var json = JsonSerializer.Serialize(payload, _jsonOpts);
-        Console.WriteLine($"[EH] POST {url} body={json[..Math.Min(200, json.Length)]}");
+        _logger.LogInformation($"[EH] POST {url} body={json[..Math.Min(200, json.Length)]}");
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         var resp = await _http.PostAsync(url, content);
         var body = await resp.Content.ReadAsStringAsync();
-        Console.WriteLine($"[EH] RESP {resp.StatusCode}: {body[..Math.Min(300, body.Length)]}");
+        _logger.LogInformation($"[EH] RESP {resp.StatusCode}: {body[..Math.Min(300, body.Length)]}");
         resp.EnsureSuccessStatusCode();
         return body;
     }
@@ -937,11 +940,11 @@ public class EhentaiService
             var lines = await File.ReadAllLinesAsync(progressFile);
             if (lines.Length > 0 && int.TryParse(lines[0], out var saved))
                 startFrom = saved;
-            Console.WriteLine($"[EH] 从第 {startFrom + 1} 页继续下载 {detail.Title}");
+            _logger.LogInformation($"[EH] 从第 {startFrom + 1} 页继续下载 {detail.Title}");
         }
 
         var pages = await GetPagesAsync(gid, token);
-        Console.WriteLine($"[EH] 开始下载 {detail.Title} ({pages.Pages.Count} 页)");
+        _logger.LogInformation($"[EH] 开始下载 {detail.Title} ({pages.Pages.Count} 页)");
 
         int success = 0, failed = 0;
         for (int i = startFrom; i < pages.Pages.Count; i++)
@@ -976,12 +979,12 @@ public class EhentaiService
                 {
                     if (retry < 2)
                     {
-                        Console.WriteLine($"[EH] 第 {i + 1} 页重试 {retry + 1}: {ex.Message}");
+                        _logger.LogInformation($"[EH] 第 {i + 1} 页重试 {retry + 1}: {ex.Message}");
                         await Task.Delay(1000 * (retry + 1)); // 递增延迟
                     }
                     else
                     {
-                        Console.WriteLine($"[EH] 第 {i + 1} 页下载失败: {ex.Message}");
+                        _logger.LogInformation($"[EH] 第 {i + 1} 页下载失败: {ex.Message}");
                     }
                 }
             }
@@ -1012,7 +1015,7 @@ public class EhentaiService
             }
         }
 
-        Console.WriteLine($"[EH] 下载完成: {success} 成功, {failed} 失败");
+        _logger.LogInformation($"[EH] 下载完成: {success} 成功, {failed} 失败");
 
         // 清理进度文件
         try { if (File.Exists(progressFile)) File.Delete(progressFile); } catch { }

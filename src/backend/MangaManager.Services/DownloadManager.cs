@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MangaManager.Core.Entities;
 using MangaManager.Data;
 
@@ -14,6 +15,7 @@ namespace MangaManager.Services;
 public class DownloadManager
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<DownloadManager> _logger;
     private readonly ConcurrentDictionary<int, DownloadTask> _tasks = new();    // gid → 任务
     private readonly ConcurrentQueue<int> _queue = new();                       // 等待队列
     private readonly SemaphoreSlim _semaphore = new(2, 2);                     // 最多 2 个并发下载
@@ -27,8 +29,9 @@ public class DownloadManager
     // 进度广播事件
     public event Action<DownloadTask>? OnTaskUpdated;
 
-    public DownloadManager(IServiceScopeFactory scopeFactory)
+    public DownloadManager(IServiceScopeFactory scopeFactory, ILogger<DownloadManager> logger)
     {
+        _logger = logger;
         _scopeFactory = scopeFactory;
         StartWorker();
     }
@@ -129,7 +132,7 @@ public class DownloadManager
         // 删除本地进度文件和已下载的部分文件
         try
         {
-            var dir = EhentaiService.GetGalleryLocalDir(gid, t.Title);
+            var dir = EhentaiFileHelper.GetGalleryLocalDir(gid, t.Title);
             if (Directory.Exists(dir))
             {
                 var progressFile = Path.Combine(dir, ".progress");
@@ -178,10 +181,10 @@ public class DownloadManager
         }
 
         // 优先通过 gid 前缀匹配目录（避免 title 中特殊字符导致路径不匹配）
-        var downloadDir = Directory.GetDirectories(EhentaiService.DefaultDownloadDir, $"{gid}-*").FirstOrDefault();
+        var downloadDir = Directory.GetDirectories(EhentaiFileHelper.DefaultDownloadDir, $"{gid}-*").FirstOrDefault();
         if (downloadDir == null)
         {
-            downloadDir = EhentaiService.GetGalleryLocalDir(gid, title);
+            downloadDir = EhentaiFileHelper.GetGalleryLocalDir(gid, title);
         }
         var progressFile = Path.Combine(downloadDir, ".progress");
 
@@ -261,7 +264,7 @@ public class DownloadManager
         BroadcastUpdate(task);
         _ = ProcessQueueAsync();
 
-        Console.WriteLine($"[DownloadManager] 恢复遗留任务 {title}: 从第 {downloadedPages + 1} 页继续, 已下载 {downloadedBytes} bytes");
+        _logger.LogInformation($"[DownloadManager] 恢复遗留任务 {title}: 从第 {downloadedPages + 1} 页继续, 已下载 {downloadedBytes} bytes");
         return task;
     }
 
@@ -365,7 +368,7 @@ public class DownloadManager
             task.Status = "failed";
             task.ErrorMsg = ex.Message;
             task.CompletedAt = DateTime.UtcNow;
-            Console.WriteLine($"[DownloadManager] 任务 {task.Gid} 异常: {ex.Message}");
+            _logger.LogInformation($"[DownloadManager] 任务 {task.Gid} 异常: {ex.Message}");
         }
         finally
         {
@@ -391,10 +394,10 @@ public class DownloadManager
         BroadcastUpdate(task);
 
         // 用 gid 前缀匹配已有目录（支持从遗留目录继续下载）
-        var downloadDir = System.IO.Directory.GetDirectories(EhentaiService.DefaultDownloadDir, $"{task.Gid}-*").FirstOrDefault();
+        var downloadDir = System.IO.Directory.GetDirectories(EhentaiFileHelper.DefaultDownloadDir, $"{task.Gid}-*").FirstOrDefault();
         if (downloadDir == null)
         {
-            downloadDir = EhentaiService.GetGalleryLocalDir(task.Gid, task.Title);
+            downloadDir = EhentaiFileHelper.GetGalleryLocalDir(task.Gid, task.Title);
         }
         System.IO.Directory.CreateDirectory(downloadDir);
 
@@ -412,7 +415,7 @@ public class DownloadManager
                 task.TotalPages = total;
             if (parts.Length > 2 && long.TryParse(parts[2], out var bytes) && bytes > task.DownloadedBytes)
                 task.DownloadedBytes = bytes;
-            Console.WriteLine($"[DownloadManager] {task.Title} 从第 {startFrom + 1} 页继续 (已下载 {task.DownloadedBytes} bytes)");
+            _logger.LogInformation($"[DownloadManager] {task.Title} 从第 {startFrom + 1} 页继续 (已下载 {task.DownloadedBytes} bytes)");
         }
 
         var pages = await ehService.GetPagesAsync(task.Gid, task.Token);
@@ -423,7 +426,7 @@ public class DownloadManager
         UpdateTaskInDb(task);
         BroadcastUpdate(task);
 
-        Console.WriteLine($"[DownloadManager] 开始下载 {task.Title} ({task.TotalPages} 页)");
+        _logger.LogInformation($"[DownloadManager] 开始下载 {task.Title} ({task.TotalPages} 页)");
 
         int success = task.DownloadedPages, failed = task.FailedPages;
         long totalBytes = task.DownloadedBytes;
@@ -457,7 +460,7 @@ public class DownloadManager
                 {
                     if (retry < 2)
                     {
-                        Console.WriteLine($"[DownloadManager] {task.Title} 第 {i + 1} 页重试 {retry + 1}: {ex.Message}");
+                        _logger.LogInformation($"[DownloadManager] {task.Title} 第 {i + 1} 页重试 {retry + 1}: {ex.Message}");
                         await Task.Delay(1000 * (retry + 1), ct);
                     }
                 }
@@ -561,11 +564,11 @@ public class DownloadManager
                 if (t.Status == "pending") _queue.Enqueue(t.Gid);
             }
             db.SaveChanges();
-            Console.WriteLine($"[DownloadManager] 加载了 {tasks.Count} 个未完成任务");
+            _logger.LogInformation($"[DownloadManager] 加载了 {tasks.Count} 个未完成任务");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DownloadManager] 加载任务失败: {ex.Message}");
+            _logger.LogInformation($"[DownloadManager] 加载任务失败: {ex.Message}");
         }
     }
 
@@ -580,7 +583,7 @@ public class DownloadManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DownloadManager] 保存任务失败: {ex.Message}");
+            _logger.LogInformation($"[DownloadManager] 保存任务失败: {ex.Message}");
         }
     }
 
@@ -608,7 +611,7 @@ public class DownloadManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DownloadManager] 更新任务失败: {ex.Message}");
+            _logger.LogInformation($"[DownloadManager] 更新任务失败: {ex.Message}");
         }
     }
 
@@ -623,7 +626,7 @@ public class DownloadManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DownloadManager] 删除任务失败: {ex.Message}");
+            _logger.LogInformation($"[DownloadManager] 删除任务失败: {ex.Message}");
         }
     }
 
@@ -670,14 +673,14 @@ public class DownloadManager
             var json = System.Text.Json.JsonSerializer.Serialize(meta, new System.Text.Json.JsonSerializerOptions
             { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
             await File.WriteAllTextAsync(Path.Combine(dir, ".meta.json"), json);
-            Console.WriteLine($"[DownloadManager] 元数据已写入: {dir}/.meta.json");
+            _logger.LogInformation($"[DownloadManager] 元数据已写入: {dir}/.meta.json");
 
             // 自动分配作品到匹配的专辑
             await AutoAssignToAlbumsAsync(scope, gid, detail.TagGroups);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DownloadManager] 写入元数据/AutoAssign失败 (gid={gid}): {ex.Message}");
+            _logger.LogInformation($"[DownloadManager] 写入元数据/AutoAssign失败 (gid={gid}): {ex.Message}");
         }
     }
 

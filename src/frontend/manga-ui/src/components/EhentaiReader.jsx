@@ -35,8 +35,18 @@ export default function EhentaiReader({ detail, onClose, onError }) {
   const [transition, setTransition] = useState('fade')
   const [readMode, setReadMode] = useState('paged')
   const [showUI, setShowUI] = useState(true)
+  const [showHelp, setShowHelp] = useState(false)
   const scrollRef = useRef(null)
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 })
+
+  // 帮助面板 4 秒自动消失
+  const helpTimerRef = useRef(null)
+  useEffect(() => {
+    if (!showHelp) return
+    if (helpTimerRef.current) clearTimeout(helpTimerRef.current)
+    helpTimerRef.current = setTimeout(() => setShowHelp(false), 4000)
+    return () => { if (helpTimerRef.current) clearTimeout(helpTimerRef.current) }
+  }, [showHelp])
 
   // 从 localStorage 恢复阅读设置
   useEffect(() => {
@@ -93,6 +103,9 @@ export default function EhentaiReader({ detail, onClose, onError }) {
       else if (e.key === 'm' || e.key === 'M') {
         setReadMode(p => { const n = p === 'paged' ? 'scroll' : 'paged'; saveSetting('readMode', n); return n })
       }
+      else if (e.key === '?' || e.key === 'h' || e.key === 'H') {
+        setShowHelp(s => !s)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -116,7 +129,8 @@ export default function EhentaiReader({ detail, onClose, onError }) {
 
   if (loading) {
     return (
-      <div style={{ position: 'fixed', inset: 0, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'fixed', inset: 0, background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <div className="reader-spinner" />
         <div style={{ color: '#888' }}>加载中...</div>
       </div>
     )
@@ -161,6 +175,7 @@ export default function EhentaiReader({ detail, onClose, onError }) {
           <button className="reader-back-btn" onClick={onClose}>← 返回</button>
         </div>
         <div className="reader-topbar-right">
+          <button className="reader-btn" onClick={() => setShowHelp(s => !s)} title="快捷键 (?/H)" style={{ fontSize: '0.7rem', padding: '2px 6px', marginRight: 8 }}>?</button>
           <span className="reader-page-num">{index + 1} / {pages.length}</span>
         </div>
       </div>
@@ -236,6 +251,24 @@ export default function EhentaiReader({ detail, onClose, onError }) {
       {/* 预加载 */}
       {preloadPages.map(pp => <link key={pp.idx} rel="preload" as="image" href={pp.url} />)}
       {preloadPages.map(pp => <img key={'pre' + pp.idx} src={pp.url} style={{ display: 'none' }} alt="" />)}
+
+      {/* 快捷键帮助面板 */}
+      {showHelp && (
+        <div className="reader-help-overlay" onClick={() => setShowHelp(false)}>
+          <div className="reader-help-panel" onClick={e => e.stopPropagation()}>
+            <div className="reader-help-title">⌨ 快捷键</div>
+            <div className="reader-help-grid">
+              <span className="reader-help-key">← / A</span><span>上一页</span>
+              <span className="reader-help-key">→ / D</span><span>下一页</span>
+              <span className="reader-help-key">F</span><span>切换缩放模式</span>
+              <span className="reader-help-key">M</span><span>翻页/滚动模式</span>
+              <span className="reader-help-key">? / H</span><span>显示/隐藏帮助</span>
+              <span className="reader-help-key">Esc</span><span>关闭阅读器</span>
+            </div>
+            <div className="reader-help-hint">点击空白处关闭 · 4秒后自动消失</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

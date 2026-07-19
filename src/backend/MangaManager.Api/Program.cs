@@ -142,7 +142,7 @@ using (var scope = app.Services.CreateScope())
                     cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='manga'";
                     if ((long)cmd.ExecuteScalar()! > 0)
                     {
-                        Console.WriteLine("[DB] 检测到已有数据库，插入 InitialCreate baseline 迁移记录...");
+                        app.Logger.LogInformation("[DB] 检测到已有数据库，插入 InitialCreate baseline 迁移记录...");
                         if (!hasHistoryTable)
                         {
                             cmd.CommandText = "CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (MigrationId TEXT PRIMARY KEY, ProductVersion TEXT)";
@@ -150,7 +150,7 @@ using (var scope = app.Services.CreateScope())
                         }
                         cmd.CommandText = "INSERT OR IGNORE INTO __EFMigrationsHistory VALUES ('20260612043946_InitialCreate', '9.0.0')";
                         cmd.ExecuteNonQuery();
-                        Console.WriteLine("[DB] Baseline 迁移记录已插入");
+                        app.Logger.LogInformation("[DB] Baseline 迁移记录已插入");
                     }
                 }
             }
@@ -161,12 +161,12 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DB] Baseline 检测跳过: {ex.Message}");
+            app.Logger.LogInformation($"[DB] Baseline 检测跳过: {ex.Message}");
         }
     }
 
     db.Database.Migrate();
-    Console.WriteLine("[DB] 数据库迁移完成");
+    app.Logger.LogInformation("[DB] 数据库迁移完成");
 
     // 一次性回填 AllTags：旧记录在迁移前未存储 AllTags（为 null 或"[]"），从 .meta.json 重读回填
     var downloadDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? Path.Combine(app.Environment.ContentRootPath, "downloads");
@@ -175,7 +175,7 @@ using (var scope = app.Services.CreateScope())
         var staleCount = db.LocalGalleries.Count(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]");
         if (staleCount > 0)
         {
-            Console.WriteLine($"[DB] 检测到 {staleCount} 条旧记录 AllTags 为空，开始从 .meta.json 回填...");
+            app.Logger.LogInformation($"[DB] 检测到 {staleCount} 条旧记录 AllTags 为空，开始从 .meta.json 回填...");
             var updated = 0;
             var galleries = db.LocalGalleries.Where(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]").ToList();
             foreach (var g in galleries)
@@ -214,7 +214,7 @@ using (var scope = app.Services.CreateScope())
                 catch { }
             }
             db.SaveChanges();
-            Console.WriteLine($"[DB] AllTags 回填完成: {updated}/{staleCount} 条");
+            app.Logger.LogInformation($"[DB] AllTags 回填完成: {updated}/{staleCount} 条");
         }
     }
 
@@ -225,9 +225,9 @@ using (var scope = app.Services.CreateScope())
         {
             db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL");
             db.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL");
-            Console.WriteLine("[DB] WAL 模式已启用");
+            app.Logger.LogInformation("[DB] WAL 模式已启用");
         }
-        catch (Exception ex) { Console.WriteLine($"[DB] WAL 模式设置失败: {ex.Message}"); }
+        catch (Exception ex) { app.Logger.LogInformation($"[DB] WAL 模式设置失败: {ex.Message}"); }
 
         // 每日自动备份（距上次备份超过24小时则执行）
         try
@@ -243,16 +243,16 @@ using (var scope = app.Services.CreateScope())
             {
                 var backupName = $"manga_{DateTime.UtcNow:yyyyMMdd_HHmmss}.db";
                 File.Copy(dbPath, Path.Combine(backupDir, backupName));
-                Console.WriteLine($"[DB] 自动备份: {backupName}");
+                app.Logger.LogInformation($"[DB] 自动备份: {backupName}");
                 // 保留最近 7 个备份
                 var oldBackups = Directory.GetFiles(backupDir, "manga_*.db")
                     .Select(f => new FileInfo(f))
                     .OrderByDescending(f => f.LastWriteTime)
                     .Skip(7);
-                foreach (var old in oldBackups) { old.Delete(); Console.WriteLine($"[DB] 清理旧备份: {old.Name}"); }
+                foreach (var old in oldBackups) { old.Delete(); app.Logger.LogInformation($"[DB] 清理旧备份: {old.Name}"); }
             }
         }
-        catch (Exception ex) { Console.WriteLine($"[DB] 自动备份失败: {ex.Message}"); }
+        catch (Exception ex) { app.Logger.LogInformation($"[DB] 自动备份失败: {ex.Message}"); }
     }
 }
 
@@ -266,7 +266,7 @@ app.MapPost("/api/admin/backup", () =>
         Directory.CreateDirectory(backupDir);
         var backupName = $"manga_{DateTime.UtcNow:yyyyMMdd_HHmmss}_manual.db";
         File.Copy(dbPath, Path.Combine(backupDir, backupName));
-        Console.WriteLine($"[DB] 手动备份: {backupName}");
+        app.Logger.LogInformation($"[DB] 手动备份: {backupName}");
         return Results.Ok(new { success = true, file = backupName });
     }
     catch (Exception ex) { return Results.Problem($"Backup failed: {ex.Message}"); }
@@ -278,12 +278,12 @@ _ = Task.Run(async () =>
 {
     try
     {
-        await EhentaiService.InitTagTranslationsAsync();
-        Console.WriteLine("[Init] 标签翻译已加载");
+        await EhentaiTagService.InitTagTranslationsAsync();
+        app.Logger.LogInformation("[Init] 标签翻译已加载");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Init] 标签翻译加载失败（将使用原始标签）: {ex.Message}");
+        app.Logger.LogInformation($"[Init] 标签翻译加载失败（将使用原始标签）: {ex.Message}");
     }
 });
 

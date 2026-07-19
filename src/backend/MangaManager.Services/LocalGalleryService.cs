@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MangaManager.Core.Entities;
 using MangaManager.Data;
 
@@ -13,13 +14,15 @@ public class LocalGalleryService
 {
     private readonly EhentaiService _eh;
     private readonly IServiceScopeFactory _scopeFactory;
-    private static readonly string BaseDir = EhentaiService.DefaultDownloadDir;
+    private readonly ILogger<LocalGalleryService> _logger;
+    private static readonly string BaseDir = EhentaiFileHelper.DefaultDownloadDir;
 
     /// <summary>旧版 Manga ID → 本地目录路径的映射（负数 gid 的防腐层）</summary>
     private static readonly ConcurrentDictionary<int, string> _legacyDirs = new();
 
-    public LocalGalleryService(EhentaiService eh, IServiceScopeFactory scopeFactory)
+    public LocalGalleryService(EhentaiService eh, IServiceScopeFactory scopeFactory, ILogger<LocalGalleryService> logger)
     {
+        _logger = logger;
         _eh = eh;
         _scopeFactory = scopeFactory;
     }
@@ -472,7 +475,7 @@ public class LocalGalleryService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[LocalGallery] GetDetailAsync gid={gid} error: {ex.Message}");
+            _logger.LogInformation($"[LocalGallery] GetDetailAsync gid={gid} error: {ex.Message}");
             return new LocalGalleryDetail { Gid = gid, Title = $"Error: {ex.Message}" };
         }
     }

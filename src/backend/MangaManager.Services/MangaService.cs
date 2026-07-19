@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using MangaManager.Core.Entities;
 using MangaManager.Core.DTOs;
 using MangaManager.Data;
+using Microsoft.Extensions.Logging;
 
 namespace MangaManager.Services;
 
@@ -13,6 +14,7 @@ public class MangaService
 {
     private readonly MangaDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly ILogger<MangaService> _logger;
 
     // 颜色池（用于自动创建的上层标签）
     private static readonly string[] _autoColors = {
@@ -20,10 +22,11 @@ public class MangaService
         "#ef4444","#f97316","#3b82f6","#6366f1","#14b8a6","#d946ef","#84cc16"
     };
 
-    public MangaService(MangaDbContext db, IWebHostEnvironment env)
+    public MangaService(MangaDbContext db, IWebHostEnvironment env, ILogger<MangaService> logger)
     {
         _db = db;
         _env = env;
+        _logger = logger;
     }
 
     // ==================== 列表 / 详情 ====================
@@ -282,7 +285,7 @@ public class MangaService
         catch (Exception ex)
         {
             // 记录但不中断
-            System.Diagnostics.Debug.WriteLine($"扫描错误: {currentDir} - {ex.Message}");
+            _logger.LogDebug($"扫描错误: {currentDir} - {ex.Message}");
         }
     }
 

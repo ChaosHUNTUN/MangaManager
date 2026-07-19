@@ -1,0 +1,86 @@
+import re
+
+# === Fix EhentaiService.cs: static methods using _logger ===
+ehentai_path = "src/backend/MangaManager.Services/EhentaiService.cs"
+content = open(ehentai_path, encoding="utf-8").read()
+lines = content.split("\n")
+
+# Find static method InitTagTranslationsAsync and replace _logger back to Console.WriteLine within it
+in_static = False
+brace = 0
+new_lines = []
+for line in lines:
+    if "public static async Task InitTagTranslationsAsync" in line:
+        in_static = True
+    if in_static and "_logger.LogInformation" in line:
+        line = line.replace("_logger.LogInformation", "Console.WriteLine")
+    new_lines.append(line)
+    if in_static:
+        brace += line.count("{") - line.count("}")
+        if brace == 0 and "{" in line:  # after the first { of the method
+            pass
+        elif brace == 0:
+            in_static = False
+
+open(ehentai_path, "w", encoding="utf-8").write("\n".join(new_lines))
+print("Fixed EhentaiService.cs static methods")
+
+# === Fix DownloadManager.cs: static method AutoAssignToAlbumsAsync ===
+dm_path = "src/backend/MangaManager.Services/DownloadManager.cs"
+content = open(dm_path, encoding="utf-8").read()
+lines = content.split("\n")
+
+in_static = False
+brace = 0
+new_lines = []
+for line in lines:
+    if "private static async Task AutoAssignToAlbumsAsync" in line:
+        in_static = True
+    if in_static and "_logger.LogInformation" in line:
+        line = line.replace("_logger.LogInformation", "Console.WriteLine")
+    new_lines.append(line)
+    if in_static:
+        brace += line.count("{") - line.count("}")
+        if brace <= 0 and "{" in line:
+            pass
+        elif brace <= 0:
+            in_static = False
+
+open(dm_path, "w", encoding="utf-8").write("\n".join(new_lines))
+print("Fixed DownloadManager.cs static methods")
+
+# === Fix MangaService.cs: needs ILogger injection ===
+ms_path = "src/backend/MangaManager.Services/MangaService.cs"
+content = open(ms_path, encoding="utf-8").read()
+
+# Add using
+if "using Microsoft.Extensions.Logging;" not in content:
+    lines = content.split("\n")
+    lines.insert(1, "using Microsoft.Extensions.Logging;")
+    content = "\n".join(lines)
+
+# Add _logger field
+content = content.replace(
+    "private readonly MangaDbContext _db;",
+    "private readonly MangaDbContext _db;\n    private readonly ILogger<MangaService> _logger;"
+)
+
+# Update constructor
+content = content.replace(
+    "public MangaService(MangaDbContext db, IWebHostEnvironment env)",
+    "public MangaService(MangaDbContext db, IWebHostEnvironment env, ILogger<MangaService> logger)"
+)
+content = content.replace(
+    "        _db = db;\n        _env = env;",
+    "        _logger = logger;\n        _db = db;\n        _env = env;"
+)
+
+# Replace Console.WriteLine -> _logger.LogInformation (should be none but just in case)
+content = re.sub(r"Console\.WriteLine\(", "_logger.LogInformation(", content)
+# Replace Debug.WriteLine -> _logger.LogDebug
+content = re.sub(r"System\.Diagnostics\.Debug\.WriteLine\(", "_logger.LogDebug(", content)
+
+open(ms_path, "w", encoding="utf-8").write(content)
+print("Fixed MangaService.cs")
+
+print("All fixes applied.")

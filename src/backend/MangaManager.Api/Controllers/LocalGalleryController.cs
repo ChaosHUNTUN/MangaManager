@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MangaManager.Core.DTOs;
 using MangaManager.Services;
+using Microsoft.Extensions.Logging;
 
 namespace MangaManager.Api.Controllers;
 
@@ -9,8 +10,13 @@ namespace MangaManager.Api.Controllers;
 public class LocalGalleryController : ControllerBase
 {
     private readonly LocalGalleryService _svc;
+    private readonly ILogger<LocalGalleryController> _logger;
 
-    public LocalGalleryController(LocalGalleryService svc) => _svc = svc;
+    public LocalGalleryController(LocalGalleryService svc, ILogger<LocalGalleryController> logger)
+    {
+        _svc = svc;
+        _logger = logger;
+    }
 
     /// <summary>扫描本地画廊列表（旧接口，保留兼容）</summary>
     [HttpGet("galleries")]
@@ -133,7 +139,7 @@ public class LocalGalleryController : ControllerBase
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Cover] gid={gid} error: {ex.Message}");
+            _logger.LogInformation($"[Cover] gid={gid} error: {ex.Message}");
             return StatusCode(500, new ApiResponse<object>(false, null, ex.Message));
         }
     }
