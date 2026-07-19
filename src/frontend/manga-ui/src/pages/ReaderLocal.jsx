@@ -92,20 +92,21 @@ export default function ReaderLocal() {
     } catch { }
   }, [gid])
 
-  // 监听 sessionStorage 变化（当后台加载完完整 gid 列表时自动更新）
+  // 轮询 reader-local-full-gids（handleOpenReader 在同一 tab 内异步写入，不触发 storage 事件）
   useEffect(() => {
-    const onStorage = () => {
+    const timer = setInterval(() => {
       try {
         const fullGids = JSON.parse(sessionStorage.getItem('reader-local-full-gids') || 'null')
-        if (fullGids && Array.isArray(fullGids) && fullGids.length > 0) {
+        if (fullGids && Array.isArray(fullGids) && fullGids.length > 0 && fullGids.length !== displayGids.length) {
+          console.log(`[ReaderLocal] 检测到完整 gid 列表: ${fullGids.length} 部`)
           setDisplayGids(fullGids)
           setGidsTotal(fullGids.length)
+          clearInterval(timer)
         }
       } catch { }
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    }, 500)
+    return () => clearInterval(timer)
+  }, [displayGids.length])
 
   // 加载当前漫画的阅读进度（只在 gid 变化时请求，取消旧请求）
   useEffect(() => {

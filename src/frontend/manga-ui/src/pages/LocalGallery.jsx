@@ -601,6 +601,7 @@ const setToast = (msg, duration = 2000) => {
         albumOrder
       })
       if (fullGids && fullGids.length > 0) {
+        console.log(`[LocalGallery] 完整 gid 列表已缓存: ${fullGids.length} 部 (前5: ${fullGids.slice(0,5).join(',')}...)`, fullGids)
         sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fullGids))
       }
     } catch { /* 静默失败，阅读器使用当前页 gids */ }
