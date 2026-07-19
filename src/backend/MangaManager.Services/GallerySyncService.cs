@@ -227,6 +227,10 @@ public class GallerySyncService : BackgroundService
                     if (rat.ValueKind == JsonValueKind.String && double.TryParse(rat.GetString(), out var rv)) item.Rating = rv;
                     else if (rat.TryGetDouble(out var rv2)) item.Rating = rv2;
                 }
+                if (root.TryGetProperty("titleJpn", out var tj)) item.TitleJpn = tj.GetString();
+                if (root.TryGetProperty("uploader", out var up)) item.Uploader = up.GetString();
+                if (root.TryGetProperty("ratingCount", out var rc) && rc.TryGetInt32(out var rcv)) item.RatingCount = rcv;
+                if (root.TryGetProperty("posted", out var po) && po.TryGetInt64(out var pv)) item.Posted = pv;
                 if (root.TryGetProperty("downloadedAt", out var da) && DateTime.TryParse(da.GetString(), out var dt)) item.DownloadedAt = dt;
                 if (root.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
                 {
@@ -290,6 +294,10 @@ public class GallerySyncService : BackgroundService
         entity.Artists = source.Artists;
         entity.Groups = source.Groups;
         entity.AllTags = source.AllTags;
+        entity.TitleJpn = source.TitleJpn;
+        entity.Uploader = source.Uploader;
+        entity.RatingCount = source.RatingCount;
+        entity.Posted = source.Posted;
         entity.OnlineUrl = source.OnlineUrl;
         entity.Token = source.Token;
         entity.DownloadedAt = source.DownloadedAt;
@@ -310,6 +318,11 @@ public class GallerySyncService : BackgroundService
             || entity.CoverFile != source.CoverFile
             || entity.Artists != source.Artists
             || entity.Groups != source.Groups
+            || entity.AllTags != source.AllTags
+            || entity.TitleJpn != source.TitleJpn
+            || entity.Uploader != source.Uploader
+            || entity.RatingCount != source.RatingCount
+            || entity.Posted != source.Posted
             || entity.OnlineUrl != source.OnlineUrl
             || entity.Token != source.Token
             || entity.DownloadedAt != source.DownloadedAt

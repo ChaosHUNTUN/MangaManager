@@ -180,6 +180,10 @@ public class LocalGallery
     public string? Artists { get; set; }         // JSON: ["wada","hoge"]
     public string? Groups { get; set; }          // JSON: ["circle"]
     public string? AllTags { get; set; }         // JSON: ["artist:wada","group:circle","other:ai_generated"]
+    public string? TitleJpn { get; set; }        // 原始日文标题
+    public string? Uploader { get; set; }        // 上传者
+    public int RatingCount { get; set; }         // 评分数
+    public long Posted { get; set; }             // E-Hentai发布时间戳（Unix seconds）
     public string? OnlineUrl { get; set; }       // EH 页面链接
     public string? Token { get; set; }           // EH token
     public DateTime? DownloadedAt { get; set; }
