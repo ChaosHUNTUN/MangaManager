@@ -340,10 +340,15 @@ const setToast = (msg, duration = 2000) => {
   }, [])
 
 
+  // 防重复：auto-match 执行中防止 saveAlbums 触发 re-render 再进入
+  const autoMatchGuardRef = useRef(false)
+
   // 当 albumConfig 和 galleryMetas 都加载完成后，自动将未分类作品匹配到自定义专辑
   useEffect(() => {
     if (!albumsLoaded || galleryMetas.length === 0) return
     if (Object.keys(albumConfig).length === 0) return
+    if (autoMatchGuardRef.current) return  // 上一次匹配保存的副作用仍在传播，跳过
+    autoMatchGuardRef.current = true
 
     const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
     let changed = false
@@ -398,6 +403,8 @@ const setToast = (msg, duration = 2000) => {
       saveAlbums(cfg)
       console.log('[auto-match] 已将新作品自动匹配到专辑')
     }
+    // 下一帧后释放守卫（保存触发的 re-render 已结束）
+    setTimeout(() => { autoMatchGuardRef.current = false }, 1000)
   }, [galleryMetas, albumConfig, albumsLoaded])
 
 
