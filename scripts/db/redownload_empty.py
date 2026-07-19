@@ -24,21 +24,41 @@ for arg in sys.argv[1:]:
 DB = os.path.join(os.path.dirname(__file__), "..", "..", "src", "backend", "MangaManager.Api", "manga.db")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
+# 从数据库加载现有记录（用于交叉引用）
 conn = sqlite3.connect(DB)
 conn.row_factory = sqlite3.Row
-
-rows = conn.execute("SELECT Gid, Title, DirPath FROM local_gallery ORDER BY Gid").fetchall()
+db_gids = {r["Gid"] for r in conn.execute("SELECT Gid FROM local_gallery").fetchall()}
+conn.close()
 
 empty = []
-for r in rows:
-    dp = r["DirPath"]
-    if not dp or not os.path.isdir(dp):
-        continue
-    files = os.listdir(dp)
-    img_count = sum(1 for f in files if os.path.splitext(f)[1].lower() in IMAGE_EXTS)
-    if img_count == 0:
-        # 检查 .eh 文件
-        eh_file = os.path.join(dp, ".eh")
+
+# 直接扫描文件系统（不依赖数据库中是否有记录）
+if os.path.isdir(SCAN_DIR):
+    for folder_name in os.listdir(SCAN_DIR):
+        full_path = os.path.join(SCAN_DIR, folder_name)
+        if not os.path.isdir(full_path):
+            continue
+        
+        # 提取 GID
+        dash = folder_name.find("-")
+        if dash <= 0:
+            continue
+        gid_str = folder_name[:dash].strip()
+        if not gid_str.isdigit():
+            continue
+        gid = int(gid_str)
+        
+        # 统计图片文件
+        try:
+            files = os.listdir(full_path)
+        except:
+            continue
+        img_count = sum(1 for f in files if os.path.splitext(f)[1].lower() in IMAGE_EXTS)
+        if img_count > 0:
+            continue  # 有图片，跳过
+        
+        # 空目录：读取 .eh token
+        eh_file = os.path.join(full_path, ".eh")
         token = None
         if os.path.isfile(eh_file):
             try:
@@ -49,14 +69,18 @@ for r in rows:
                             break
             except:
                 pass
+        
+        title = folder_name[dash + 1:] if dash + 1 < len(folder_name) else folder_name
         empty.append({
-            "gid": r["Gid"],
-            "title": r["Title"][:60],
-            "dir": dp,
+            "gid": gid,
+            "title": title[:60],
+            "dir": full_path,
             "token": token,
+            "in_db": gid in db_gids,
         })
-
-conn.close()
+else:
+    print(f"❌ 扫描目录不存在: {SCAN_DIR}")
+    sys.exit(1)
 
 print(f"发现 {len(empty)} 个空目录")
 print(f"API: {API_BASE}/api/local/gallery/{{gid}}/redownload")
