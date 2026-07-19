@@ -168,6 +168,56 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
     Console.WriteLine("[DB] 数据库迁移完成");
 
+    // 一次性回填 AllTags：旧记录在迁移前未存储 AllTags（为 null 或"[]"），从 .meta.json 重读回填
+    var downloadDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? Path.Combine(app.Environment.ContentRootPath, "downloads");
+    if (Directory.Exists(downloadDir))
+    {
+        var staleCount = db.LocalGalleries.Count(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]");
+        if (staleCount > 0)
+        {
+            Console.WriteLine($"[DB] 检测到 {staleCount} 条旧记录 AllTags 为空，开始从 .meta.json 回填...");
+            var updated = 0;
+            var galleries = db.LocalGalleries.Where(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]").ToList();
+            foreach (var g in galleries)
+            {
+                try
+                {
+                    var dir = Directory.GetDirectories(downloadDir, $"{g.Gid}-*").FirstOrDefault();
+                    if (dir == null) continue;
+                    var metaFile = Path.Combine(dir, ".meta.json");
+                    if (!File.Exists(metaFile)) continue;
+                    var metaJson = File.ReadAllText(metaFile);
+                    using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("tags", out var tags) && tags.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        var allTagList = new List<string>();
+                        foreach (var nsProp in tags.EnumerateObject())
+                        {
+                            if (nsProp.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                            {
+                                foreach (var tagEl in nsProp.Value.EnumerateArray())
+                                {
+                                    var tagVal = tagEl.GetString();
+                                    if (!string.IsNullOrEmpty(tagVal))
+                                        allTagList.Add($"{nsProp.Name.ToLower()}:{tagVal}");
+                                }
+                            }
+                        }
+                        if (allTagList.Count > 0)
+                        {
+                            g.AllTags = System.Text.Json.JsonSerializer.Serialize(allTagList);
+                            updated++;
+                        }
+                    }
+                }
+                catch { }
+            }
+            db.SaveChanges();
+            Console.WriteLine($"[DB] AllTags 回填完成: {updated}/{staleCount} 条");
+        }
+    }
+
     // 启用 WAL 模式（仅 SQLite）：允许并发读写，避免 "database is locked" 错误
     if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
     {

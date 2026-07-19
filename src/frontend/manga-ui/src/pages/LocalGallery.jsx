@@ -352,8 +352,14 @@ const setToast = (msg, duration = 2000) => {
       if (albumGids.has(g.gid)) return
       const simpleTags = [...(g.artists || []), ...(g.groups || [])]
       const namespaceTags = g.allTags || []
-      // 优先用 namespace:tag 精确匹配，再回退 simpleTags 兼容旧专辑
-      const allCandidateTags = [...new Set([...namespaceTags, ...simpleTags])]
+      // 推断命名空间前缀：simple 裸名 → artist:tag / group:tag
+      const inferredPrefixTags = []
+      for (const t of simpleTags) {
+        if (!t.includes(':')) {
+          inferredPrefixTags.push(`artist:${t}`, `group:${t}`)
+        }
+      }
+      const allCandidateTags = [...new Set([...namespaceTags, ...simpleTags, ...inferredPrefixTags])]
       for (const tag of allCandidateTags) {
         if (cfg[tag]) {
           const gids = cfg[tag].gids || []
@@ -367,11 +373,12 @@ const setToast = (msg, duration = 2000) => {
           }
         }
       }
-      // 额外检测 KeyTag：专辑的 KeyTag 字段匹配 allTags 中的某项
+      // 额外检测 KeyTag：含推断前缀的完整候选集匹配
       if (!changed) {
+        const anyTags = new Set([...namespaceTags, ...simpleTags, ...inferredPrefixTags])
         for (const [albumKey, albumVal] of Object.entries(cfg)) {
           const kt = albumVal.keyTag
-          if (kt && namespaceTags.includes(kt)) {
+          if (kt && anyTags.has(kt)) {
             const gids = albumVal.gids || []
             if (!gids.includes(g.gid)) {
               cfg[albumKey] = { ...albumVal, gids: [...gids, g.gid] }
