@@ -69,9 +69,12 @@ public class GallerySyncService : BackgroundService
         }
 
         var dirs = Directory.GetDirectories(DownloadDir);
-        int added = 0, updated = 0, processed = 0;
-        var existingGids = await db.LocalGalleries.Select(g => g.Gid).ToHashSetAsync(ct);
-        _logger.LogInformation("[GallerySync] 扫描 {Count} 个目录...", dirs.Length);
+        int added = 0, updated = 0, unchanged = 0, processed = 0;
+
+        // 一次查询加载全部已有记录到内存
+        var existing = await db.LocalGalleries.ToDictionaryAsync(g => g.Gid, ct);
+        var processedGids = new HashSet<int>();
+        _logger.LogInformation("[GallerySync] 扫描 {Count} 个目录 (DB 已有 {Existing})...", dirs.Length, existing.Count);
 
         foreach (var dir in dirs)
         {
@@ -81,13 +84,16 @@ public class GallerySyncService : BackgroundService
                 var item = ParseDirectory(dir);
                 if (item == null) continue;
 
-                if (existingGids.Contains(item.Gid))
+                if (existing.TryGetValue(item.Gid, out var entity))
                 {
-                    var entity = await db.LocalGalleries.FindAsync(new object[] { item.Gid }, ct);
-                    if (entity != null)
+                    if (HasChanged(entity, item))
                     {
                         UpdateEntity(entity, item);
                         updated++;
+                    }
+                    else
+                    {
+                        unchanged++;
                     }
                 }
                 else
@@ -95,6 +101,7 @@ public class GallerySyncService : BackgroundService
                     db.LocalGalleries.Add(item);
                     added++;
                 }
+                processedGids.Add(item.Gid);
             }
             catch (Exception ex)
             {
@@ -102,28 +109,37 @@ public class GallerySyncService : BackgroundService
             }
 
             processed++;
-            // 每 50 个目录保存一次，避免单次事务过大
-            if (processed % 50 == 0)
+            // 每 200 个目录保存一次，每 500 个输出一次进度
+            if (processed % 200 == 0)
             {
                 await db.SaveChangesAsync(ct);
                 await Task.Yield();
+            }
+            if (processed % 500 == 0)
+            {
                 _logger.LogInformation("[GallerySync] 进度: {Processed}/{Total}", processed, dirs.Length);
             }
         }
 
         // 清理已删除的目录
-        var dbPaths = await db.LocalGalleries.Select(g => g.DirPath).ToListAsync(ct);
-        var deleted = dbPaths.Where(p => !Directory.Exists(p)).ToList();
-        if (deleted.Count > 0)
+        var deletedGids = existing.Keys.Except(processedGids).ToList();
+        if (deletedGids.Count > 0)
         {
-            var deletedEntities = await db.LocalGalleries
-                .Where(g => deleted.Contains(g.DirPath))
-                .ToListAsync(ct);
+            var deletedEntities = deletedGids.Select(gid => existing[gid]).ToList();
             db.LocalGalleries.RemoveRange(deletedEntities);
         }
 
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("[GallerySync] 全量同步: 新增 {Added}, 更新 {Updated}, 删除 {Deleted}", added, updated, deleted.Count);
+
+        // 批量更新所有已处理画廊的 SyncedAt，一条 SQL 代替 N 条
+        var now = DateTime.UtcNow;
+        await db.LocalGalleries
+            .Where(g => processedGids.Contains(g.Gid))
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.SyncedAt, now), ct);
+
+        _logger.LogInformation(
+            "[GallerySync] 全量同步: 新增 {Added}, 更新 {Updated}, 未变 {Unchanged}, 删除 {Deleted}",
+            added, updated, unchanged, deletedGids.Count);
     }
 
     /// <summary>增量同步单个目录</summary>
@@ -261,6 +277,25 @@ public class GallerySyncService : BackgroundService
         entity.DownloadedAt = source.DownloadedAt;
         entity.LastModified = source.LastModified;
         entity.SyncedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>比较关键字段是否有变化（不含 SyncedAt）</summary>
+    private static bool HasChanged(LocalGallery entity, LocalGallery source)
+    {
+        return entity.Title != source.Title
+            || entity.DirPath != source.DirPath
+            || entity.Category != source.Category
+            || entity.Language != source.Language
+            || entity.Rating != source.Rating
+            || entity.FileCount != source.FileCount
+            || entity.FileSize != source.FileSize
+            || entity.CoverFile != source.CoverFile
+            || entity.Artists != source.Artists
+            || entity.Groups != source.Groups
+            || entity.OnlineUrl != source.OnlineUrl
+            || entity.Token != source.Token
+            || entity.DownloadedAt != source.DownloadedAt
+            || entity.LastModified != source.LastModified;
     }
 
     private async Task ConsistencyCheckAsync(CancellationToken ct)

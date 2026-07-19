@@ -1,0 +1,215 @@
+# MangaManager 项目架构规范 — 全局开发指引
+
+> 本文档为项目的最高全局指示，供 AI 助手在所有后续开发与重构任务中首先参考。
+> 每次成功修改核心架构、新增/变更重大接口、调整技术栈后，必须主动更新本文件以保持上下文同步。
+
+---
+
+## 1. 项目概览
+
+MangaManager 是本地的漫画/画廊管理工具，支持本地文件系统扫描、E-Hentai 在线浏览与下载、阅读器、标签/专辑管理。采用 ASP.NET Core 9.0 + React 19 SPA 前后端分离架构，同时包含一个 WPF 桌面下载客户端。
+
+- 仓库地址：`https://github.com/ChaosHUNTUN/MangaManager.git`
+- 当前 Commit：`9d60c081d2850d3f0d5b4b6870a5e5a21e0594eb`
+
+---
+
+## 2. 项目目录结构
+
+```
+MangaManager/
+├── src/
+│   ├── backend/
+│   │   ├── MangaManager.Api/          # ASP.NET Core Web API 入口（11 个控制器）
+│   │   ├── MangaManager.Core/         # 实体 (Entities.cs) + DTO (DTOs.cs)
+│   │   ├── MangaManager.Data/         # EF Core DbContext + Migrations
+│   │   └── MangaManager.Services/     # 业务逻辑层（6 个服务）
+│   ├── frontend/
+│   │   └── manga-ui/                  # React SPA（Vite 构建）
+│   │       └── src/
+│   │           ├── api.js             # 全量 API 封装（500 行，待拆分）
+│   │           ├── App.jsx            # 路由 + 健康检查 + 离线横幅
+│   │           ├── pages/             # 5 个页面组件
+│   │           ├── components/        # 5 个共享组件
+│   │           └── hooks/             # 1 个自定义 hook
+│   ├── desktop/
+│   │   └── MangaManager.Console/      # WPF 桌面应用（下载管理器 UI）
+│   └── shared/
+│       └── MangaManager.Shared/       # 前后端共享类型/工具库
+├── docs/                              # 项目文档（5 份 Markdown）
+├── scripts/                           # Python 辅助脚本
+├── manga_manager.py                   # Python 工具入口
+└── 启动管理工具.bat                    # 一体化启动脚本
+```
+
+---
+
+## 3. 后端架构
+
+### 3.1 技术栈
+| 组件 | 技术 |
+|------|------|
+| 运行时 | .NET 9.0 |
+| 框架 | ASP.NET Core Web API |
+| 数据库 | SQLite（默认）/ MySQL（可选） |
+| ORM | Entity Framework Core 9.0 Code-First |
+| HTTP 客户端 | `IHttpClientFactory`（E-Hentai 命名客户端） |
+| 端口 | `http://0.0.0.0:5000` |
+
+### 3.2 关键 NuGet 包
+- `Microsoft.Data.Sqlite` — SQLite 驱动
+- `Microsoft.EntityFrameworkCore.Design` — EF Core 设计时
+- `Microsoft.AspNetCore.OpenApi` — OpenAPI/Swagger
+- `Pomelo.EntityFrameworkCore.MySql`（推断，MySQL 模式）
+
+### 3.3 启动流程（Program.cs 核心逻辑）
+1. CORS 全开放配置
+2. 数据库双模式注册（SQLite/MySQL，从 `appsettings.json` 读取）
+3. 服务注册：`MangaService`（Scoped）、`LocalGalleryService`（Singleton）、`DownloadManager`（Singleton）、`GallerySyncService`（HostedService）
+4. E-Hentai 命名 `HttpClient` 注册（共享 `CookieContainer` + 代理支持）
+5. 全局异常处理中间件（500 → JSON + CORS）
+6. SPA fallback（生产模式托管 `wwwroot`，开发模式走 CORS）
+7. EF Core 自动迁移 + Baseline 检测
+8. SQLite WAL 模式启用
+9. 每日自动备份（保留 7 份）
+10. 标签翻译异步初始化
+11. `DownloadManager` 异步初始化（恢复未完成任务）
+
+### 3.4 数据库 Entities（7 个核心实体）
+| 实体 | 表名 | 说明 |
+|------|------|------|
+| `Manga` | manga | 传统扫描漫画（含 Title、FolderPath、FileCount 等） |
+| `Author` | authors | 作者 |
+| `Tag` | tags | 标签（含 Color、Category） |
+| `ReadingProgress` | reading_progress | Manga 阅读进度 |
+| `LocalReadingProgress` | local_reading_progress | 本地画廊阅读进度（按 gid） |
+| `DownloadTask` | download_tasks | 下载任务（含进度/速率） |
+| `ReaderSettings` | reader_settings | 阅读器设置（单例行 Id=1） |
+| `AlbumConfig` | album_configs | 专辑配置（含 Gids JSON、KeyTag） |
+| `LocalGallery` | local_galleries | 本地画廊元数据索引（gid 主键） |
+| `ScanLog` | scan_logs | 扫描日志 |
+
+### 3.5 后端控制器（11 个）
+| 控制器 | 路由前缀 | 核心职责 |
+|--------|----------|----------|
+| AlbumsController | `/api/albums` | 专辑 CRUD、重命名、摘要查询 |
+| CoverController | `/api/cover/{mangaId}` | Manga 封面图片 |
+| DownloadController | `/api/download` | 下载任务 CRUD、暂停/恢复/重启 |
+| EhentaiController | `/api/ehentai` | E-Hentai 画廊搜索/详情/标签翻译/屏蔽/图片代理 |
+| FilesystemController | `/api/filesystem` | 驱动器枚举、目录浏览 |
+| LocalGalleryController | `/api/local` | 本地画廊核心 CRUD、导入/批量导入、随机、重下载 |
+| MangaController | `/api/manga` | 传统漫画扫描、CRUD、批量标签 |
+| ReaderController | `/api/reader` | 阅读器按页取图 |
+| ReadingProgressController | `/api/readingprogress` | 阅读进度保存/获取 |
+| SettingsController | `/api/settings/reader` | 阅读器设置持久化 |
+| TagController | `/api/tag` | 标签 CRUD、分类查询 |
+
+### 3.6 特殊 API 端点
+- `GET /health` — 健康检查
+- `POST /api/admin/backup` — 手动数据库备份
+- `GET /api/ehentai/image?url=...` — E-Hentai 图片代理
+
+---
+
+## 4. 前端架构
+
+### 4.1 技术栈
+| 组件 | 技术 |
+|------|------|
+| 框架 | React 19.2 |
+| 构建工具 | Vite 8.0 |
+| 路由 | react-router-dom 7.16 |
+| 样式 | 原生 CSS（暗色主题） |
+| 状态管理 | React Hooks（无三方库） |
+| 语言 | JavaScript（JSX），非 TypeScript |
+| 开发端口 | `http://0.0.0.0:5173` |
+
+### 4.2 页面路由
+| 路径 | 组件 | 说明 |
+|------|------|------|
+| `/` | `LocalGallery` | 本地画廊首页 |
+| `/local` | `LocalGallery` | 同上 |
+| `/reader/:id` | `ReaderRedirect` | 传统阅读器重定向 |
+| `/reader-local/:gid` | `ReaderLocal` | 本地画廊阅读器 |
+| `/ehentai` | `EHentai` | E-Hentai 在线浏览 |
+| `/downloads` | `DownloadMonitor` | 下载任务监控 |
+| `*` | `NotFound` | 404 |
+
+### 4.3 前端 API 封装（api.js）
+- `API_BASE`：开发模式 `http://localhost:5000`，生产模式同源
+- `request(path, options)`：统一 fetch 封装，支持 `AbortController` 取消
+- 阅读进度保存静默失败（不打断阅读体验）
+- 模块划分：Manga / Tag / Filesystem / E-Hentai / Download / LocalGallery / Reader / Settings / Album / ReadingProgress
+
+---
+
+## 5. 前后端通信
+
+### 5.1 请求路径
+- 开发：`localhost:5173` → CORS → `localhost:5000`
+- 生产：后端托管 `wwwroot`，同源访问，SPA fallback（非 `/api` 返回 `index.html`）
+
+### 5.2 CORS
+- 开发模式：`AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()`
+- 生产模式：同源，不启用 CORS
+
+### 5.3 认证
+- 无用户认证机制（无 JWT/Cookie/OAuth）
+- E-Hentai Cookie 通过 `ehentai_cookies.json` 文件 + `CookieContainer` 管理
+
+### 5.4 响应格式
+- 统一 DTO：`ApiResponse<T>(bool Success, T? Data, string? Message)`
+- 全局异常处理：500 → `{ success: false, message: "Server error: {ExceptionType}" }` + CORS 头
+
+---
+
+## 6. 桌面端（WPF）
+
+- 项目：`src/desktop/MangaManager.Console/`
+- 框架：WPF .NET
+- 功能：下载任务可视化监控（`MainWindow.xaml` + `DownloadTaskVm.cs`）
+- 运行：`dotnet run`（在 `MangaManager.Console` 目录下）
+
+---
+
+## 7. 本地运行指令
+
+### 后端
+```bash
+cd src\backend\MangaManager.Api
+dotnet run
+```
+
+### 前端
+```bash
+cd src\frontend\manga-ui
+npm install        # 首次
+npm run dev        # 开发
+npm run build      # 生产构建
+```
+
+### 桌面端
+```bash
+cd src\desktop\MangaManager.Console
+dotnet run
+```
+
+### 一体化
+双击根目录 `启动管理工具.bat`
+
+---
+
+## 8. 已知优化点与后续规划
+
+1. **认证** — 所有 API 公开，需增加基本认证
+2. **TypeScript 迁移** — 前端全部 `.jsx`，`api.js` 500 行无类型
+3. **api.js 拆分** — 按模块拆分为多个文件
+4. **CORS 收紧** — 生产环境应限制域名
+5. **日志升级** — 从 `Console.WriteLine` 迁移到 Serilog
+6. **API 版本化** — 添加版本前缀
+7. **Docker 化** — 添加 Dockerfile
+8. **测试覆盖** — 零测试，需引入 xUnit + Vitest
+
+---
+
+> ⚠️ **全局指示**：在后续的所有开发和重构任务中，你必须首先遵循本文件的架构规范，且每次成功修改核心架构或重大接口后，请主动更新本文件以保持最新的上下文同步。

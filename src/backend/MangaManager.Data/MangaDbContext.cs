@@ -147,10 +147,12 @@ public class MangaDbContext : DbContext
             e.Property(x => x.Groups).HasColumnType("text");
             e.Property(x => x.OnlineUrl).HasMaxLength(2000);
             e.Property(x => x.Token).HasMaxLength(20);
+            e.Property(x => x.AlbumKey).HasMaxLength(200);
             e.HasIndex(x => x.Category);
             e.HasIndex(x => x.Language);
             e.HasIndex(x => x.DownloadedAt);
             e.HasIndex(x => x.LastModified);
+            e.HasIndex(x => x.AlbumKey);
         });
 
         modelBuilder.Entity<LocalReadingProgress>(e =>

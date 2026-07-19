@@ -110,49 +110,26 @@ public class LocalGalleryService
         // 分组筛选
         if (!string.IsNullOrEmpty(group) && group != "all")
         {
-            var excludeGids = !group.StartsWith("album:") && albumGids != null && albumGids.Count > 0
-                ? new HashSet<int>(albumGids) : null;
+            if (group.StartsWith("album:"))
+            {
+                // 优先按 AlbumKey 筛选，若 AlbumKey 尚未同步则回退到 albumGids
+                var albumKey = group[6..];
+                query = query.Where(g => g.AlbumKey == albumKey);
 
-            if (group == "multi")
-            {
-                query = query.Where(g => g.Artists != null && g.Groups != null
-                    && (JsonArrayLength(g.Artists) + JsonArrayLength(g.Groups) > 1));
-                if (excludeGids != null && excludeGids.Count > 0)
-                    query = query.Where(g => !excludeGids.Contains(g.Gid));
-            }
-            else if (group == "unknown")
-            {
-                query = query.Where(g =>
-                    (g.Artists == null || g.Artists == "[]") &&
-                    (g.Groups == null || g.Groups == "[]"));
-                if (excludeGids != null && excludeGids.Count > 0)
-                    query = query.Where(g => !excludeGids.Contains(g.Gid));
-            }
-            else if (group.StartsWith("artist:"))
-            {
-                var name = group[7..];
-                query = query.Where(g => g.Artists != null && JsonArrayFirst(g.Artists) == name);
-                if (excludeGids != null && excludeGids.Count > 0)
-                    query = query.Where(g => !excludeGids.Contains(g.Gid));
-            }
-            else if (group.StartsWith("group:"))
-            {
-                var name = group[6..];
-                query = query.Where(g => g.Groups != null && JsonArrayFirst(g.Groups) == name);
-                if (excludeGids != null && excludeGids.Count > 0)
-                    query = query.Where(g => !excludeGids.Contains(g.Gid));
-            }
-            else if (group.StartsWith("album:") && albumGids != null && albumGids.Count > 0)
-            {
-                var gidSet = new HashSet<int>(albumGids);
-                query = query.Where(g => gidSet.Contains(g.Gid));
-
-                // 自定义排序
+                // 自定义排序 / fallback
                 if (sort == "custom" && albumOrder != null && albumOrder.Count > 0)
                 {
+                    var all = query.ToList();
+                    // AlbumKey 未就绪时回退到 albumGids
+                    if (all.Count == 0 && albumGids != null && albumGids.Count > 0)
+                    {
+                        var gidSet = new HashSet<int>(albumGids);
+                        query = db.LocalGalleries.AsNoTracking().Where(g => gidSet.Contains(g.Gid));
+                        all = query.ToList();
+                        // 也用 albumOrder 排序
+                    }
                     var orderMap = new Dictionary<int, int>();
                     for (int i = 0; i < albumOrder.Count; i++) orderMap[albumOrder[i]] = i;
-                    var all = query.ToList(); // 小数据集，内存排序
                     all = all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999)).ToList();
                     var total = all.Count;
                     var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
@@ -162,6 +139,44 @@ public class LocalGalleryService
                         Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
                         Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
                     };
+                }
+
+                // 非 custom 排序时也检查 fallback
+                var count = query.Count();
+                if (count == 0 && albumGids != null && albumGids.Count > 0)
+                {
+                    var gidSet = new HashSet<int>(albumGids);
+                    query = db.LocalGalleries.AsNoTracking().Where(g => gidSet.Contains(g.Gid));
+                }
+            }
+            else
+            {
+                // 自动分组：排除已分配作品
+                query = query.Where(g => g.AlbumKey == null);
+
+                if (group == "multi")
+                {
+                    // multi: JSON 数组有 2+ 元素 ↔ 字符串中有逗号（即不止一个元素）
+                    query = query.Where(g =>
+                        (g.Artists != null && g.Artists.Contains(",")) ||
+                        (g.Groups != null && g.Groups.Contains(",")));
+                }
+                else if (group == "unknown")
+                {
+                    query = query.Where(g =>
+                        (g.Artists == null || g.Artists == "[]") &&
+                        (g.Groups == null || g.Groups == "[]"));
+                }
+                else if (group.StartsWith("artist:"))
+                {
+                    // SQLite: Artists LIKE '["name"%' → 匹配数组首元素
+                    var namePattern = $"[\"{group[7..]}\"";
+                    query = query.Where(g => g.Artists != null && g.Artists.StartsWith(namePattern));
+                }
+                else if (group.StartsWith("group:"))
+                {
+                    var namePattern = $"[\"{group[6..]}\"";
+                    query = query.Where(g => g.Groups != null && g.Groups.StartsWith(namePattern));
                 }
             }
         }
@@ -214,7 +229,7 @@ public class LocalGalleryService
             }
         }
 
-        // 排序
+        // 排序 + 分页
         query = ApplyDbSort(query, sort);
 
         var queryTotal = query.Count();
@@ -261,20 +276,23 @@ public class LocalGalleryService
         };
     }
 
-    // SQLite JSON helper functions (used in LINQ expressions)
-    private static int JsonArrayLength(string? json) =>
-        string.IsNullOrEmpty(json) || json == "[]" ? 0 : json.Count(c => c == ',') + 1;
-
-    private static string? JsonArrayFirst(string? json)
+    // 内存排序（album: 大批量 gid 时全量加载实体后排序）
+    private static IEnumerable<LocalGallery> ApplyMemSort(IEnumerable<LocalGallery> items, string? sort)
     {
-        if (string.IsNullOrEmpty(json) || json == "[]") return null;
-        try
+        if (string.IsNullOrEmpty(sort)) return items.OrderByDescending(g => g.LastModified);
+        var parts = sort.Split('-');
+        var desc = parts.Length > 1 && parts[1] == "desc";
+        return parts[0] switch
         {
-            var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
-            return list?.FirstOrDefault();
-        }
-        catch { return null; }
+            "modified" => desc ? items.OrderByDescending(g => g.LastModified) : items.OrderBy(g => g.LastModified),
+            "title" => desc ? items.OrderByDescending(g => g.Title) : items.OrderBy(g => g.Title),
+            "pages" => desc ? items.OrderByDescending(g => g.FileCount) : items.OrderBy(g => g.FileCount),
+            "size" => desc ? items.OrderByDescending(g => g.FileSize) : items.OrderBy(g => g.FileSize),
+            _ => items.OrderByDescending(g => g.LastModified)
+        };
     }
+
+
 
     /// <summary>随机抽取 N 部作品（DB 随机排序）</summary>
     public GalleryPagedResult GetRandomGalleries(int count = 20)
@@ -649,7 +667,7 @@ public class LocalGalleryService
         meta["ratingCount"] = existingMeta?.GetValueOrDefault("ratingCount") ?? 0;
         meta["fileCount"] = existingMeta?.GetValueOrDefault("fileCount") ?? 0;
         meta["fileSize"] = existingMeta?.GetValueOrDefault("fileSize") ?? 0;
-        meta["language"] = language ?? existingMeta?.GetValueOrDefault("language")?.ToString();
+        meta["language"] = language ?? existingMeta?.GetValueOrDefault("language")?.ToString() ?? "";
 
         var json = System.Text.Json.JsonSerializer.Serialize(meta, new System.Text.Json.JsonSerializerOptions
         { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });

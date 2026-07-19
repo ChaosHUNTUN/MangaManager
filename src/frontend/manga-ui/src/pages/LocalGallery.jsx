@@ -151,15 +151,14 @@ const setToast = (msg, duration = 2000) => {
   }, [])
 
   const saveAlbums = useCallback(async (cfg) => {
-    setAlbumConfig(cfg)
+    setAlbumConfig(cfg)  // 即时更新视觉
+    try { localStorage.setItem('local-albums', JSON.stringify(cfg)) } catch { }
     try {
       await saveAlbumConfig(cfg)
     } catch (e) {
       setToast('保存专辑失败: ' + e.message)
       setTimeout(() => setToast(null), 3000)
-      return
     }
-    try { localStorage.setItem('local-albums', JSON.stringify(cfg)) } catch { }
   }, [])
 
   // 辅助函数
@@ -592,7 +591,7 @@ const setToast = (msg, duration = 2000) => {
     setTimeout(() => setToast(null), 1500)
   }, [albumConfig, saveAlbums])
 
-  // 专辑内排序拖拽
+  // 专辑内排序拖拽：即时重排 pageItems + 后端持久化
   const doSortDrop = useCallback((gid, targetGid) => {
     const albumKey = activeGroup.slice(6)
     const cfg = { ...albumConfig }
@@ -604,6 +603,11 @@ const setToast = (msg, duration = 2000) => {
     if (targetIdx === -1) filtered.push(gid)
     else filtered.splice(targetIdx, 0, gid)
     cfg[albumKey] = { ...album, order: filtered }
+
+    // 即时重排当前页数据，不等 API 返回
+    const orderMap = new Map(filtered.map((id, i) => [id, i]))
+    setPageItems(prev => [...prev].sort((a, b) => (orderMap.get(a.gid) ?? 9999) - (orderMap.get(b.gid) ?? 9999)))
+
     saveAlbums(cfg)
     setToast('排序已更新')
     setTimeout(() => setToast(null), 1500)
@@ -698,7 +702,7 @@ const setToast = (msg, duration = 2000) => {
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,0.3)', cursor: 'pointer' }}>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📋 详情</span>
             </div>
-            <Link to={`/reader-local/${g.gid}`} onClick={e => { e.stopPropagation(); try { sessionStorage.setItem('reader-local-context', JSON.stringify({ group: activeGroup, search, sort: sortBy, pageSize, page, gids: paged.map(g2 => g2.gid) })); sessionStorage.setItem('reader-local-return-url', window.location.search) } catch { } }}
+            <Link to={`/reader-local/${g.gid}`} onClick={e => { e.stopPropagation(); try { sessionStorage.setItem('reader-local-context', JSON.stringify({ group: activeGroup, search, sort: sortBy, pageSize, page, totalPages: pageTotalPages, total: pageTotal, gids: paged.map(g2 => g2.gid) })); sessionStorage.setItem('reader-local-return-url', window.location.search) } catch { } }}
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16,185,129,0.3)', cursor: 'pointer', textDecoration: 'none' }}>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📖 阅读</span>
             </Link>
@@ -823,8 +827,12 @@ const setToast = (msg, duration = 2000) => {
     }).map(g => g.gid)
     if (gids.length === 0) return
     const cfg = { ...albumConfig }
-    const color = cfg[grp.name]?.color || generateAlbumColor()
-    cfg[grp.name] = { name: grp.name, color, gids: [...(cfg[grp.name]?.gids || []), ...gids] }
+    // 使用 grp.key（含命名空间前缀，如 "artist:mankai kaika"）作为专辑 key
+    // 兼容迁移：如果旧 key(grp.name) 已有数据，合并后删除旧条目
+    const existingGids = [...(cfg[grp.key]?.gids || []), ...(cfg[grp.name]?.gids || [])]
+    const color = cfg[grp.key]?.color || cfg[grp.name]?.color || generateAlbumColor()
+    cfg[grp.key] = { name: grp.name, color, gids: [...existingGids, ...gids] }
+    delete cfg[grp.name]
     saveAlbums(cfg)
     setToast(`已转换 "${grp.name}" (${gids.length} 部) 为专辑`)
     setTimeout(() => setToast(null), 1500)

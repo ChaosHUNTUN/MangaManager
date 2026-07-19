@@ -671,10 +671,68 @@ public class DownloadManager
             { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
             await File.WriteAllTextAsync(Path.Combine(dir, ".meta.json"), json);
             Console.WriteLine($"[DownloadManager] 元数据已写入: {dir}/.meta.json");
+
+            // 自动分配作品到匹配的专辑
+            await AutoAssignToAlbumsAsync(scope, gid, detail.TagGroups);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DownloadManager] 写入元数据失败 (gid={gid}): {ex.Message}");
+            Console.WriteLine($"[DownloadManager] 写入元数据/AutoAssign失败 (gid={gid}): {ex.Message}");
+        }
+    }
+
+    /// <summary>根据作品标签自动分配到匹配的专辑（KeyTag 格式: "namespace:tag"）</summary>
+    private static async Task AutoAssignToAlbumsAsync(IServiceScope scope, int gid, List<EhentaiService.TagGroup>? tagGroups)
+    {
+        if (tagGroups == null || tagGroups.Count == 0) return;
+        try
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
+            var albums = db.AlbumConfigs.Where(a => a.KeyTag != null).ToList();
+            var matchedAlbums = new List<(string Key, int Priority)>();
+
+            foreach (var album in albums)
+            {
+                if (string.IsNullOrEmpty(album.KeyTag)) continue;
+                var colonIdx = album.KeyTag.IndexOf(':');
+                if (colonIdx <= 0) continue;
+                var ns = album.KeyTag[..colonIdx].ToLower();
+                var tag = album.KeyTag[(colonIdx + 1)..];
+
+                var group = tagGroups.FirstOrDefault(g => g.Namespace.Equals(ns, StringComparison.OrdinalIgnoreCase));
+                if (group != null && group.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var priority = ns switch { "artist" => 1, "group" => 2, _ => 3 };
+                    matchedAlbums.Add((album.Key, priority));
+                }
+            }
+
+            if (matchedAlbums.Count == 0) return;
+
+            // 添加到所有匹配专辑的 Gids
+            foreach (var (albumKey, _) in matchedAlbums)
+            {
+                var album = albums.First(a => a.Key == albumKey);
+                var gids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(album.Gids) ?? new();
+                if (!gids.Contains(gid))
+                {
+                    gids.Add(gid);
+                    album.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
+                    album.Count = gids.Count;
+                }
+            }
+
+            // AlbumKey 设为最高优先级匹配的专辑
+            var best = matchedAlbums.OrderBy(m => m.Priority).First().Key;
+            var gallery = await db.LocalGalleries.FindAsync(gid);
+            if (gallery != null) gallery.AlbumKey = best;
+
+            await db.SaveChangesAsync();
+            Console.WriteLine($"[DownloadManager] 自动分配 gid={gid} 到 {matchedAlbums.Count} 个专辑: [{string.Join(", ", matchedAlbums.Select(m => m.Key))}]");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DownloadManager] 自动分配异常 (gid={gid}): {ex.Message}");
         }
     }
 }

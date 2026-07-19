@@ -184,4 +184,5 @@ public class LocalGallery
     public DateTime? DownloadedAt { get; set; }
     public DateTime LastModified { get; set; }
     public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
+    public string? AlbumKey { get; set; }          // 所属专辑 Key，如 "artist:haiboku"，未分配为 null
 }

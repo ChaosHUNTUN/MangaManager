@@ -113,7 +113,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
 
-    // 检测已有数据库（有数据表但无迁移历史记录）→ 插入 baseline 标记
+    // 检测已有数据库（有数据表但无迁移历史记录）→ 插入 baseline 标记（仅首次升级时需要）
     if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
     {
         try
@@ -125,33 +125,33 @@ using (var scope = app.Services.CreateScope())
             {
                 using var cmd = conn.CreateCommand();
 
-                // 检查是否有旧版数据表（以 manga 表为准）
-                cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='manga'";
-                var hasMangaTable = (long)cmd.ExecuteScalar()! > 0;
-
-                // 检查迁移历史是否有记录（不仅仅是表存在）
+                // 查询一次 sqlite_master 即可同时获取 history 和 manga 表信息
                 cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory'";
                 var hasHistoryTable = (long)cmd.ExecuteScalar()! > 0;
-
                 var hasHistoryRecords = false;
                 if (hasHistoryTable)
                 {
+                    // 已有迁移记录 → 不是旧数据库，快速跳过
                     cmd.CommandText = "SELECT COUNT(*) FROM __EFMigrationsHistory";
                     hasHistoryRecords = (long)cmd.ExecuteScalar()! > 0;
                 }
 
-                // 有旧数据表，但没有迁移记录 → 需要插入 baseline
-                if (hasMangaTable && !hasHistoryRecords)
+                if (!hasHistoryRecords)
                 {
-                    Console.WriteLine("[DB] 检测到已有数据库，插入 InitialCreate baseline 迁移记录...");
-                    if (!hasHistoryTable)
+                    // 无迁移记录 → 检查是否有旧版 manga 表需要 baseline
+                    cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='manga'";
+                    if ((long)cmd.ExecuteScalar()! > 0)
                     {
-                        cmd.CommandText = "CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (MigrationId TEXT PRIMARY KEY, ProductVersion TEXT)";
+                        Console.WriteLine("[DB] 检测到已有数据库，插入 InitialCreate baseline 迁移记录...");
+                        if (!hasHistoryTable)
+                        {
+                            cmd.CommandText = "CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (MigrationId TEXT PRIMARY KEY, ProductVersion TEXT)";
+                            cmd.ExecuteNonQuery();
+                        }
+                        cmd.CommandText = "INSERT OR IGNORE INTO __EFMigrationsHistory VALUES ('20260612043946_InitialCreate', '9.0.0')";
                         cmd.ExecuteNonQuery();
+                        Console.WriteLine("[DB] Baseline 迁移记录已插入");
                     }
-                    cmd.CommandText = "INSERT OR IGNORE INTO __EFMigrationsHistory VALUES ('20260612043946_InitialCreate', '9.0.0')";
-                    cmd.ExecuteNonQuery();
-                    Console.WriteLine("[DB] Baseline 迁移记录已插入");
                 }
             }
             finally
@@ -167,6 +167,101 @@ using (var scope = app.Services.CreateScope())
 
     db.Database.Migrate();
     Console.WriteLine("[DB] 数据库迁移完成");
+
+    // 一次性同步：将已有 album_config.Gids 写入 local_gallery.AlbumKey
+    try
+    {
+        var albums = db.AlbumConfigs.ToList();
+        // 清理"幽灵 gid"：移除本地库中不存在的 gid
+        var existingGidSet = db.LocalGalleries.Select(g => g.Gid).ToHashSet();
+        var cleaned = 0;
+        foreach (var album in albums)
+        {
+            if (string.IsNullOrEmpty(album.Gids) || album.Gids == "[]") continue;
+            var gids = System.Text.Json.JsonSerializer.Deserialize<int[]>(album.Gids);
+            if (gids == null || gids.Length == 0) continue;
+            var valid = gids.Where(g => existingGidSet.Contains(g)).ToArray();
+            if (valid.Length < gids.Length)
+            {
+                album.Gids = System.Text.Json.JsonSerializer.Serialize(valid);
+                // 同步清理 Order（只保留有效的 gid 排序）
+                if (!string.IsNullOrEmpty(album.Order) && album.Order != "[]")
+                {
+                    var orderArr = System.Text.Json.JsonSerializer.Deserialize<int[]>(album.Order);
+                    if (orderArr != null)
+                        album.Order = System.Text.Json.JsonSerializer.Serialize(
+                            orderArr.Where(o => existingGidSet.Contains(o)).ToArray());
+                }
+                album.Count = valid.Length;
+                cleaned++;
+            }
+            // AlbumKey 同步
+            for (int i = 0; i < valid.Length; i += 100)
+            {
+                var batch = valid.Skip(i).Take(100).ToList();
+                db.LocalGalleries
+                    .Where(g => batch.Contains(g.Gid))
+                    .ExecuteUpdate(s => s.SetProperty(g => g.AlbumKey, album.Key));
+            }
+        }
+        if (cleaned > 0) db.SaveChanges();
+        Console.WriteLine($"[DB] 数据清理: {cleaned} 个专辑移除了无效 gid，AlbumKey 同步完成");
+    }
+    catch (Exception ex) { Console.WriteLine($"[DB] 数据清理跳过: {ex.Message}"); }
+
+    // 一次性修复：为 KeyTag 为空的专辑推断命名空间前缀（artist/group/other）
+    try
+    {
+        var albumsToFix = db.AlbumConfigs.ToList().Where(a => a.KeyTag == null && !a.Key.Contains(':')).ToList();
+        var fixedCount = 0;
+        foreach (var album in albumsToFix)
+        {
+            if (string.IsNullOrEmpty(album.Gids) || album.Gids == "[]") continue;
+            var gids = System.Text.Json.JsonSerializer.Deserialize<int[]>(album.Gids);
+            if (gids == null || gids.Length == 0) continue;
+
+            var sampleGallery = db.LocalGalleries.FirstOrDefault(g => gids.Contains(g.Gid));
+            if (sampleGallery == null) continue;
+
+            string? ns = null;
+            var key = album.Key;
+            var name = album.Name;
+
+            // 1) 优先匹配 Artists
+            if (!string.IsNullOrEmpty(sampleGallery.Artists))
+            {
+                var artists = System.Text.Json.JsonSerializer.Deserialize<List<string>>(sampleGallery.Artists);
+                if (artists != null && artists.Any(a =>
+                    string.Equals(a, key, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(a, name, StringComparison.OrdinalIgnoreCase)))
+                    ns = "artist";
+            }
+            // 2) 其次匹配 Groups
+            if (ns == null && !string.IsNullOrEmpty(sampleGallery.Groups))
+            {
+                var groups = System.Text.Json.JsonSerializer.Deserialize<List<string>>(sampleGallery.Groups);
+                if (groups != null && groups.Any(g =>
+                    string.Equals(g, key, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(g, name, StringComparison.OrdinalIgnoreCase)))
+                    ns = "group";
+            }
+            // 3) 从 Category/Language 推断 "other" 类型（如 "ai generated" / "chinese" 等）
+            if (ns == null)
+                ns = "other";
+
+            if (ns != null)
+            {
+                album.KeyTag = $"{ns}:{key}";
+                fixedCount++;
+            }
+        }
+        if (fixedCount > 0)
+        {
+            db.SaveChanges();
+            Console.WriteLine($"[DB] KeyTag 修复: {fixedCount} 个专辑");
+        }
+    }
+    catch (Exception ex) { Console.WriteLine($"[DB] KeyTag 修复跳过: {ex.Message}"); }
 
     // 启用 WAL 模式（仅 SQLite）：允许并发读写，避免 "database is locked" 错误
     if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))

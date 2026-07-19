@@ -196,7 +196,6 @@ public class AlbumsController : ControllerBase
             return BadRequest(new ApiResponse<object>(false, null, "没有数据，拒绝保存以避免清空专辑"));
 
         var existing = await _db.AlbumConfigs.ToDictionaryAsync(a => a.Key);
-        // 收集已有颜色用于排除
         var usedColors = existing.Values.Select(e => e.Color).Where(c => !string.IsNullOrEmpty(c)).ToHashSet();
         foreach (var (key, item) in data)
         {
@@ -207,9 +206,8 @@ public class AlbumsController : ControllerBase
                 entity.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
                 entity.Order = System.Text.Json.JsonSerializer.Serialize(item.Order ?? new int[0]);
                 entity.Count = gids.Length;
-                entity.KeyTag = key.Contains(':') ? key : entity.KeyTag;  // Key 含冒号则自动设为 KeyTag
+                entity.KeyTag = key.Contains(':') ? key : entity.KeyTag;
                 entity.UpdatedAt = DateTime.UtcNow;
-                // 如果已有 color 则保留，否则生成
                 if (string.IsNullOrEmpty(entity.Color))
                 {
                     entity.Color = AlbumColorGenerator.GenerateAlbumColor(usedColors);
@@ -233,12 +231,39 @@ public class AlbumsController : ControllerBase
                 });
             }
         }
-        // 删除数据库中已不存在于请求中的专辑
         var keysToDelete = existing.Keys.Except(data.Keys).ToList();
         foreach (var key in keysToDelete)
             _db.AlbumConfigs.Remove(existing[key]);
 
         await _db.SaveChangesAsync();
+
+        // 同步 local_gallery.AlbumKey：先清空受影响专辑的所有记录，再批量写入
+        var affectedKeys = data.Keys.Concat(keysToDelete).Distinct().ToList();
+        if (affectedKeys.Count > 0)
+        {
+            // SQLite 对大型 IN 子句敏感，分批处理
+            for (int i = 0; i < affectedKeys.Count; i += 50)
+            {
+                var batch = affectedKeys.Skip(i).Take(50).ToList();
+                await _db.LocalGalleries
+                    .Where(g => g.AlbumKey != null && batch.Contains(g.AlbumKey))
+                    .ExecuteUpdateAsync(s => s.SetProperty(g => g.AlbumKey, g => null));
+            }
+        }
+
+        foreach (var (key, item) in data)
+        {
+            var gids = item.Gids ?? new int[0];
+            if (gids.Length == 0) continue;
+            for (int i = 0; i < gids.Length; i += 100)
+            {
+                var batch = gids.Skip(i).Take(100).ToList();
+                await _db.LocalGalleries
+                    .Where(g => batch.Contains(g.Gid))
+                    .ExecuteUpdateAsync(s => s.SetProperty(g => g.AlbumKey, key));
+            }
+        }
+
         return Ok(new ApiResponse<object>(true, null, "已保存"));
     }
 
