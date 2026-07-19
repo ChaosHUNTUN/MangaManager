@@ -188,6 +188,7 @@ const setToast = (msg, duration = 2000) => {
 
   // 侧边栏
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarPinned, setSidebarPinned] = useState(false)
   const [albumModal, setAlbumModal] = useState(null)
   const [dragGid, setDragGid] = useState(null)
 
@@ -992,11 +993,13 @@ const setToast = (msg, duration = 2000) => {
         onMouseEnter={sidebarEnter}
         onMouseLeave={sidebarLeave}
         onDragOver={sidebarDragOver}
+        pinned={sidebarPinned}
+        onTogglePin={() => setSidebarPinned(p => !p)}
         onClose={() => setSidebarOpen(false)}
       />
 
       {/* 主内容区 */}
-      <div style={{ flex: 1, minWidth: 0, marginLeft: sidebarOpen ? 240 : 24, transition: 'margin-left 0.25s ease' }}>
+      <div style={{ flex: 1, minWidth: 0, marginLeft: (sidebarOpen || sidebarPinned) ? 240 : 24, transition: 'margin-left 0.25s ease' }}>
         {/* 导航栏 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', marginBottom: 16, background: 'linear-gradient(135deg, #16213e, #1a1a2e)', borderRadius: 12, border: '1px solid #2a2a4a', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
