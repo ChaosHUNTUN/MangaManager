@@ -44,6 +44,7 @@ public class AlbumsController : ControllerBase
             {
                 name = a.Name,
                 color = string.IsNullOrEmpty(a.Color) ? null : a.Color,
+                keyTag = a.KeyTag,
                 gids = System.Text.Json.JsonSerializer.Deserialize<int[]>(a.Gids) ?? Array.Empty<int>(),
                 order = System.Text.Json.JsonSerializer.Deserialize<int[]>(a.Order ?? "[]") ?? Array.Empty<int>(),
                 createdAt = a.CreatedAt.ToString("o"),
