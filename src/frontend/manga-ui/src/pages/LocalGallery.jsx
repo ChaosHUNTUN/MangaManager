@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryDetail, getLocalCoverUrl, deleteLocalGallery, translateEHTags, suggestEHTags, redownloadLocalGallery, batchRedownloadLocalGalleries, fetchAlbumConfig, saveAlbumConfig, renameAlbum, importLocalGallery, batchImportGalleries, fetchGalleryMetaTags, updateGalleryMetaTags, browseDirectory } from '../api'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryGids, fetchLocalGalleryDetail, getLocalCoverUrl, deleteLocalGallery, translateEHTags, suggestEHTags, redownloadLocalGallery, batchRedownloadLocalGalleries, fetchAlbumConfig, saveAlbumConfig, renameAlbum, importLocalGallery, batchImportGalleries, fetchGalleryMetaTags, updateGalleryMetaTags, browseDirectory } from '../api'
 import useGalleryDrag from '../hooks/useGalleryDrag'
 import GalleryDetail from '../components/GalleryDetail'
 import AlbumSidebar from '../components/AlbumSidebar'
@@ -23,6 +23,8 @@ const SORT_OPTIONS = [
 ]
 
 export default function LocalGallery() {
+  const navigate = useNavigate()
+
   // === 元数据流：轻量全量数据，用于侧边栏分组/标签池/搜索补全 ===
   const [galleryMetas, setGalleryMetas] = useState([])    // LocalGalleryMeta[]
   const [metaLoading, setMetaLoading] = useState(true)
@@ -567,6 +569,43 @@ const setToast = (msg, duration = 2000) => {
     setDetailLoading(false)
   }
 
+  // 打开阅读器：先写当前页 gids 立即跳转，后台加载完整 gid 列表并更新 sessionStorage
+  const handleOpenReader = useCallback(async (gid) => {
+    // 1) 立即保存当前页 gids 到 sessionStorage（阅读器快速启动）
+    const allAlbumGids = Object.values(albumConfig).flatMap(v => v.gids || [])
+    let albumGids = null, albumOrder = null
+    if (activeGroup.startsWith('album:')) {
+      const album = albumConfig[activeGroup.slice(6)]
+      if (album) {
+        albumGids = album.gids || []
+        albumOrder = sortBy === 'custom' ? (album.order || album.gids) : null
+      }
+    }
+    sessionStorage.setItem('reader-local-context', JSON.stringify({
+      group: activeGroup, search, sort: sortBy,
+      gids: paged.map(g2 => g2.gid),
+      total: pageTotal
+    }))
+    sessionStorage.setItem('reader-local-return-url', window.location.search)
+
+    // 2) 立即跳转到阅读器
+    navigate(`/reader-local/${gid}`)
+
+    // 3) 后台异步加载完整 gid 列表，加载完更新 sessionStorage
+    try {
+      const fullGids = await fetchLocalGalleryGids({
+        group: activeGroup === 'all' ? null : activeGroup,
+        search: search || null,
+        sort: sortBy || null,
+        albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids.length > 0 ? allAlbumGids : null,
+        albumOrder
+      })
+      if (fullGids && fullGids.length > 0) {
+        sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fullGids))
+      }
+    } catch { /* 静默失败，阅读器使用当前页 gids */ }
+  }, [activeGroup, search, sortBy, pageTotal, paged, albumConfig, navigate])
+
   // 判断当前是否在专辑自定义排序模式
   const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
 
@@ -702,10 +741,10 @@ const setToast = (msg, duration = 2000) => {
               style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,0.3)', cursor: 'pointer' }}>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📋 详情</span>
             </div>
-            <Link to={`/reader-local/${g.gid}`} onClick={e => { e.stopPropagation(); try { sessionStorage.setItem('reader-local-context', JSON.stringify({ group: activeGroup, search, sort: sortBy, pageSize, page, totalPages: pageTotalPages, total: pageTotal, gids: paged.map(g2 => g2.gid) })); sessionStorage.setItem('reader-local-return-url', window.location.search) } catch { } }}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16,185,129,0.3)', cursor: 'pointer', textDecoration: 'none' }}>
+            <div onClick={e => { e.stopPropagation(); setHoveredGid(null); handleOpenReader(g.gid) }}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(16,185,129,0.3)', cursor: 'pointer' }}>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📖 阅读</span>
-            </Link>
+            </div>
           </div>
         )}
       </div>
@@ -1073,6 +1112,7 @@ const setToast = (msg, duration = 2000) => {
             filtered={paged}
             albumConfig={albumConfig}
             galleries={galleryMetas}
+            onOpenReader={handleOpenReader}
             onClose={() => setDetail(null)}
             onEditTags={async (gid) => {
               const tags = await fetchGalleryMetaTags(gid)

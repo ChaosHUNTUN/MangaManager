@@ -474,6 +474,16 @@ export async function fetchAlbumDetail(key) {
   } catch { return null }
 }
 
+/// 获取当前筛选条件下的完整有序 gid 列表（供阅读器跨作品导航）
+export async function fetchLocalGalleryGids({ group, search, sort, albumGids, albumOrder } = {}) {
+  const json = await request('/api/local/galleries/gids', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ group, search, sort, albumGids, albumOrder })
+  })
+  return json.data || []
+}
+
 /// 查询所有专辑简略信息（key, name, color, count, createdAt）
 export async function fetchAlbumSummary() {
   try {

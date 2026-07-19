@@ -105,6 +105,71 @@ public class LocalGalleryService
         int page, int pageSize, List<int>? albumGids = null, List<int>? albumOrder = null)
     {
         using var db = CreateDb();
+        var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder);
+
+        // 自定义排序
+        if (!string.IsNullOrEmpty(sort) && sort == "custom" && albumOrder != null && albumOrder.Count > 0
+            && !string.IsNullOrEmpty(group) && group.StartsWith("album:"))
+        {
+            var all = query.ToList();
+            var orderMap = new Dictionary<int, int>();
+            for (int i = 0; i < albumOrder.Count; i++) orderMap[albumOrder[i]] = i;
+            all = all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999)).ToList();
+            var total = all.Count;
+            var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
+            var safePage = Math.Clamp(page, 1, Math.Max(1, totalPages));
+            return new GalleryPagedResult
+            {
+                Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
+                Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
+            };
+        }
+
+        // 通用排序 + 分页
+        query = ApplyDbSort(query, sort);
+
+        var queryTotal = query.Count();
+        var queryTotalPages = (int)Math.Ceiling(queryTotal / (double)Math.Max(1, pageSize));
+        var querySafePage = Math.Clamp(page, 1, Math.Max(1, queryTotalPages));
+        var queryItems = query.Skip((querySafePage - 1) * pageSize).Take(pageSize).Select(g => MapToSummary(g)).ToList();
+
+        return new GalleryPagedResult
+        {
+            Items = queryItems,
+            Total = queryTotal,
+            TotalPages = queryTotalPages,
+            Page = querySafePage,
+            PageSize = pageSize
+        };
+    }
+
+    /// <summary>获取当前筛选条件下的完整有序 gid 列表（供阅读器跨作品导航使用）</summary>
+    public List<int> GetGalleryGids(string? group, string? search, string? sort,
+        List<int>? albumGids = null, List<int>? albumOrder = null)
+    {
+        using var db = CreateDb();
+        var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder);
+
+        // 自定义排序
+        if (!string.IsNullOrEmpty(sort) && sort == "custom" && albumOrder != null && albumOrder.Count > 0
+            && !string.IsNullOrEmpty(group) && group.StartsWith("album:"))
+        {
+            var all = query.ToList();
+            var orderMap = new Dictionary<int, int>();
+            for (int i = 0; i < albumOrder.Count; i++) orderMap[albumOrder[i]] = i;
+            return all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999))
+                      .Select(g => g.Gid).ToList();
+        }
+
+        // 通用排序
+        query = ApplyDbSort(query, sort);
+        return query.Select(g => g.Gid).ToList();
+    }
+
+    /// <summary>构建筛选查询（分组 + 搜索），供 GetPagedGalleries 和 GetGalleryGids 复用</summary>
+    private static IQueryable<LocalGallery> BuildFilteredQuery(MangaDbContext db, string? group, string? search, string? sort,
+        List<int>? albumGids = null, List<int>? albumOrder = null)
+    {
         var query = db.LocalGalleries.AsNoTracking().AsQueryable();
 
         // 分组筛选
@@ -112,36 +177,10 @@ public class LocalGalleryService
         {
             if (group.StartsWith("album:"))
             {
-                // 优先按 AlbumKey 筛选，若 AlbumKey 尚未同步则回退到 albumGids
                 var albumKey = group[6..];
                 query = query.Where(g => g.AlbumKey == albumKey);
 
-                // 自定义排序 / fallback
-                if (sort == "custom" && albumOrder != null && albumOrder.Count > 0)
-                {
-                    var all = query.ToList();
-                    // AlbumKey 未就绪时回退到 albumGids
-                    if (all.Count == 0 && albumGids != null && albumGids.Count > 0)
-                    {
-                        var gidSet = new HashSet<int>(albumGids);
-                        query = db.LocalGalleries.AsNoTracking().Where(g => gidSet.Contains(g.Gid));
-                        all = query.ToList();
-                        // 也用 albumOrder 排序
-                    }
-                    var orderMap = new Dictionary<int, int>();
-                    for (int i = 0; i < albumOrder.Count; i++) orderMap[albumOrder[i]] = i;
-                    all = all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999)).ToList();
-                    var total = all.Count;
-                    var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
-                    var safePage = Math.Clamp(page, 1, Math.Max(1, totalPages));
-                    return new GalleryPagedResult
-                    {
-                        Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
-                        Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
-                    };
-                }
-
-                // 非 custom 排序时也检查 fallback
+                // 自定义排序时检查 fallback
                 var count = query.Count();
                 if (count == 0 && albumGids != null && albumGids.Count > 0)
                 {
@@ -151,12 +190,10 @@ public class LocalGalleryService
             }
             else
             {
-                // 自动分组：排除已分配作品
                 query = query.Where(g => g.AlbumKey == null);
 
                 if (group == "multi")
                 {
-                    // multi: JSON 数组有 2+ 元素 ↔ 字符串中有逗号（即不止一个元素）
                     query = query.Where(g =>
                         (g.Artists != null && g.Artists.Contains(",")) ||
                         (g.Groups != null && g.Groups.Contains(",")));
@@ -169,7 +206,6 @@ public class LocalGalleryService
                 }
                 else if (group.StartsWith("artist:"))
                 {
-                    // SQLite: Artists LIKE '["name"%' → 匹配数组首元素
                     var namePattern = $"[\"{group[7..]}\"";
                     query = query.Where(g => g.Artists != null && g.Artists.StartsWith(namePattern));
                 }
@@ -229,22 +265,7 @@ public class LocalGalleryService
             }
         }
 
-        // 排序 + 分页
-        query = ApplyDbSort(query, sort);
-
-        var queryTotal = query.Count();
-        var queryTotalPages = (int)Math.Ceiling(queryTotal / (double)Math.Max(1, pageSize));
-        var querySafePage = Math.Clamp(page, 1, Math.Max(1, queryTotalPages));
-        var queryItems = query.Skip((querySafePage - 1) * pageSize).Take(pageSize).Select(g => MapToSummary(g)).ToList();
-
-        return new GalleryPagedResult
-        {
-            Items = queryItems,
-            Total = queryTotal,
-            TotalPages = queryTotalPages,
-            Page = querySafePage,
-            PageSize = pageSize
-        };
+        return query;
     }
 
     private static LocalGallerySummary MapToSummary(LocalGallery g) => new()

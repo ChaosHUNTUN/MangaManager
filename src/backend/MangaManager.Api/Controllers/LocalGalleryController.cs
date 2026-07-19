@@ -39,6 +39,16 @@ public class LocalGalleryController : ControllerBase
         return Ok(new ApiResponse<object>(true, result));
     }
 
+    /// <summary>获取当前筛选条件下的完整有序 gid 列表（供阅读器跨作品导航）</summary>
+    [HttpPost("galleries/gids")]
+    public IActionResult GetGalleryGids([FromBody] GidsRequest req)
+    {
+        var gids = _svc.GetGalleryGids(
+            req.Group, req.Search, req.Sort,
+            req.AlbumGids, req.AlbumOrder);
+        return Ok(new ApiResponse<object>(true, gids));
+    }
+
     /// <summary>随机抽取 N 部作品（无视筛选条件）</summary>
     [HttpGet("galleries/random")]
     public IActionResult GetRandomGalleries([FromQuery] int count = 20)
@@ -456,6 +466,14 @@ public record PagedRequest(
     string? Sort,
     int Page = 1,
     int PageSize = 20,
+    List<int>? AlbumGids = null,
+    List<int>? AlbumOrder = null
+);
+
+public record GidsRequest(
+    string? Group,
+    string? Search,
+    string? Sort,
     List<int>? AlbumGids = null,
     List<int>? AlbumOrder = null
 );

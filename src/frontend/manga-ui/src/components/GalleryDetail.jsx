@@ -24,7 +24,7 @@ const formatSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b 
  *   onEditTags       - 编辑标签回调 (gid)
  *   onAddToAlbum     - 添加到专辑回调 ({ gid, title, tags, matchedAlbums })
  */
-export default function GalleryDetail({ detail, tagTranslations, nsTranslations, filtered, albumConfig, galleries, onClose, onEditTags, onAddToAlbum }) {
+export default function GalleryDetail({ detail, tagTranslations, nsTranslations, filtered, albumConfig, galleries, onClose, onEditTags, onAddToAlbum, onOpenReader }) {
   if (!detail) return null
 
   // 判断当前作品是否已在某个自定义专辑中
