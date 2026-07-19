@@ -168,7 +168,8 @@ export default function ReaderLocal() {
       // 到达当前分页边界，请求上一分页
       const adjGids = await fetchAdjacentPage('prev')
       if (adjGids && adjGids.length > 0) {
-        navigate(`/reader-local/${adjGids[adjGids.length - 1]}`)
+        // adjGids 在 fetchAdjacentPage('prev') 中已被 reverse，索引 0 是上一页最后一部
+        navigate(`/reader-local/${adjGids[0]}`)
       } else {
         setToast('已经是第一部'); setTimeout(() => setToast(null), 1500)
       }
