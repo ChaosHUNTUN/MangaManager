@@ -57,6 +57,7 @@ public class LocalGalleryService
         Language = g.Language,
         Artists = DeserializeJsonList(g.Artists),
         Groups = DeserializeJsonList(g.Groups),
+        AllTags = DeserializeJsonList(g.AllTags),
         DownloadedAt = g.DownloadedAt
     };
 
@@ -95,6 +96,7 @@ public class LocalGalleryService
                 Gid = g.Gid,
                 Artists = DeserializeJsonList(g.Artists),
                 Groups = DeserializeJsonList(g.Groups),
+                AllTags = DeserializeJsonList(g.AllTags),
                 Category = g.Category,
                 Language = g.Language
             }).ToList();
@@ -279,7 +281,8 @@ public class LocalGalleryService
         Rating = g.Rating,
         LastModified = g.LastModified,
         Artists = DeserializeJsonList(g.Artists),
-        Groups = DeserializeJsonList(g.Groups)
+        Groups = DeserializeJsonList(g.Groups),
+        AllTags = DeserializeJsonList(g.AllTags)
     };
 
     private static IQueryable<LocalGallery> ApplyDbSort(IQueryable<LocalGallery> query, string? sort)
@@ -767,6 +770,7 @@ public class LocalGalleryItem
     public string? Language { get; set; }
     public List<string> Artists { get; set; } = new();
     public List<string> Groups { get; set; } = new();
+    public List<string> AllTags { get; set; } = new();
     public DateTime? DownloadedAt { get; set; }
 }
 
@@ -804,6 +808,7 @@ public class LocalGalleryMeta
     public int Gid { get; set; }
     public List<string> Artists { get; set; } = new();
     public List<string> Groups { get; set; } = new();
+    public List<string> AllTags { get; set; } = new();
     public string? Category { get; set; }
     public string? Language { get; set; }
 }
@@ -840,4 +845,5 @@ public class LocalGallerySummary
     public DateTime LastModified { get; set; }
     public List<string> Artists { get; set; } = new();
     public List<string> Groups { get; set; } = new();
+    public List<string> AllTags { get; set; } = new();
 }

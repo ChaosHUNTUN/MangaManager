@@ -330,11 +330,12 @@ const setToast = (msg, duration = 2000) => {
     translateBatches()
   }, [galleryMetas.length])
 
-  // 辅助：从画廊数据提取可匹配的标签
+  // 辅助：从画廊数据提取可匹配的标签（含 allTags）
   const getGalleryTags = useCallback((g) => {
     const artists = g.artists || []
     const groups = g.groups || []
-    return { artists, groups, all: [...artists, ...groups] }
+    const allTags = g.allTags || []
+    return { artists, groups, allTags, all: [...artists, ...groups, ...allTags] }
   }, [])
 
 
@@ -349,8 +350,11 @@ const setToast = (msg, duration = 2000) => {
 
     galleryMetas.forEach(g => {
       if (albumGids.has(g.gid)) return
-      const tags = [...(g.artists || []), ...(g.groups || [])]
-      for (const tag of tags) {
+      const simpleTags = [...(g.artists || []), ...(g.groups || [])]
+      const namespaceTags = g.allTags || []
+      // 优先用 namespace:tag 精确匹配，再回退 simpleTags 兼容旧专辑
+      const allCandidateTags = [...new Set([...namespaceTags, ...simpleTags])]
+      for (const tag of allCandidateTags) {
         if (cfg[tag]) {
           const gids = cfg[tag].gids || []
           if (!gids.includes(g.gid)) {
@@ -360,6 +364,23 @@ const setToast = (msg, duration = 2000) => {
             }
             changed = true
             break
+          }
+        }
+      }
+      // 额外检测 KeyTag：专辑的 KeyTag 字段匹配 allTags 中的某项
+      if (!changed) {
+        for (const [albumKey, albumVal] of Object.entries(cfg)) {
+          const kt = albumVal.keyTag
+          if (kt && namespaceTags.includes(kt)) {
+            const gids = albumVal.gids || []
+            if (!gids.includes(g.gid)) {
+              cfg[albumKey] = { ...albumVal, gids: [...gids, g.gid] }
+              if (albumVal.order) {
+                cfg[albumKey].order = [...albumVal.order, g.gid]
+              }
+              changed = true
+              break
+            }
           }
         }
       }

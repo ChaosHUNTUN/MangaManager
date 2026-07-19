@@ -228,12 +228,29 @@ public class GallerySyncService : BackgroundService
                     else if (rat.TryGetDouble(out var rv2)) item.Rating = rv2;
                 }
                 if (root.TryGetProperty("downloadedAt", out var da) && DateTime.TryParse(da.GetString(), out var dt)) item.DownloadedAt = dt;
-                if (root.TryGetProperty("tags", out var tags))
+                if (root.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
                 {
                     if (tags.TryGetProperty("artist", out var a) && a.ValueKind == JsonValueKind.Array)
                         item.Artists = JsonSerializer.Serialize(a.EnumerateArray().Select(x => x.GetString()).Where(x => x != null));
                     if (tags.TryGetProperty("group", out var gr) && gr.ValueKind == JsonValueKind.Array)
                         item.Groups = JsonSerializer.Serialize(gr.EnumerateArray().Select(x => x.GetString()).Where(x => x != null));
+
+                    // 收集所有 namespace 的标签到 AllTags（供专辑 KeyTag 匹配使用）
+                    var allTagList = new List<string>();
+                    foreach (var nsProp in tags.EnumerateObject())
+                    {
+                        if (nsProp.Value.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var tagEl in nsProp.Value.EnumerateArray())
+                            {
+                                var tagVal = tagEl.GetString();
+                                if (!string.IsNullOrEmpty(tagVal))
+                                    allTagList.Add($"{nsProp.Name.ToLower()}:{tagVal}");
+                            }
+                        }
+                    }
+                    if (allTagList.Count > 0)
+                        item.AllTags = JsonSerializer.Serialize(allTagList);
                 }
             }
             catch (Exception ex)
@@ -272,6 +289,7 @@ public class GallerySyncService : BackgroundService
         entity.CoverFile = source.CoverFile;
         entity.Artists = source.Artists;
         entity.Groups = source.Groups;
+        entity.AllTags = source.AllTags;
         entity.OnlineUrl = source.OnlineUrl;
         entity.Token = source.Token;
         entity.DownloadedAt = source.DownloadedAt;

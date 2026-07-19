@@ -179,6 +179,7 @@ public class LocalGallery
     public string? CoverFile { get; set; }      // 封面图片路径
     public string? Artists { get; set; }         // JSON: ["wada","hoge"]
     public string? Groups { get; set; }          // JSON: ["circle"]
+    public string? AllTags { get; set; }         // JSON: ["artist:wada","group:circle","other:ai_generated"]
     public string? OnlineUrl { get; set; }       // EH 页面链接
     public string? Token { get; set; }           // EH token
     public DateTime? DownloadedAt { get; set; }
