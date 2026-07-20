@@ -3,7 +3,8 @@ namespace MangaManager.Services;
 /// <summary>E-Hentai 本地文件工具（从 EhentaiService 拆分）</summary>
 public static class EhentaiFileHelper
 {
-    public static readonly string DefaultDownloadDir = @"G:\学习资料\本子";
+    /// <summary>下载根目录，启动时由 Program.cs 注入配置值</summary>
+    public static string DefaultDownloadDir { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "downloads");
 
     /// <summary>获取画廊本地目录路径（{下载目录}/{gid}-{标题}/）</summary>
     public static string GetGalleryLocalDir(int gid, string title)
