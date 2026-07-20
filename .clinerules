@@ -29,6 +29,7 @@ MangaManager/
 │   │       └── src/
 │   │           ├── api.js             # 全量 API 封装（500 行，待拆分）
 │   │           ├── App.jsx            # 路由 + 健康检查 + 离线横幅
+│   │           ├── tokens.css         # CSS 设计令牌（色彩/字体/间距/动效变量）
 │   │           ├── pages/             # 5 个页面组件
 │   │           ├── components/        # 5 个共享组件
 │   │           └── hooks/             # 1 个自定义 hook
@@ -36,7 +37,9 @@ MangaManager/
 │   │   └── MangaManager.Console/      # WPF 桌面应用（下载管理器 UI）
 │   └── shared/
 │       └── MangaManager.Shared/       # 前后端共享类型/工具库
-├── docs/                              # 项目文档（5 份 Markdown）
+├── docs/                              # 项目文档
+│   └── design/                        # 设计系统文档
+│       └── design-language.md         # 阅读器设计语言规范（色彩/材质/字体/动效/组件蓝图）
 ├── scripts/                           # Python 辅助脚本
 ├── manga_manager.py                   # Python 工具入口
 └── 启动管理工具.bat                    # 一体化启动脚本

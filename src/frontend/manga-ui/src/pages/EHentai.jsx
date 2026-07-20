@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import EhentaiReader from '../components/EhentaiReader'
+import ScrollToTop from '../components/ScrollToTop'
 import {
   fetchEHentaiCookie, updateEHentaiCookie, validateEHentaiCookie,
   fetchEHGalleries, fetchEHGalleryDetail, checkEHConnectivity,
@@ -418,39 +419,26 @@ export default function EHentai() {
 
   // ===== 主界面 =====
   return (
-    <div className="container" style={{ paddingTop: 24 }}>
-      {/* 导航栏 */}
+    <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 'var(--space-4)', minHeight: '100vh' }}>
+      {/* 导航栏 — 与本地画廊统一 */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 20px', marginBottom: 16,
-        background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
-        borderRadius: 12, border: '1px solid #2a2a4a',
-        flexWrap: 'wrap', gap: 10
+        display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+        padding: '0 var(--space-4)', height: 'var(--header-height)',
+        background: 'var(--surface)', borderBottom: '1px solid var(--divider)',
+        flexShrink: 0, marginBottom: 'var(--space-2)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Link to="/" style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 14px', borderRadius: 8,
-            background: '#0f0f1a', border: '1px solid #2a2a4a',
-            color: '#a78bfa', textDecoration: 'none', fontSize: '0.82rem',
-            fontWeight: 500, transition: 'all 0.2s'
-          }}
-          onMouseEnter={e => { e.target.style.background = '#1a1a3a'; e.target.style.borderColor = '#7c3aed' }}
-          onMouseLeave={e => { e.target.style.background = '#0f0f1a'; e.target.style.borderColor = '#2a2a4a' }}>
-            📁 本地
-          </Link>
-          <div style={{ width: 1, height: 20, background: '#2a2a4a' }} />
-          <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#e0e0e0', letterSpacing: '0.5px' }}>
-            🌐 E-Hentai
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+          <Link to="/" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}>📁 本地</Link>
+          <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>🌐 E-Hentai</span>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
           <button className="btn-sm" onClick={() => setShowCookie(!showCookie)}
-            style={{ borderColor: showCookie ? '#7c3aed' : '#444', color: showCookie ? '#a78bfa' : '#888' }}>Cookie</button>
+            style={{ borderColor: showCookie ? 'var(--accent-teal-bg)' : 'var(--border-input)', color: showCookie ? 'var(--accent-teal)' : 'var(--text-secondary)' }}>Cookie</button>
           <button className="btn-sm" onClick={handleValidate} disabled={cookieValidating}
-            style={{ borderColor: '#10b981', color: '#6ee7b7' }}>{cookieValidating ? '...' : '验证'}</button>
+            style={{ color: 'var(--success)' }}>{cookieValidating ? '...' : '验证'}</button>
           <button className="btn-sm" onClick={() => { setShowBlockedPanel(!showBlockedPanel); loadBlockedTags() }}
-            style={{ borderColor: showBlockedPanel ? '#ef4444' : '#444', color: showBlockedPanel ? '#fca5a5' : '#888' }}>
+            style={{ borderColor: showBlockedPanel ? 'rgba(176,96,96,0.3)' : 'var(--border-input)', color: showBlockedPanel ? 'var(--error)' : 'var(--text-secondary)' }}>
             {blockedTags.length > 0 ? `🚫 ${blockedTags.length}` : '屏蔽'}</button>
         </div>
       </div>
@@ -697,110 +685,60 @@ export default function EHentai() {
       {loading && <div className="loading">加载中...</div>}
       {!loading && galleries.length === 0 && !error && cookieInfo && <div className="empty"><p>输入关键词搜索或浏览</p></div>}
 
-      {/* 画廊列表 */}
-      <div className="eh-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      {/* 画廊列表 — 统一极简卡片风格 */}
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(var(--card-min-width), 1fr))' }}>
         {galleries.map(g => (
           <div key={`${g.gid}_${g.token}`}
-            style={{ background: '#14142a', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: '1px solid #2a2a4a', transition: 'border-color 0.2s, transform 0.2s' }}
+            onClick={() => openDetail(g.gid, g.token)}
             className="gallery-card"
-            onMouseEnter={e => { e.currentTarget.style.borderColor = '#a78bfa'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2a4a'; e.currentTarget.style.transform = 'none' }}>
-            {/* 封面区 — 上半部分详情，下半部分下载 */}
-            <div style={{ position: 'relative', width: '100%', paddingBottom: '140%', background: '#1a1a2e' }}>
+            style={{
+              background: 'var(--surface-card)', borderRadius: 'var(--radius-md)', overflow: 'hidden', cursor: 'pointer',
+              border: `1px solid var(--border-card)`, transition: 'border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-active)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-card)'; e.currentTarget.style.transform = 'none' }}>
+            {/* 封面区 */}
+            <div style={{ position: 'relative', width: '100%', paddingBottom: '138%', background: 'var(--surface-high)' }}>
               {g.thumbUrl ? (
                 <img src={getEHImageProxyUrl(g.thumbUrl)} alt={g.title || ''}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0, transition: 'opacity var(--duration-normal) var(--ease-out)' }}
                   loading="lazy"
+                  onLoad={e => { e.target.style.opacity = '1' }}
                   onError={e => { e.target.style.display = 'none' }} />
-              ) : null}
-              {!g.thumbUrl && (
+              ) : (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '3rem', opacity: 0.2 }}>📖</span>
+                  <span style={{ fontSize: '2rem', opacity: 0.15 }}>📖</span>
                 </div>
               )}
               {/* 已下载角标 */}
               {localGids.has(g.gid) && (
-                <div style={{
-                  position: 'absolute', top: 8, right: 8, zIndex: 5,
-                  background: 'rgba(16,185,129,0.85)', color: '#fff',
-                  padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700,
-                  backdropFilter: 'blur(4px)', boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
-                }}>已下载</div>
-              )}
-              {/* Hover 分区操作层 — 通过 CSS 类控制显示 */}
-              <div className="gallery-hover-overlay" style={{
-                position: 'absolute', inset: 0, display: 'none', flexDirection: 'column'
-              }}>
-                {/* 上半部分 — 详情 */}
-                <div onClick={(e) => { e.stopPropagation(); openDetail(g.gid, g.token) }}
-                  style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'rgba(124,58,237,0.3)', cursor: 'pointer',
-                    transition: 'background 0.15s'
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,58,237,0.5)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,58,237,0.3)' }}>
-                  <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                    background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>📋 详情</span>
+                <div className="badge" style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(107,139,107,0.85)', color: '#fff', borderColor: 'transparent' }}>
+                  已下载
                 </div>
-                {/* 下半部分 — 下载/已下载 */}
+              )}
+              {/* Hover 操作层 — 底部毛玻璃按钮组 */}
+              <div className="gallery-hover-overlay" style={{ position: 'absolute', inset: 0, display: 'none', alignItems: 'flex-end', justifyContent: 'center', gap: 'var(--space-2)', padding: 'var(--space-2)', background: 'linear-gradient(transparent 60%, rgba(0,0,0,0.5))', zIndex: 5 }}>
+                <button onClick={(e) => { e.stopPropagation(); openDetail(g.gid, g.token) }}
+                  style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'pointer', backdropFilter: 'blur(6px)' }}
+                  onMouseEnter={e2 => { e2.currentTarget.style.background = 'rgba(139,122,160,0.35)' }}
+                  onMouseLeave={e2 => { e2.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}>详情</button>
                 {localGids.has(g.gid) ? (
-                  <div style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'rgba(16,185,129,0.3)', cursor: 'default'
-                  }}>
-                    <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                      background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>✅ 已下载</span>
-                  </div>
+                  <button style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(107,139,107,0.45)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'default' }}>已下载</button>
                 ) : (
-                  <div onClick={(e) => { e.stopPropagation(); handleDownload({ gid: g.gid, token: g.token, title: g.title }) }}
-                    style={{
-                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'rgba(245,158,11,0.3)', cursor: 'pointer',
-                      transition: 'background 0.15s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.5)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.3)' }}>
-                    <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700,
-                      background: 'rgba(0,0,0,0.55)', padding: '4px 14px', borderRadius: 6 }}>⬇ 下载</span>
-                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); handleDownload({ gid: g.gid, token: g.token, title: g.title }) }}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'pointer', backdropFilter: 'blur(6px)' }}
+                    onMouseEnter={e2 => { e2.currentTarget.style.background = 'rgba(160,128,80,0.35)' }}
+                    onMouseLeave={e2 => { e2.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}>下载</button>
                 )}
               </div>
             </div>
-            <div style={{ padding: '10px 12px' }}>
-              <div title={g.title || `#${g.gid}`} style={{ fontSize: '0.85rem', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', color: '#ccc', fontWeight: 500 }}>
+            <div style={{ padding: '6px 8px 8px' }}>
+              <div title={g.title || `#${g.gid}`} style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', color: 'var(--text-primary)', fontWeight: 'var(--weight-medium)', userSelect: 'none' }}>
                 {g.title || `#${g.gid}`}
               </div>
-              {/* 评分 + 页数 */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {(() => {
-                    const rating = g.rating || 0
-                    return <>
-                      {[1,2,3,4,5].map(star => {
-                        const fill = star <= rating ? 1 : (star - rating < 1 ? rating - Math.floor(rating) : 0)
-                        return (
-                          <span key={star} style={{
-                            position: 'relative', fontSize: '0.7rem', width: '0.85em',
-                            color: '#333'
-                          }}>
-                            <span style={{
-                              position: 'absolute', left: 0, top: 0, overflow: 'hidden',
-                              width: `${fill * 100}%`,
-                              color: '#f59e0b',
-                              textShadow: '0 0 3px rgba(245,158,11,0.5)'
-                            }}>★</span>
-                            ★
-                          </span>
-                        )
-                      })}
-                      {rating > 0 && <span style={{ color: '#888', fontSize: '0.65rem', marginLeft: 3 }}>{rating.toFixed(1)}</span>}
-                    </>
-                  })()}
-                </span>
-                {g.fileCount > 0 && (
-                  <span style={{ color: '#666', fontSize: '0.7rem' }}>{g.fileCount}P</span>
-                )}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--space-1)', color: 'var(--text-muted)', fontSize: 'var(--text-2xs)' }}>
+                <span style={{ color: 'var(--warning)' }}>{g.rating > 0 ? '★ ' + g.rating.toFixed(1) : ''}</span>
+                {g.fileCount > 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xs)' }}>{g.fileCount}P</span>}
               </div>
             </div>
           </div>
@@ -968,6 +906,9 @@ export default function EHentai() {
           </div>
         </div>
       )}
+
+      {/* 回到顶部 */}
+      <ScrollToTop threshold={600} />
 
       {/* Toast 通知 */}
       {toast && (
