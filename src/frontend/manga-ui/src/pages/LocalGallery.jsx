@@ -417,10 +417,11 @@ export default function LocalGallery() {
     setToast('排序已更新')
   }, [paged, activeGroup, albumConfig])
 
+  const isInAlbum = activeGroup.startsWith('album:')
+
   const { dragGidRef, handleDragMouseDown } = useGalleryDrag({
-    isSortMode: false, disabled: batchMode || isAlbumSortMode,
+    isSortMode: false, disabled: batchMode || isInAlbum,
     onDropToAlbum: doAlbumDrop, onDropToSort: () => {},
-    onShortClick: (gid) => setHoveredGid(prev => prev === gid ? null : gid),
     onDragStart: (gid) => setDragGid(gid), onDragEnd: () => setDragGid(null),
     onToast: (msg) => setToast(msg)
   })

@@ -25,8 +25,6 @@ export default function useGalleryDrag({ onDropToAlbum, onDropToSort, onShortCli
 
   const handleDragMouseDown = useCallback((gid, e) => {
     if (disabled) return
-    // 阻止后续 click 事件，由本 handler 统一处理点击/拖拽
-    e.preventDefault()
     const card = e.currentTarget.closest('[style*="border-radius"]') || e.currentTarget
     if (!card) return
 
@@ -154,11 +152,10 @@ export default function useGalleryDrag({ onDropToAlbum, onDropToSort, onShortCli
       dragMoveRef.current = null
       dragUpRef.current = null
 
-      // 未进入拖拽模式 → 视为短点击
+      // 未进入拖拽模式 → 让原生 click 事件触发（由 onCardClick 处理）
       if (!dragging) {
         dragGidRef.current = null
         onDragEnd?.()
-        onShortClick?.(gid)
         return
       }
 

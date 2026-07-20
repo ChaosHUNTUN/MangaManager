@@ -1,0 +1,110 @@
+从 D:\MangaManager\src\backend\MangaManager.Api\Properties\launchSettings.json 使用启动设置...
+正在生成...
+info: Microsoft.EntityFrameworkCore.Migrations[20411]
+      Acquiring an exclusive lock for migration application. See https://aka.ms/efcore-docs-migrations-lock for more information if this takes too long.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*) FROM "sqlite_master" WHERE "name" = '__EFMigrationsLock' AND "type" = 'table';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      INSERT OR IGNORE INTO "__EFMigrationsLock"("Id", "Timestamp") VALUES(1, '2026-07-20 13:06:37.9157262+00:00');
+      SELECT changes();
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+          "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
+          "ProductVersion" TEXT NOT NULL
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*) FROM "sqlite_master" WHERE "name" = '__EFMigrationsHistory' AND "type" = 'table';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "MigrationId", "ProductVersion"
+      FROM "__EFMigrationsHistory"
+      ORDER BY "MigrationId";
+info: Microsoft.EntityFrameworkCore.Migrations[20405]
+      No migrations were applied. The database is already up to date.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      DELETE FROM "__EFMigrationsLock";
+info: MangaManager.Api[0]
+      [DB] 数据库迁移完成
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "local_gallery" AS "l"
+      WHERE "l"."AllTags" IN ('', '[]') OR "l"."AllTags" IS NULL
+info: MangaManager.Api[0]
+      [DB] 检测到 34 条旧记录 AllTags 为空，开始从 .meta.json 回填...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "l"."Gid", "l"."AlbumKey", "l"."AllTags", "l"."Artists", "l"."Category", "l"."CoverFile", "l"."DirPath", "l"."DownloadedAt", "l"."FileCount", "l"."FileSize", "l"."Groups", "l"."Language", "l"."LastModified", "l"."OnlineUrl", "l"."Posted", "l"."Rating", "l"."RatingCount", "l"."SyncedAt", "l"."Title", "l"."TitleJpn", "l"."Token", "l"."Uploader"
+      FROM "local_gallery" AS "l"
+      WHERE "l"."AllTags" IN ('', '[]') OR "l"."AllTags" IS NULL
+info: MangaManager.Api[0]
+      [DB] AllTags 回填完成: 0/34 条
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      PRAGMA journal_mode=WAL
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      PRAGMA synchronous=NORMAL
+info: MangaManager.Api[0]
+      [DB] WAL 模式已启用
+info: MangaManager.Services.GallerySyncService[0]
+      [GallerySync] 启动全量同步...
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "d"."Id", "d"."CompletedAt", "d"."CoverUrl", "d"."CreatedAt", "d"."DownloadedBytes", "d"."DownloadedPages", "d"."ErrorMsg", "d"."FailedPages", "d"."Gid", "d"."StartedAt", "d"."Status", "d"."Title", "d"."Token", "d"."TotalPages", "d"."UpdatedAt"
+      FROM "download_task" AS "d"
+      WHERE "d"."Status" <> 'completed'
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "l"."Gid", "l"."AlbumKey", "l"."AllTags", "l"."Artists", "l"."Category", "l"."CoverFile", "l"."DirPath", "l"."DownloadedAt", "l"."FileCount", "l"."FileSize", "l"."Groups", "l"."Language", "l"."LastModified", "l"."OnlineUrl", "l"."Posted", "l"."Rating", "l"."RatingCount", "l"."SyncedAt", "l"."Title", "l"."TitleJpn", "l"."Token", "l"."Uploader"
+      FROM "local_gallery" AS "l"
+info: MangaManager.Services.DownloadManager[0]
+      [DownloadManager] 加载了 18 个未完成任务
+info: MangaManager.Api[0]
+      [Init] 标签翻译已加载
+info: MangaManager.Services.GallerySyncService[0]
+      [GallerySync] 扫描 2273 个目录 (DB 已有 1782)...
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://0.0.0.0:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: D:\MangaManager\src\backend\MangaManager.Api
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__task_Gid_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "d"."Id", "d"."CompletedAt", "d"."CoverUrl", "d"."CreatedAt", "d"."DownloadedBytes", "d"."DownloadedPages", "d"."ErrorMsg", "d"."FailedPages", "d"."Gid", "d"."StartedAt", "d"."Status", "d"."Title", "d"."Token", "d"."TotalPages", "d"."UpdatedAt"
+      FROM "download_task" AS "d"
+      WHERE "d"."Gid" = @__task_Gid_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@p3='?' (DbType = Int32), @p0='?' (DbType = DateTime), @p1='?' (Size = 11), @p2='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+      UPDATE "download_task" SET "StartedAt" = @p0, "Status" = @p1, "UpdatedAt" = @p2
+      WHERE "Id" = @p3
+      RETURNING 1;
+info: System.Net.Http.HttpClient.ehentai.LogicalHandler[100]
+      Start processing HTTP request GET https://e-hentai.org/g/4065140/2483964818/
+info: System.Net.Http.HttpClient.ehentai.ClientHandler[100]
+      Sending HTTP request GET https://e-hentai.org/g/4065140/2483964818/
+info: MangaManager.Services.GallerySyncService[0]
+      [GallerySync] 进度: 500/2273
+info: MangaManager.Services.GallerySyncService[0]
+      [GallerySync] 进度: 1000/2273
+info: System.Net.Http.HttpClient.ehentai.ClientHandler[101]
+      Received HTTP response headers after 1124.6864ms - 200
+info: System.Net.Http.HttpClient.ehentai.LogicalHandler[101]
+      End processing HTTP request after 1129.7172ms - 200
+info: MangaManager.Services.EhentaiService[0]
+      [EH] POST https://api.e-hentai.org/api.php?apiuid=9017149&apikey=5b45c20d5d6708dcc0b7 body={"method":"gdata","gidlist":[[4065140,"2483964818"]],"namespace":1}
+info: System.Net.Http.HttpClient.ehentai.LogicalHandler[100]
+      Start processing HTTP request POST https://api.e-hentai.org/api.php?*
+info: System.Net.Http.HttpClient.ehentai.ClientHandler[100]
+      Sending HTTP request POST https://api.e-hentai.org/api.php?*
+info: MangaManager.Services.GallerySyncService[0]
+      [GallerySync] 进度: 1500/2273

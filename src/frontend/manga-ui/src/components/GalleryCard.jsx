@@ -21,7 +21,7 @@ const GalleryCard = memo(({
   return (
     <div className="gallery-card"
       onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
-      onClick={batchMode ? onCardClick : undefined}
+      onClick={onCardClick}
       style={{
         background: 'var(--surface-card)',
         borderRadius: 'var(--radius-md)',

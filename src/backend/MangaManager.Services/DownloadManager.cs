@@ -359,8 +359,20 @@ public class DownloadManager
 
             if (task.Status == "downloading")
             {
-                // 部分成功 → failed，允许用户重试下载
-                task.Status = task.FailedPages > 0 ? "failed" : "completed";
+                // 未下载任何页 → failed（可能是 GetPages 返回空）
+                if (task.DownloadedPages == 0 && task.TotalPages > 0)
+                {
+                    task.Status = "failed";
+                    task.ErrorMsg = task.ErrorMsg ?? "未获取到任何图片页面，可能是网络问题或画廊已删除";
+                }
+                else if (task.FailedPages > 0)
+                {
+                    task.Status = "failed";
+                }
+                else
+                {
+                    task.Status = "completed";
+                }
                 task.CompletedAt = DateTime.UtcNow;
             }
         }

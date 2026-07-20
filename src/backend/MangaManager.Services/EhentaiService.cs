@@ -758,22 +758,14 @@ public class EhentaiService
             foreach (Match m in matches1)
             {
                 var pagePath = m.Groups[1].Value;
-                // 确保路径以 / 开头
                 if (!pagePath.StartsWith("/") && !pagePath.StartsWith("http"))
                     pagePath = "/" + pagePath;
-                // 去掉可能的完整 URL 前缀
                 if (pagePath.StartsWith("http"))
                 {
                     var uri = new Uri(pagePath);
                     pagePath = uri.AbsolutePath;
                 }
-                var pageNum = int.Parse(m.Groups[2].Value);
-                result.Add(new PageItem
-                {
-                    Index = pageNum,
-                    ImageUrl = pagePath,
-                    Width = 0, Height = 0, FileSize = 0
-                });
+                result.Add(new PageItem { Index = int.Parse(m.Groups[2].Value), ImageUrl = pagePath, Width = 0, Height = 0, FileSize = 0 });
             }
         }
         else
@@ -785,15 +777,31 @@ public class EhentaiService
             var matches2 = regex2.Matches(html);
             foreach (Match m in matches2)
             {
-                var pagePath = m.Groups[1].Value;
-                var pageNum = int.Parse(m.Groups[4].Value);
-                result.Add(new PageItem
-                {
-                    Index = pageNum,
-                    ImageUrl = pagePath,
-                    Width = 0, Height = 0, FileSize = 0
-                });
+                result.Add(new PageItem { Index = int.Parse(m.Groups[4].Value), ImageUrl = m.Groups[1].Value, Width = 0, Height = 0, FileSize = 0 });
             }
+        }
+
+        // 模式3（新增）：EH 新页面结构 — data-src 或 img 标签中的缩略图 URL
+        if (result.Count == 0)
+        {
+            var regex3 = new Regex(@"(?:data-src|src)=""([^""]*?/s/[0-9a-f]{10}/\d+-\d+)""", RegexOptions.IgnoreCase);
+            var matches3 = regex3.Matches(html);
+            foreach (Match m in matches3)
+            {
+                var url = m.Groups[1].Value;
+                var match = Regex.Match(url, @"/(\d+)-(\d+)$");
+                if (match.Success)
+                {
+                    result.Add(new PageItem { Index = int.Parse(match.Groups[2].Value), ImageUrl = url, Width = 0, Height = 0, FileSize = 0 });
+                }
+            }
+        }
+
+        // 调试：如果还是 0，输出 HTML 片段
+        if (result.Count == 0)
+        {
+            var snippet = html.Length > 500 ? html[..500] : html;
+            _logger.LogWarning($"[EH] ParsePreviewMatches: 0 matches. HTML snippet: {snippet}");
         }
 
         return result;
