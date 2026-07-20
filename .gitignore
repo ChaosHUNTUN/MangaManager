@@ -4,7 +4,7 @@
 *.db-wal
 
 # Cookie / 密钥
-ehentai_cookies.json
+**/ehentai_cookies.json
 *.key
 
 # 本地开发配置（含个人路径）

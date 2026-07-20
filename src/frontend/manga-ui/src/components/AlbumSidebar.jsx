@@ -1,6 +1,31 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import ScrollToTop from './ScrollToTop'
 
+const MIN_CORE_COUNT = 3
+
+/** 小专辑折叠组 */
+function MinorAlbumsGroup({ items, renderItem }) {
+  const [open, setOpen] = useState(false)
+  if (items.length === 0) return null
+  return (
+    <div style={{ padding: '0 var(--space-2)' }}>
+      <div onClick={() => setOpen(!open)}
+        style={{
+          display: 'flex', alignItems: 'center', padding: '3px 8px',
+          fontSize: 'var(--text-2xs)', color: 'var(--text-muted)',
+          cursor: 'pointer', userSelect: 'none', gap: 3, borderRadius: 'var(--radius-xs)',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--hover-bg)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+        <span style={{ fontSize: 'var(--text-3xs)', opacity: 0.5, transition: 'transform var(--duration-instant)', transform: open ? 'rotate(0)' : 'rotate(-90deg)' }}>▾</span>
+        <span>小专辑</span>
+        <span style={{ fontSize: 'var(--text-3xs)', opacity: 0.5 }}>({items.length})</span>
+      </div>
+      {open && items.map(renderItem)}
+    </div>
+  )
+}
+
 /**
  * 专辑侧边栏组件 — 极简风格
  * 所有色彩使用 tokens.css 中定义的 CSS 变量
@@ -51,15 +76,14 @@ export default function AlbumSidebar({
       if (sections[ns]) sections[ns].push(g)
       else sections.other.push(g)
     })
-    if (hideEmptyAlbums) {
-      for (const ns of Object.keys(sections)) {
-        sections[ns] = sections[ns].filter(g => g.count > 0)
-      }
+    // 每个 namespace 内拆分为 core（≥3 部）和 minor（<3 部），按 count 降序
+    for (const ns of Object.keys(sections)) {
+      const sorted = sections[ns].sort((a, b) => b.count - a.count)
+      if (hideEmptyAlbums) sections[ns] = sorted.filter(g => g.count > 0)
+      else sections[ns] = sorted
     }
     return sections
   }, [albumGroups, albumConfig, hideEmptyAlbums])
-
-  const s = (v) => `var(--${v})` // CSS variable shorthand
 
   const renderAlbumItem = (grp) => {
     const isActive = activeGroup === grp.key
@@ -91,26 +115,29 @@ export default function AlbumSidebar({
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{grp.name}</span>
           </span>
           <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', marginLeft: 4, fontFamily: 'var(--font-mono)' }}>{grp.count}</span>
-          <span className="album-actions" style={{ display: 'none', gap: 1, marginLeft: 2, alignItems: 'center' }}>
+          <span className="album-actions" style={{ display: 'none', gap: 2, marginLeft: 2, alignItems: 'center' }}>
             <button className="btn-sm" onClick={e => { e.stopPropagation(); onEditAlbum?.(realKey) }}
-              style={{ padding: '1px 3px', fontSize: 'var(--text-3xs)', borderColor: 'transparent', color: 'var(--text-secondary)', background: 'transparent', cursor: 'pointer' }}
-              title="编辑">✎</button>
+              style={{ padding: '1px 4px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--text-muted)', background: 'transparent', cursor: 'pointer' }}
+              title="编辑">编辑</button>
             <button className="btn-sm" onClick={e => {
               e.stopPropagation(); if (confirm(`删除专辑 "${grp.name}"？`)) onDeleteAlbum?.(realKey)
             }}
-              style={{ padding: '1px 3px', fontSize: 'var(--text-3xs)', borderColor: 'transparent', color: 'var(--error)', background: 'transparent', cursor: 'pointer' }}
-              title="删除">✕</button>
+              style={{ padding: '1px 4px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--error)', background: 'transparent', cursor: 'pointer' }}
+              title="删除">删除</button>
           </span>
         </div>
       </div>
     )
   }
 
-  const renderSection = (title, ns, icon) => {
-    const items = albumSections[ns] || []
-    if (items.length === 0) return null
+  const renderSection = (title, ns) => {
+    const all = albumSections[ns] || []
+    if (all.length === 0) return null
+    const core = all.filter(g => g.count >= MIN_CORE_COUNT)
+    const minor = all.filter(g => g.count > 0 && g.count < MIN_CORE_COUNT)
     const collapsed = collapsedSections[ns]
-    const totalCount = items.reduce((s, g) => s + g.count, 0)
+    const totalCount = all.reduce((s, g) => s + g.count, 0)
+
     return (
       <div key={ns} style={{ marginBottom: 0 }}>
         <div onClick={() => toggleSection(ns)}
@@ -120,11 +147,18 @@ export default function AlbumSidebar({
             color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', gap: 3,
             borderBottom: '1px solid var(--divider)'
           }}>
-          <span style={{ fontSize: 'var(--text-3xs)', transition: 'transform var(--duration-instant) var(--ease-out)', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▼</span>
-          <span>{icon} {title}</span>
-          <span style={{ marginLeft: 'auto', fontSize: 'var(--text-3xs)', color: 'var(--text-muted)' }}>{items.length}组 · {totalCount}部</span>
+          <span style={{ fontSize: 'var(--text-3xs)', transition: 'transform var(--duration-instant) var(--ease-out)', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)', opacity: 0.6 }}>▾</span>
+          <span>{title}</span>
+          <span style={{ marginLeft: 'auto', fontSize: 'var(--text-3xs)', color: 'var(--text-muted)' }}>{all.length} · {totalCount}</span>
         </div>
-        {!collapsed && items.map(renderAlbumItem)}
+        {!collapsed && (
+          <>
+            {core.map(renderAlbumItem)}
+            {minor.length > 0 && (
+              <MinorAlbumsGroup items={minor} renderItem={renderAlbumItem} />
+            )}
+          </>
+        )}
       </div>
     )
   }
@@ -139,11 +173,11 @@ export default function AlbumSidebar({
         color: 'var(--text-secondary)', borderBottom: '1px solid var(--divider)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between'
       }}>
-        <span>📁 专辑 ({totalAlbums})</span>
-        <div style={{ display: 'flex', gap: 3 }}>
+        <span>专辑 ({totalAlbums})</span>
+        <div style={{ display: 'flex', gap: 4 }}>
           <button className="btn-sm" onClick={onTogglePin}
-            style={{ padding: '1px 4px', fontSize: 'var(--text-3xs)', borderColor: pinned ? 'rgba(200,160,76,0.3)' : 'var(--border-input)', color: pinned ? 'var(--warning)' : 'var(--text-muted)' }}
-            title={pinned ? '取消固定' : '固定侧边栏'}>{pinned ? '📌' : '📍'}</button>
+            style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: pinned ? 'var(--accent-border)' : 'var(--border-input)', color: pinned ? 'var(--accent)' : 'var(--text-muted)' }}
+            title={pinned ? '取消固定' : '固定侧边栏'}>固定</button>
           {creating ? (
             <input ref={createRef} value={createValue} onChange={e => setCreateValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') commitCreate(); if (e.key === 'Escape') setCreating(false) }}
@@ -151,7 +185,7 @@ export default function AlbumSidebar({
               style={{ width: 60, fontSize: 'var(--text-3xs)', padding: '1px 4px', background: 'var(--surface-high)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-xs)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
           ) : (
             <button className="btn-sm" onClick={startCreate}
-              style={{ padding: '1px 4px', fontSize: 'var(--text-3xs)', borderColor: 'rgba(107,139,107,0.4)', color: 'var(--success)' }}>+</button>
+              style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>+ 新建</button>
           )}
         </div>
       </div>
@@ -186,9 +220,9 @@ export default function AlbumSidebar({
         </div>
       )}
 
-      {renderSection('画师专辑', 'artist', '👤')}
-      {renderSection('社团专辑', 'group', '👥')}
-      {renderSection('其他合集', 'other', '📦')}
+      {renderSection('画师', 'artist')}
+      {renderSection('社团', 'group')}
+      {renderSection('其他', 'other')}
 
       {/* 回到顶部 */}
       <ScrollToTop containerRef={sidebarScrollRef} threshold={300} />
@@ -213,11 +247,11 @@ export default function AlbumSidebar({
                   fontSize: 'var(--text-xs)', color: activeGroup === grp.key ? 'var(--accent)' : 'var(--text-secondary)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1
                 }}>
-                  {grp.type === 'artist' ? '👤' : grp.type === 'group' ? '👥' : grp.type === 'multi' ? '👥👤' : '📦'} {grp.name}
+                  {grp.name}
                 </span>
                 <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', marginLeft: 4 }}>{grp.count}</span>
                 <button className="btn-sm" onClick={e => { e.stopPropagation(); onConvertToAlbum?.(grp) }}
-                  style={{ padding: '1px 3px', fontSize: 'var(--text-3xs)', borderColor: 'var(--accent-border)', color: 'var(--accent)', background: 'transparent', marginLeft: 2 }}
+                  style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--text-muted)', background: 'transparent', marginLeft: 2 }}
                   title="转为专辑">+</button>
               </div>
             </div>
@@ -252,14 +286,14 @@ export default function AlbumSidebar({
             padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
             borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between'
           }}>
-            <span>📚 画廊管理</span>
+            <span>画廊管理</span>
             <div style={{ display: 'flex', gap: 3 }}>
               <button className="btn-sm" onClick={onTogglePin}
-                style={{ padding: '1px 3px', fontSize: 'var(--text-3xs)', borderColor: pinned ? 'rgba(200,160,76,0.3)' : 'var(--border-input)', color: pinned ? 'var(--warning)' : 'var(--text-muted)' }}
-                title={pinned ? '取消固定' : '固定'}>{pinned ? '📌' : '📍'}</button>
+                style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: pinned ? 'var(--accent-border)' : 'var(--border-input)', color: pinned ? 'var(--accent)' : 'var(--text-muted)' }}
+                title={pinned ? '取消固定' : '固定'}>固定</button>
               {!pinned && (
                 <button className="btn-sm" onClick={onClose}
-                  style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>收起</button>
+                  style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--text-muted)' }}>收起</button>
               )}
             </div>
           </div>

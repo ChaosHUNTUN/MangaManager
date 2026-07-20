@@ -451,45 +451,44 @@ public class MangaService
     {
         if (!isNew)
         {
-            // 清除旧的 MangaTag 关联
             var oldTags = await _db.MangaTags.Where(mt => mt.MangaId == manga.Id).ToListAsync();
             _db.MangaTags.RemoveRange(oldTags);
-            await _db.SaveChangesAsync();  // 立即保存删除，避免 UNIQUE 冲突
+            await _db.SaveChangesAsync();
         }
 
-        // 先确保所有需要的新 Tag 都已保存到数据库（获取有效 Id）
-        // 上层文件夹名 → 作为「作者」分类
+        // 批量创建不存在的标签（不逐个 SaveChanges）
+        var newTags = new List<Tag>();
         foreach (var parentName in leaf.ParentFolderNames)
         {
-            var tag = allTags.FirstOrDefault(t =>
-                t.Name.Equals(parentName, StringComparison.OrdinalIgnoreCase));
-            if (tag == null)
+            if (!allTags.Any(t => t.Name.Equals(parentName, StringComparison.OrdinalIgnoreCase)))
             {
-                tag = new Tag
+                var tag = new Tag
                 {
                     Name = parentName,
                     Color = _autoColors[Math.Abs(parentName.GetHashCode()) % _autoColors.Length],
-                    Category = "author"  // 上层文件夹名视为作者
+                    Category = "author"
                 };
-                _db.Tags.Add(tag);
-                _db.SaveChanges();
+                newTags.Add(tag);
                 allTags.Add(tag);
             }
         }
+        if (newTags.Count > 0)
+        {
+            _db.Tags.AddRange(newTags);
+            _db.SaveChanges();
+        }
 
-        // 确保 Manga 已保存（新建时 Id 可能为 0）
         if (manga.Id == 0)
             _db.SaveChanges();
 
-        // 1. 上层文件夹名作为标签
+        // 添加 MangaTag 关联（不逐个 SaveChanges）
         foreach (var parentName in leaf.ParentFolderNames)
         {
-            var tag = allTags.First(t =>
-                t.Name.Equals(parentName, StringComparison.OrdinalIgnoreCase));
-            manga.MangaTags.Add(new MangaTag { MangaId = manga.Id, TagId = tag.Id });
+            var tag = allTags.First(t => t.Name.Equals(parentName, StringComparison.OrdinalIgnoreCase));
+            if (!manga.MangaTags.Any(mt => mt.TagId == tag.Id))
+                manga.MangaTags.Add(new MangaTag { MangaId = manga.Id, TagId = tag.Id });
         }
 
-        // 2. 基于漫画文件夹名匹配已有标签（如 "AI Generated", "Patreon" 等）
         foreach (var tag in allTags)
         {
             if (leaf.Name.Contains(tag.Name, StringComparison.OrdinalIgnoreCase)

@@ -25,6 +25,8 @@ export default function useGalleryDrag({ onDropToAlbum, onDropToSort, onShortCli
 
   const handleDragMouseDown = useCallback((gid, e) => {
     if (disabled) return
+    // 阻止后续 click 事件，由本 handler 统一处理点击/拖拽
+    e.preventDefault()
     const card = e.currentTarget.closest('[style*="border-radius"]') || e.currentTarget
     if (!card) return
 

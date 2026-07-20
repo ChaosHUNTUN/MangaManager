@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { fetchMangaDetail, fetchAllTags, fetchTagCategories, fetchMangaTags, setMangaTags, createTag, updateTag, renameManga, deleteManga, getCoverUrl } from '../api'
 
 const TAG_COLORS = ['#8b5cf6','#f59e0b','#06b6d4','#ec4899','#10b981','#ef4444','#f97316','#3b82f1','#6366f1','#14b8a6','#d946ef','#84cc16']
@@ -53,7 +53,7 @@ export default function Detail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteFolder, setDeleteFolder] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const navigate = useRef(null)
+  const navigate = useNavigate()
 
   const handleDelete = async () => {
     setDeleting(true)

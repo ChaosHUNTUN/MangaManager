@@ -20,7 +20,8 @@ const GalleryCard = memo(({
   const showOverlay = isHovered
   return (
     <div className="gallery-card"
-      onClick={onCardClick}
+      onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
+      onClick={batchMode ? onCardClick : undefined}
       style={{
         background: 'var(--surface-card)',
         borderRadius: 'var(--radius-md)',
@@ -47,36 +48,35 @@ const GalleryCard = memo(({
         </div>
       )}
 
-      {/* 专辑飘带标记 — 极简细线风格 */}
+      {/* 专辑顶部色条（辅助标识，配合下方 badge） */}
       {albumInfo && !batchMode && (
         <div title={albumInfo.name} style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 9,
           height: 2,
           background: albumInfo.color,
-          opacity: 0.8,
+          opacity: 0.5,
           pointerEvents: 'none',
         }} />
       )}
 
-      {/* 封面区域 */}
+      {/* 封面区域 — 点击卡片切换 hover（显示操作按钮） */}
       <div style={{
         position: 'relative', width: '100%', paddingBottom: '138%',
         background: 'var(--surface-high)',
       }}>
         <img src={getLocalCoverUrl(g.gid)} alt={g.title}
           draggable={false}
-          onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
           style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'cover',
-            cursor: batchMode ? 'default' : 'grab',
+            cursor: batchMode ? 'default' : 'pointer',
             opacity: 0, transition: 'opacity var(--duration-normal) var(--ease-out)',
           }}
           loading="lazy"
           onLoad={e => { e.target.style.opacity = '1' }}
           onError={e => { e.target.style.display = 'none' }} />
 
-        {/* 悬停操作层 — 极简图标按钮组 */}
+        {/* 悬停操作层 — 底部渐变 + 按钮组 */}
         {!batchMode && showOverlay && (
           <div onMouseDown={e => e.stopPropagation()} style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
@@ -116,6 +116,26 @@ const GalleryCard = memo(({
 
       {/* 信息区 — 紧凑排版 */}
       <div style={{ padding: '6px 8px 8px' }}>
+        {/* 专辑标签（彩色 badge，一眼识别归属） */}
+        {albumInfo && !batchMode && (
+          <div title={albumInfo.name} style={{
+            display: 'inline-block',
+            padding: '2px 7px', marginBottom: 3,
+            borderRadius: 'var(--radius-xs)',
+            background: albumInfo.color + '35',
+            color: albumInfo.color,
+            border: `1px solid ${albumInfo.color}80`,
+            textShadow: `0 0 1px ${albumInfo.color}50`,
+            fontSize: 'var(--text-3xs)',
+            fontWeight: 'var(--weight-bold)',
+            maxWidth: '100%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {albumInfo.name}
+          </div>
+        )}
         {/* 标题行 + 拖拽手柄 */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-1)' }}>
           <div

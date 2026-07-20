@@ -198,15 +198,28 @@ public class AlbumsController : ControllerBase
 
         var existing = await _db.AlbumConfigs.ToDictionaryAsync(a => a.Key);
         var usedColors = existing.Values.Select(e => e.Color).Where(c => !string.IsNullOrEmpty(c)).ToHashSet();
+
+        // 先加载所有受影响的 local_gallery 记录（用于同步 AlbumKey）
+        var allAffectedGids = new HashSet<int>();
         foreach (var (key, item) in data)
         {
-            var gids = item.Gids ?? new int[0];
+            var frontGids = new HashSet<int>(item.Gids ?? new int[0]);
+            allAffectedGids.UnionWith(frontGids);
+
             if (existing.TryGetValue(key, out var entity))
             {
+                // 合并：DB 已有 + 前端传入 + 移除的不在列表中
+                var dbGids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(entity.Gids) ?? new();
+                var merged = new HashSet<int>(dbGids);
+                merged.UnionWith(frontGids);
+                // 只移除本次请求明确排除的（不在任何专辑中的）
+                // 注意：不自动从 DB 中删除，除非被 Delete 操作移除
+                var finalGids = merged.OrderBy(g => g).ToList();
+
                 entity.Name = item.Name ?? key;
-                entity.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
+                entity.Gids = System.Text.Json.JsonSerializer.Serialize(finalGids);
                 entity.Order = System.Text.Json.JsonSerializer.Serialize(item.Order ?? new int[0]);
-                entity.Count = gids.Length;
+                entity.Count = finalGids.Count;
                 entity.KeyTag = key.Contains(':') ? key : entity.KeyTag;
                 entity.UpdatedAt = DateTime.UtcNow;
                 if (string.IsNullOrEmpty(entity.Color))
@@ -224,9 +237,9 @@ public class AlbumsController : ControllerBase
                     Key = key,
                     Name = item.Name ?? key,
                     Color = newColor,
-                    Gids = System.Text.Json.JsonSerializer.Serialize(gids),
+                    Gids = System.Text.Json.JsonSerializer.Serialize(frontGids.OrderBy(g => g).ToList()),
                     Order = System.Text.Json.JsonSerializer.Serialize(item.Order ?? new int[0]),
-                    Count = gids.Length,
+                    Count = frontGids.Count,
                     KeyTag = key.Contains(':') ? key : null,
                     UpdatedAt = DateTime.UtcNow
                 });
@@ -238,24 +251,13 @@ public class AlbumsController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        // 同步 local_gallery.AlbumKey：先清空受影响专辑的所有记录，再批量写入
-        var affectedKeys = data.Keys.Concat(keysToDelete).Distinct().ToList();
-        if (affectedKeys.Count > 0)
+        // 同步 AlbumKey：基于合并后的 Gids（而非前端原始数据）
+        foreach (var (key, _) in data)
         {
-            // SQLite 对大型 IN 子句敏感，分批处理
-            for (int i = 0; i < affectedKeys.Count; i += 50)
-            {
-                var batch = affectedKeys.Skip(i).Take(50).ToList();
-                await _db.LocalGalleries
-                    .Where(g => g.AlbumKey != null && batch.Contains(g.AlbumKey))
-                    .ExecuteUpdateAsync(s => s.SetProperty(g => g.AlbumKey, g => null));
-            }
-        }
-
-        foreach (var (key, item) in data)
-        {
-            var gids = item.Gids ?? new int[0];
-            if (gids.Length == 0) continue;
+            var album = existing.TryGetValue(key, out var e) ? e : await _db.AlbumConfigs.FirstOrDefaultAsync(a => a.Key == key);
+            if (album == null) continue;
+            var gids = System.Text.Json.JsonSerializer.Deserialize<int[]>(album.Gids);
+            if (gids == null || gids.Length == 0) continue;
             for (int i = 0; i < gids.Length; i += 100)
             {
                 var batch = gids.Skip(i).Take(100).ToList();
@@ -263,6 +265,14 @@ public class AlbumsController : ControllerBase
                     .Where(g => batch.Contains(g.Gid))
                     .ExecuteUpdateAsync(s => s.SetProperty(g => g.AlbumKey, key));
             }
+        }
+
+        // 清理被删除专辑的作品 AlbumKey
+        foreach (var deletedKey in keysToDelete)
+        {
+            await _db.LocalGalleries
+                .Where(g => g.AlbumKey == deletedKey)
+                .ExecuteUpdateAsync(s => s.SetProperty(g => g.AlbumKey, g => null));
         }
 
         return Ok(new ApiResponse<object>(true, null, "已保存"));

@@ -10,7 +10,8 @@ const GalleryRow = memo(({
 }) => {
   return (
     <div
-      onClick={onCardClick}
+      onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
+      onClick={batchMode ? onCardClick : undefined}
       style={{
         display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
         padding: '6px 10px',
@@ -56,11 +57,10 @@ const GalleryRow = memo(({
       {/* 封面缩略图 */}
       <img src={getLocalCoverUrl(g.gid)} alt=""
         draggable={false}
-        onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
         style={{
           width: 48, height: 64, objectFit: 'cover', borderRadius: 'var(--radius-xs)',
           flexShrink: 0, background: 'var(--surface-high)',
-          cursor: batchMode ? 'default' : 'grab',
+          cursor: batchMode ? 'default' : 'pointer',
         }} />
 
       {/* 信息区域 */}
@@ -77,6 +77,18 @@ const GalleryRow = memo(({
           </div>
         </div>
         <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {albumInfo && !batchMode && (
+            <span style={{
+              padding: '2px 6px', borderRadius: 'var(--radius-xs)',
+              background: albumInfo.color + '35', color: albumInfo.color,
+              border: `1px solid ${albumInfo.color}80`,
+              textShadow: `0 0 1px ${albumInfo.color}50`,
+              fontSize: 'var(--text-3xs)', fontWeight: 'var(--weight-bold)',
+              maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {albumInfo.name}
+            </span>
+          )}
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xs)' }}>
             {formatCount(g.fileCount)}P · {formatSize(g.totalSize)}
           </span>

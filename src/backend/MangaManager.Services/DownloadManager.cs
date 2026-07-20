@@ -359,7 +359,8 @@ public class DownloadManager
 
             if (task.Status == "downloading")
             {
-                task.Status = task.FailedPages > 0 && task.DownloadedPages == 0 ? "failed" : "completed";
+                // 部分成功 → failed，允许用户重试下载
+                task.Status = task.FailedPages > 0 ? "failed" : "completed";
                 task.CompletedAt = DateTime.UtcNow;
             }
         }

@@ -166,12 +166,12 @@ export default function LocalGallery() {
   }, [albumConfig])
 
   // ── 元数据流 ──
-  useEffect(() => { loadMetas() }, [])
-  const loadMetas = async () => {
+  const loadMetas = useCallback(async () => {
     setMetaLoading(true)
     try { setGalleryMetas(await fetchLocalGalleryMetas()) } catch (e) { setError(e.message) }
     setMetaLoading(false)
-  }
+  }, [])
+  useEffect(() => { loadMetas() }, [loadMetas])
 
   // ── 展示流 ──
   const loadPaged = useCallback(async (targetPage) => {
@@ -225,10 +225,10 @@ export default function LocalGallery() {
 
   // 搜索标签翻译
   const translateTriggerRef = useRef(0)
+  // 翻译标签批处理：使用 gid 列表哈希作为触发键，内容变长度不变也能重新翻译
+  const metaHash = useMemo(() => galleryMetas.map(g => g.gid).sort().join(','), [galleryMetas])
   useEffect(() => {
     if (galleryMetas.length === 0) return
-    if (translateTriggerRef.current === galleryMetas.length) return
-    translateTriggerRef.current = galleryMetas.length
     const tagSet = new Set()
     galleryMetas.forEach(g => {
       (g.artists || []).forEach(t => tagSet.add(`artist:${t}`))
@@ -246,7 +246,7 @@ export default function LocalGallery() {
       setSearchTagTransMap(transMap)
     }
     translateBatches()
-  }, [galleryMetas.length])
+  }, [metaHash])
 
   // 自动匹配
   const autoMatchGuardRef = useRef(false)

@@ -45,7 +45,8 @@ public class GallerySyncService : BackgroundService
             _logger.LogWarning("[GallerySync] 下载目录不存在，跳过文件监听");
         }
 
-        // 每 5 分钟做一次轻量一致性检查
+
+        // 每 5 分钟做一次一致性检查（补偿 FileSystemWatcher 可能丢失的事件）
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromMinutes(5), ct);

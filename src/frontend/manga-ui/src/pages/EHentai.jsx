@@ -145,12 +145,12 @@ export default function EHentai() {
   const [detailLoading, setDetailLoading] = useState(false)
 
   useEffect(() => {
-    // 先检查 Cookie 和网络，再决定是否加载列表
+    let cancelled = false
     const init = async () => {
       await loadCookie()
-      checkNet() // 不阻塞
+      if (cancelled) return
+      checkNet()
 
-      // 检查 URL 参数 ?open=gid 或 ?open=gid_token，来自本地画廊跳转
       const params = new URLSearchParams(window.location.search)
       const openParam = params.get('open')
       if (openParam) {
@@ -162,31 +162,34 @@ export default function EHentai() {
           if (token) {
             setDetailLoading(true)
             fetchEHGalleryDetail(gid, token).then(d => {
+              if (cancelled) return
               setDetail(d)
               translateDetailTags(d)
               loadBlockedTags()
-            }).catch(e => setError(e.message))
-            .finally(() => setDetailLoading(false))
+            }).catch(e => { if (!cancelled) setError(e.message) })
+            .finally(() => { if (!cancelled) setDetailLoading(false) })
           }
           return
         }
       }
 
-      // 默认加载热门+里站内容
+      if (cancelled) return
       setLoading(true)
       currentFiltersRef.current = { popular: true }
       fetchEHGalleries('', 0, true, null, { popular: true })
         .then(r => {
+          if (cancelled) return
           setGalleries(r.galleries || [])
           setHasMore(!!r.nextCursor)
           setNextCursor(r.nextCursor || null)
           const gids = (r.galleries || []).map(g => g.gid)
-          if (gids.length > 0) checkDownloaded(gids).then(d => setLocalGids(new Set(d))).catch(() => {})
+          if (gids.length > 0) checkDownloaded(gids).then(d => { if (!cancelled) setLocalGids(new Set(d)) }).catch(() => {})
         })
-        .catch(e => setError(e.message))
-        .finally(() => setLoading(false))
+        .catch(e => { if (!cancelled) setError(e.message) })
+        .finally(() => { if (!cancelled) setLoading(false) })
     }
     init()
+    return () => { cancelled = true }
   }, [])
 
   const checkNet = async () => {
@@ -343,15 +346,18 @@ export default function EHentai() {
   const loadMore = async () => {
     if (loadingMore || loading || !hasMore || !nextCursor) return
     setLoadingMore(true)
+    const requestCursor = nextCursor // 快照，防止并发覆盖
     try {
-      const r = await fetchEHGalleries(currentSearchRef.current, 0, currentExRef.current, nextCursor, currentFiltersRef.current)
+      const r = await fetchEHGalleries(currentSearchRef.current, 0, currentExRef.current, requestCursor, currentFiltersRef.current)
       const newItems = r.galleries || []
       if (newItems.length === 0) { setHasMore(false) }
       else {
         setGalleries(prev => [...prev, ...newItems])
-        setNextCursor(r.nextCursor || null)
-        setHasMore(!!r.nextCursor)
-        // 检查新加载的项是否本地已下载
+        // 只有当前 cursor 没被其他请求更新时才更新 nextCursor
+        if (nextCursor === requestCursor) {
+          setNextCursor(r.nextCursor || null)
+          setHasMore(!!r.nextCursor)
+        }
         const gids = newItems.map(g => g.gid)
         checkDownloaded(gids).then(downloaded => {
           setLocalGids(prev => { const s = new Set(prev); downloaded.forEach(d => s.add(d)); return s })

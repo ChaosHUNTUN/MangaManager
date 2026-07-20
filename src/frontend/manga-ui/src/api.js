@@ -7,21 +7,62 @@ export const API_BASE = (() => {
   return ''  // 生产模式后端托管前端，同源
 })()
 
+// 请求去重：相同 URL+Method 的并发请求共享同一个 Promise
+const _inFlight = new Map()
+function _inflightKey(url, options) {
+  return `${options.method || 'GET'}:${url}:${options.body || ''}`
+}
+
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`
-  // 支持 AbortController 取消请求
   const { signal, ...fetchOptions } = options
-  const res = await fetch(url, { ...fetchOptions, signal })
-  if (!res.ok) {
-    const text = await res.text()
-    let msg = `请求失败 (${res.status})`
+  const key = _inflightKey(url, options)
+
+  // 去重：复用正在进行的相同请求
+  if (_inFlight.has(key)) return _inFlight.get(key)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000) // 15s 超时
+  const mergedSignal = signal
+    ? (() => { const s = controller.signal; signal.addEventListener('abort', () => controller.abort()); return s })()
+    : controller.signal
+
+  let lastError = null
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const json = JSON.parse(text)
-      msg = json.message || msg
-    } catch {}
-    throw new Error(msg)
+      const promise = fetch(url, { ...fetchOptions, signal: mergedSignal })
+        .then(async res => {
+          clearTimeout(timeout)
+          if (!res.ok) {
+            const text = await res.text()
+            let msg = `请求失败 (${res.status})`
+            try { msg = JSON.parse(text).message || msg } catch {}
+            throw new Error(msg)
+          }
+          return res.json()
+        })
+        .catch(e => {
+          clearTimeout(timeout)
+          if (e.name === 'AbortError') throw new Error('请求超时或已取消')
+          throw e
+        })
+
+      _inFlight.set(key, promise)
+      const result = await promise
+      _inFlight.delete(key)
+      return result
+    } catch (e) {
+      lastError = e
+      if (attempt < 2 && (e.message.includes('超时') || e.message.includes('NetworkError') || e.message.includes('fetch'))) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1))) // 退避重试
+        continue
+      }
+      break
+    }
   }
-  return res.json()
+
+  _inFlight.delete(key)
+  throw lastError
 }
 
 // === 漫画 ===

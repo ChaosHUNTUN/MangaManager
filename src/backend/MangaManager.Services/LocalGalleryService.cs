@@ -699,6 +699,26 @@ public class LocalGalleryService
         var json = System.Text.Json.JsonSerializer.Serialize(meta, new System.Text.Json.JsonSerializerOptions
         { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         await File.WriteAllTextAsync(metaFile, json);
+
+        // 同步更新数据库缓存
+        try
+        {
+            using var db = CreateDb();
+            var gallery = await db.LocalGalleries.FindAsync(gid);
+            if (gallery != null)
+            {
+                if (category != null) gallery.Category = category;
+                if (language != null) gallery.Language = language;
+                if (tags.TryGetValue("artist", out var artists)) gallery.Artists = System.Text.Json.JsonSerializer.Serialize(artists);
+                if (tags.TryGetValue("group", out var groups)) gallery.Groups = System.Text.Json.JsonSerializer.Serialize(groups);
+                gallery.SyncedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LocalGallery] DB同步失败 (gid={gid}): {ex.Message}");
+        }
     }
 
     /// <summary>读取作品的 meta.json 标签（用于编辑）</summary>

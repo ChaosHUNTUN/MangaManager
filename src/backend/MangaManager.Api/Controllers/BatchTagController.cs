@@ -20,21 +20,33 @@ public class BatchTagController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> BatchAddTags([FromBody] BatchTagRequest req)
     {
+        var mangaIdSet = new HashSet<int>(req.MangaIds);
+        var tagIdSet = new HashSet<int>(req.TagIds);
+
+        // 一次查询获取所有已存在的关联
+        var existingPairs = await _db.MangaTags
+            .Where(mt => mangaIdSet.Contains(mt.MangaId) && tagIdSet.Contains(mt.TagId))
+            .Select(mt => new { mt.MangaId, mt.TagId })
+            .ToListAsync();
+
+        var existingSet = existingPairs.Select(p => (p.MangaId, p.TagId)).ToHashSet();
+        var validTags = await _db.Tags.Where(t => tagIdSet.Contains(t.Id)).Select(t => t.Id).ToHashSetAsync();
+
+        var added = 0;
         foreach (var mangaId in req.MangaIds)
         {
             foreach (var tagId in req.TagIds)
             {
-                var exists = await _db.MangaTags.AnyAsync(mt => mt.MangaId == mangaId && mt.TagId == tagId);
-                if (!exists)
+                if (!existingSet.Contains((mangaId, tagId)) && validTags.Contains(tagId))
                 {
-                    var tag = await _db.Tags.FindAsync(tagId);
-                    if (tag != null)
-                        _db.MangaTags.Add(new MangaTag { MangaId = mangaId, TagId = tagId });
+                    _db.MangaTags.Add(new MangaTag { MangaId = mangaId, TagId = tagId });
+                    added++;
                 }
             }
         }
+
         await _db.SaveChangesAsync();
-        return Ok(new ApiResponse<object>(true, new { count = req.MangaIds.Count * req.TagIds.Count }));
+        return Ok(new ApiResponse<object>(true, new { count = added }));
     }
 }
 

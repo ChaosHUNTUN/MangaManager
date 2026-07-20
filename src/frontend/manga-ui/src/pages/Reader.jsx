@@ -283,19 +283,21 @@ export default function Reader() {
     }
   }, [pages.length, current])
 
-  // 用 ref 保存最新函数引用，避免键盘事件闭包过期
+  // 用 ref 保存最新函数引用，避免键盘事件闭包过期（合并为单次同步）
   const goToRef = useRef(goTo)
   const cycleFitModeRef = useRef(cycleFitMode)
   const toggleReadModeRef = useRef(toggleReadMode)
   const showUIWithTimerRef = useRef(resetHideTimer)
   const showThumbnailsRef = useRef(showThumbnails)
   const readModeRef = useRef(readMode)
-  useEffect(() => { goToRef.current = goTo }, [goTo])
-  useEffect(() => { cycleFitModeRef.current = cycleFitMode }, [cycleFitMode])
-  useEffect(() => { toggleReadModeRef.current = toggleReadMode }, [toggleReadMode])
-  useEffect(() => { showUIWithTimerRef.current = resetHideTimer }, [resetHideTimer])
-  useEffect(() => { showThumbnailsRef.current = showThumbnails }, [showThumbnails])
-  useEffect(() => { readModeRef.current = readMode }, [readMode])
+  useEffect(() => {
+    goToRef.current = goTo
+    cycleFitModeRef.current = cycleFitMode
+    toggleReadModeRef.current = toggleReadMode
+    showUIWithTimerRef.current = resetHideTimer
+    showThumbnailsRef.current = showThumbnails
+    readModeRef.current = readMode
+  })
 
   // 键盘
   useEffect(() => {

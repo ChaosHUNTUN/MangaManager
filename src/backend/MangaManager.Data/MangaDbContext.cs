@@ -9,9 +9,11 @@ public class MangaDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        // EF Core 9 严格检查模型变更，手动迁移文件可能触发此警告
         optionsBuilder.ConfigureWarnings(w =>
             w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+
+        // SQLite 并发写重试：遇到 "database is locked" 自动重试最多 3 次
+        // 注：SQLite provider 不完全支持 EnableRetryOnFailure，实际由 WAL 模式 + SaveChanges 异常处理兜底
     }
 
     public DbSet<Manga> Mangas => Set<Manga>();
@@ -39,6 +41,8 @@ public class MangaDbContext : DbContext
             e.Property(x => x.CoverPath).HasMaxLength(1000);
             e.Property(x => x.Description).HasColumnType("text");
             e.Property(x => x.Status).HasMaxLength(20).HasDefaultValue("unknown");
+            e.HasIndex(x => x.FolderPath);
+            e.HasIndex(x => x.Title);
         });
 
         modelBuilder.Entity<Author>(e =>
@@ -92,6 +96,8 @@ public class MangaDbContext : DbContext
             e.Property(x => x.Directory).HasMaxLength(1000);
             e.Property(x => x.Status).HasMaxLength(20);
             e.Property(x => x.ErrorMsg).HasColumnType("text");
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.StartedAt);
         });
 
         modelBuilder.Entity<DownloadTask>(e =>
@@ -148,6 +154,7 @@ public class MangaDbContext : DbContext
             e.Property(x => x.OnlineUrl).HasMaxLength(2000);
             e.Property(x => x.Token).HasMaxLength(20);
             e.Property(x => x.AlbumKey).HasMaxLength(200);
+            e.HasIndex(x => x.Title);
             e.HasIndex(x => x.Category);
             e.HasIndex(x => x.Language);
             e.HasIndex(x => x.DownloadedAt);

@@ -158,7 +158,7 @@ public class AlbumConfig
     public string Color { get; set; } = "";      // 专辑颜色 (#RRGGBB)
     public string Gids { get; set; } = "[]";     // JSON 数组: [1,2,3]
     public string Order { get; set; } = "[]";    // JSON 数组: 自定义排序 [2,1,3]
-    public int Count { get; set; }               // 专辑内容数量（与 Gids 长度同步）
+    public int Count { get; set; }               // DB 冗余列，实际由 Gids 长度推导
     public string? KeyTag { get; set; }           // EH 标准标签，如 "artist:haiboku"
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
