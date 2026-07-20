@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { getLocalCoverUrl } from '../api'
-import { IconEye, IconBook, IconGripDots } from './Icons'
+import { IconEye, IconBook } from './Icons'
 
 const CATEGORY_COLORS = {
   doujinshi: '#c06060', manga: '#c08050', 'artist cg': '#b0a050',
@@ -118,16 +118,7 @@ const GalleryCard = memo(({
       <div style={{ padding: '6px 8px 8px' }}>
         {/* 标题行 + 拖拽手柄 */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-1)' }}>
-          {!batchMode && (
-            <span onMouseDown={e => { e.stopPropagation(); onDragMouseDown(g.gid, e) }}
-              style={{
-                flexShrink: 0, color: 'var(--text-dim)', cursor: 'grab',
-                fontSize: 'var(--text-2xs)', lineHeight: 1.4, userSelect: 'none', paddingTop: 1,
-                display: 'flex', alignItems: 'center',
-              }}
-              title="拖拽到专辑标签以分配"><IconGripDots size={12} /></span>
-          )}
-          <div onClick={e => { if (!batchMode) e.stopPropagation() }}
+          <div
             title={g.title}
             style={{
               fontSize: 'var(--text-xs)', lineHeight: 1.4, overflow: 'hidden',

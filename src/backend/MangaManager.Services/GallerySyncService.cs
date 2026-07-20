@@ -15,7 +15,7 @@ public class GallerySyncService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<GallerySyncService> _logger;
-    private static readonly string DownloadDir = EhentaiService.DefaultDownloadDir;
+    private static readonly string DownloadDir = EhentaiFileHelper.DefaultDownloadDir;
 
     public GallerySyncService(IServiceScopeFactory scopeFactory, ILogger<GallerySyncService> logger)
     {

@@ -7,6 +7,9 @@
 ehentai_cookies.json
 *.key
 
+# 本地开发配置（含个人路径）
+**/appsettings.Development.json
+
 # 构建产物
 src/backend/MangaManager.Api/bin/
 src/backend/MangaManager.Api/obj/

@@ -677,6 +677,11 @@ public class DownloadManager
 
             // 自动分配作品到匹配的专辑
             await AutoAssignToAlbumsAsync(scope, gid, detail.TagGroups);
+
+            // 主动触发 GallerySync 同步此目录到 DB（修复下载完成时 FileSystemWatcher 竞态窗口）
+            var gallerySync = scope.ServiceProvider.GetRequiredService<GallerySyncService>();
+            await gallerySync.SyncDirectoryAsync(dir);
+            _logger.LogInformation("[DownloadManager] 已同步到数据库: GID={Gid}, dir={Dir}", gid, dir);
         }
         catch (Exception ex)
         {

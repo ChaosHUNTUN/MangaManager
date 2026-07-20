@@ -887,8 +887,8 @@ public class EhentaiService
         return await resp.Content.ReadAsByteArrayAsync();
     }
 
-    // 默认下载目录
-    public static readonly string DefaultDownloadDir = @"G:\学习资料\本子";
+    // 默认下载目录（已废弃，请使用 EhentaiFileHelper.DefaultDownloadDir）
+    public static string DefaultDownloadDir => EhentaiFileHelper.DefaultDownloadDir;
 
     /// <summary>获取画廊本地目录路径（{下载目录}/{gid}-{标题}/）</summary>
     public static string GetGalleryLocalDir(int gid, string title)

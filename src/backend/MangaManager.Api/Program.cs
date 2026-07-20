@@ -5,6 +5,13 @@ using MangaManager.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 配置下载目录（优先从 appsettings 读取，默认回退到程序目录下的 downloads）
+var downloadDir = builder.Configuration.GetValue<string>("Ehentai:DownloadDir");
+if (!string.IsNullOrWhiteSpace(downloadDir))
+{
+    EhentaiFileHelper.DefaultDownloadDir = downloadDir;
+}
+
 // CORS - 允许前端跨域
 builder.Services.AddCors(options =>
 {
@@ -169,8 +176,8 @@ using (var scope = app.Services.CreateScope())
     app.Logger.LogInformation("[DB] 数据库迁移完成");
 
     // 一次性回填 AllTags：旧记录在迁移前未存储 AllTags（为 null 或"[]"），从 .meta.json 重读回填
-    var downloadDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? Path.Combine(app.Environment.ContentRootPath, "downloads");
-    if (Directory.Exists(downloadDir))
+    var dlDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? EhentaiFileHelper.DefaultDownloadDir;
+    if (!string.IsNullOrEmpty(dlDir) && Directory.Exists(dlDir))
     {
         var staleCount = db.LocalGalleries.Count(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]");
         if (staleCount > 0)
@@ -182,7 +189,10 @@ using (var scope = app.Services.CreateScope())
             {
                 try
                 {
-                    var dir = Directory.GetDirectories(downloadDir, $"{g.Gid}-*").FirstOrDefault();
+                    var dirName = EhentaiFileHelper.GetGalleryLocalDir(g.Gid, g.Title ?? "");
+                    var parentDir = Path.GetDirectoryName(dirName);
+                    if (parentDir == null || !Directory.Exists(parentDir)) continue;
+                    var dir = Directory.GetDirectories(parentDir, $"{g.Gid}-*").FirstOrDefault();
                     if (dir == null) continue;
                     var metaFile = Path.Combine(dir, ".meta.json");
                     if (!File.Exists(metaFile)) continue;

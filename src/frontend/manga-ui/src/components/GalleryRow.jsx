@@ -1,7 +1,6 @@
 import { memo } from 'react'
 import { getLocalCoverUrl } from '../api'
 import { getCategoryColor, formatSize } from './GalleryCard'
-import { IconGripDots } from './Icons'
 
 const formatCount = (n) => n > 9999 ? (n / 1000).toFixed(1) + 'k' : String(n)
 
@@ -67,15 +66,7 @@ const GalleryRow = memo(({
       {/* 信息区域 */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {!batchMode && (
-            <span onMouseDown={e => { e.stopPropagation(); onDragMouseDown(g.gid, e) }}
-              style={{
-                flexShrink: 0, color: 'var(--text-dim)', cursor: 'grab',
-                fontSize: 'var(--text-2xs)', userSelect: 'none', display: 'flex', alignItems: 'center',
-              }}
-              title="拖拽到专辑标签以分配"><IconGripDots size={10} /></span>
-          )}
-          <div onClick={e => { if (!batchMode) e.stopPropagation() }}
+          <div
             title={g.title}
             style={{
               fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 'var(--weight-medium)',
