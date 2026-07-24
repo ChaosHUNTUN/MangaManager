@@ -111,6 +111,40 @@ public static class EhentaiTagService
 
     public static string? TranslateNamespace(string ns) => TranslateTag($"n:{ns}");
 
+    /// <summary>中文搜索词 → 英文标签映射（常见词汇快速转换）</summary>
+    public static string TranslateChineseSearch(string q)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["巨乳"] = "big breasts", ["贫乳"] = "small breasts",
+            ["全彩"] = "full color", ["汉化"] = "chinese", ["中文"] = "chinese",
+            ["无修"] = "uncensored", ["同人"] = "doujinshi",
+            ["漫画"] = "manga", ["单行本"] = "tankoubon",
+            ["萝莉"] = "lolicon", ["正太"] = "shotacon",
+            ["熟女"] = "milf", ["人妻"] = "milf",
+            ["ntr"] = "netorare", ["纯爱"] = "romance",
+            ["扶她"] = "futanari", ["触手"] = "tentacles",
+            ["怀孕"] = "pregnant", ["母乳"] = "lactation",
+            ["足交"] = "footjob", ["口交"] = "blowjob",
+            ["肛交"] = "anal", ["群交"] = "group",
+            ["cg"] = "cg", ["游戏"] = "game cg", ["cg集"] = "game cg",
+            ["非人类"] = "monster", ["妖怪"] = "youkai",
+            ["精灵"] = "elf", ["猫耳"] = "catgirl",
+            ["兔女郎"] = "bunny girl", ["女仆"] = "maid",
+            ["护士"] = "nurse", ["教师"] = "teacher",
+            ["水手服"] = "schoolgirl uniform", ["泳装"] = "swimsuit",
+            ["丝袜"] = "pantyhose", ["裸体围裙"] = "naked apron",
+            ["捆绑"] = "bondage", ["调教"] = "discipline",
+            ["洗脑"] = "mind control", ["催眠"] = "mind control",
+            ["ai"] = "ai generated", ["ai生成"] = "ai generated",
+        };
+        var translated = q;
+        foreach (var kv in map)
+            translated = System.Text.RegularExpressions.Regex.Replace(translated, kv.Key, kv.Value, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return translated;
+    }
+
     public static List<TagSuggestion> SuggestTags(string query, int limit = 30)
     {
         var results = new List<TagSuggestion>();

@@ -38,7 +38,7 @@ public class EhentaiController : ControllerBase
             string.IsNullOrWhiteSpace(req.IpbPassHash))
             return BadRequest(new ApiResponse<object>(false, null, "ipb_member_id 和 ipb_pass_hash 为必填"));
 
-        _svc.SetCookie(new EhentaiService.EhentaiCookie
+        _svc.SetCookie(new EhentaiCookie
         {
             IpbMemberId = req.IpbMemberId.Trim(),
             IpbPassHash = req.IpbPassHash.Trim(),
@@ -202,7 +202,7 @@ public class EhentaiController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q))
             return BadRequest(new ApiResponse<object>(false, null, "缺少搜索词"));
-        var result = EhentaiService.TranslateChineseSearch(q);
+        var result = EhentaiTagService.TranslateChineseSearch(q);
         return Ok(new ApiResponse<object>(true, new { original = q, translated = result }));
     }
 

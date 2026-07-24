@@ -1,11 +1,9 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Web;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -47,7 +45,7 @@ public class EhentaiService
         ApplyCookies();
     }
 
-    // =========== Cookie ===========
+    #region Cookie 管理
 
     public EhentaiCookie GetCookie() => _cookie;
 
@@ -87,7 +85,9 @@ public class EhentaiService
         cc.Add(new Cookie("sl", "dm_2", "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
     }
 
-    // =========== 验证 ===========
+    #endregion
+
+    #region 登录验证
 
     public async Task<ValidateResult> ValidateAsync()
     {
@@ -112,7 +112,9 @@ public class EhentaiService
         catch (Exception ex) { return new(false, false, $"网络错误: {ex.Message}"); }
     }
 
-    // =========== 浏览/搜索 ===========
+    #endregion
+
+    #region 画廊浏览/搜索
 
     public async Task<GalleryListResult> GetGalleriesAsync(string? search = null, int page = 0, bool exhentai = false, string? nextCursor = null,
         int categoryMask = 0, int? minRating = null, int? pageFrom = null, int? pageTo = null, int? advSearch = null,
@@ -310,7 +312,9 @@ public class EhentaiService
         return url;
     }
 
-    // =========== 详情解析辅助方法 ===========
+    #endregion
+
+    #region 详情解析辅助
 
     /// <summary>从 API 返回的 tags（namespace:tag 格式）构造 TagGroup 列表</summary>
     private static List<TagGroup> BuildTagGroups(List<string>? tags)
@@ -387,7 +391,9 @@ public class EhentaiService
         return tagGroups;
     }
 
-    // =========== 画廊详情 ===========
+    #endregion
+
+    #region 画廊详情
 
     public async Task<GalleryDetail> GetGalleryDetailAsync(int gid, string token)
     {
@@ -606,9 +612,11 @@ public class EhentaiService
         }
     }
 
-    // =========== 图片页 ===========
+    #endregion
 
-    public async Task<PageResult> GetPagesAsync(int gid, string token)
+    #region 图片页列表
+
+    public async Task<PageResult> GetPagesAsync(int gid, string token, bool isExhentai = false)
     {
         var pages = new List<PageItem>();
 
@@ -630,7 +638,7 @@ public class EhentaiService
         try
         {
             // 第1步：请求 p=0，解析总页数和第一页缩略图
-            var (firstHtml, _) = await GetGalleryPageHtmlAsync(gid, token, 0);
+            var (firstHtml, _) = await GetGalleryPageHtmlAsync(gid, token, 0, isExhentai: isExhentai);
 
             // 解析总页数
             int totalImages = 0;
@@ -696,7 +704,7 @@ public class EhentaiService
                     try
                     {
                         _logger.LogInformation($"[EH] Fetching preview page p={p}...");
-                        var (pageHtml, _) = await GetGalleryPageHtmlAsync(gid, token, p);
+                        var (pageHtml, _) = await GetGalleryPageHtmlAsync(gid, token, p, isExhentai: isExhentai);
                         var pageMatches = ParsePreviewMatches(pageHtml);
                         _logger.LogInformation($"[EH] p={p} found {pageMatches.Count} preview URLs");
                         pages.AddRange(pageMatches);
@@ -717,7 +725,7 @@ public class EhentaiService
                 {
                     try
                     {
-                        var (pageHtml, _) = await GetGalleryPageHtmlAsync(gid, token, p);
+                        var (pageHtml, _) = await GetGalleryPageHtmlAsync(gid, token, p, isExhentai: isExhentai);
                         var pageMatches = ParsePreviewMatches(pageHtml);
                         _logger.LogInformation($"[EH] p={p} found {pageMatches.Count} preview URLs");
                         if (pageMatches.Count == 0) break;
@@ -808,23 +816,36 @@ public class EhentaiService
     }
 
     /// <summary>从 /s/ 页面提取实际图片 URL 并返回图片数据（对标 EhViewer SpiderWorker.downloadImage）</summary>
-    public async Task<(byte[]? Data, string ContentType)> FetchImageFromPageAsync(string pagePath)
+    public async Task<(byte[]? Data, string ContentType)> FetchImageFromPageAsync(string pagePath, bool isExhentai = false)
     {
-        var fullUrl = pagePath.StartsWith("http") ? pagePath : $"{HOST_E}{pagePath}";
+        var baseHost = isExhentai ? HOST_EX : HOST_E;
+        var fullUrl = pagePath.StartsWith("http") ? pagePath : $"{baseHost}{pagePath}";
 
         // 第1步：GET /s/ 页面，提取 <img id="img" src="...">
         // EhViewer 策略：Referer 指向画廊详情页
         using var pageReq = new HttpRequestMessage(HttpMethod.Get, fullUrl);
-        pageReq.Headers.Add("Referer", $"{HOST_E}/");
+        pageReq.Headers.Add("Referer", $"{baseHost}/");
         var pageResp = await _http.SendAsync(pageReq);
         var html = await pageResp.Content.ReadAsStringAsync();
+
+        // 检查 HTTP 状态码（509 = 流量超限）
+        if (!pageResp.IsSuccessStatusCode)
+        {
+            var snippet = html.Length > 200 ? html[..200] : html;
+            throw new HttpRequestException($"EH 返回 {pageResp.StatusCode}: {snippet}");
+        }
+
         var imgMatch = Regex.Match(html, @"<img[^>]*id=""img""[^>]*src=""([^""]+)""", RegexOptions.IgnoreCase);
         if (!imgMatch.Success)
         {
             imgMatch = Regex.Match(html, @"<img[^>]*src=""(https?://[^""]+\.(?:jpg|png|webp))""", RegexOptions.IgnoreCase);
         }
         if (!imgMatch.Success)
-            return (null, "");
+        {
+            var snippet = html.Length > 300 ? html[..300] : html;
+            _logger.LogWarning("[EH] /s/ 页面未找到图片 URL: {Url}, HTML: {Html}", fullUrl, snippet);
+            throw new InvalidOperationException($"EH /s/ 页面未找到图片 (status={pageResp.StatusCode}, html={snippet})");
+        }
 
         var imgUrl = imgMatch.Groups[1].Value;
 
@@ -843,11 +864,23 @@ public class EhentaiService
     }
 
     /// <summary>代理 E-Hentai 详情 HTML 页面</summary>
-    public async Task<(string Html, string ContentType)> GetGalleryPageHtmlAsync(int gid, string token, int pageIdx = 0)
+    public async Task<(string Html, string ContentType)> GetGalleryPageHtmlAsync(int gid, string token, int pageIdx = 0, bool isExhentai = false)
     {
-        var url = $"{HOST_E}/g/{gid}/{token}/?p={pageIdx}";
+        var host = isExhentai ? HOST_EX : HOST_E;
+        var url = $"{host}/g/{gid}/{token}/?p={pageIdx}";
         var resp = await _http.GetAsync(url);
         var html = await resp.Content.ReadAsStringAsync();
+
+        // 如果从表站获取到了 "unavailable" 页面，自动重试里站
+        if (!isExhentai && (html.Contains("This gallery is unavailable") || html.Contains("Gallery Not Available")))
+        {
+            _logger.LogInformation($"[EH] Gallery {gid} unavailable on e-hentai, retrying on exhentai...");
+            host = HOST_EX;
+            url = $"{host}/g/{gid}/{token}/?p={pageIdx}";
+            resp = await _http.GetAsync(url);
+            html = await resp.Content.ReadAsStringAsync();
+        }
+
         return (html, "text/html; charset=utf-8");
     }
 
@@ -863,7 +896,9 @@ public class EhentaiService
         return body;
     }
 
-    // =========== 图片代理 & 下载 & 搜索翻译 ===========
+    #endregion
+
+    #region 图片代理 & 下载
 
     /// <summary>从 /s/{pToken}/{gid}-{page} 页面提取实际图片 URL</summary>
     public async Task<(string? ImageUrl, string? ShowKey)> GetImageFromPageAsync(string pageUrl)
@@ -1041,236 +1076,9 @@ public class EhentaiService
         string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
 
     /// <summary>中文搜索词 → E-Hentai 标签语法</summary>
-    public static string TranslateChineseSearch(string q)
-    {
-        // 简单映射常见中文搜索 → 英文标签
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["巨乳"] = "big breasts", ["贫乳"] = "small breasts",
-            ["全彩"] = "full color", ["汉化"] = "chinese", ["中文"] = "chinese",
-            ["无修"] = "uncensored", ["同人"] = "doujinshi",
-            ["漫画"] = "manga", ["单行本"] = "tankoubon",
-            ["萝莉"] = "lolicon", ["正太"] = "shotacon",
-            ["熟女"] = "milf", ["人妻"] = "milf",
-            ["ntr"] = "netorare", ["纯爱"] = "romance",
-            ["扶她"] = "futanari", ["触手"] = "tentacles",
-            ["怀孕"] = "pregnant", ["母乳"] = "lactation",
-            ["足交"] = "footjob", ["口交"] = "blowjob",
-            ["肛交"] = "anal", ["群交"] = "group",
-            ["ntr"] = "netorare", ["cg"] = "cg",
-            ["游戏"] = "game cg", ["cg集"] = "game cg",
-            ["非人类"] = "monster", ["妖怪"] = "youkai",
-            ["精灵"] = "elf", ["猫耳"] = "catgirl",
-            ["兔女郎"] = "bunny girl", ["女仆"] = "maid",
-            ["护士"] = "nurse", ["教师"] = "teacher",
-            ["水手服"] = "schoolgirl uniform", ["泳装"] = "swimsuit",
-            ["丝袜"] = "pantyhose", ["裸体围裙"] = "naked apron",
-            ["捆绑"] = "bondage", ["调教"] = "discipline",
-            ["洗脑"] = "mind control", ["催眠"] = "mind control",
-            ["ai"] = "ai generated", ["ai生成"] = "ai generated",
-        };
-        var translated = q;
-        foreach (var kv in map)
-            translated = Regex.Replace(translated, kv.Key, kv.Value, RegexOptions.IgnoreCase);
-        return translated;
-    }
+    #endregion
 
-    // =========== 标签翻译 ===========
-
-    private static Dictionary<string, string>? _tagTranslations;
-    private static readonly object _tagLock = new();
-
-    /// <summary>搜索倒排索引：词片段 → 匹配的 tag 条目列表</summary>
-    private static List<(string Key, string Cn, string Ns, string Tag, string EhSyntax)>? _tagSearchIndex;
-    private const string TAG_DB_URL = "https://raw.githubusercontent.com/xiaojieonly/EhTagTranslation/main/tag-translations/tag-translations-zh-rCN.json";
-    private static string TagDbPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "eh_tag_translations.json");
-
-    /// <summary>初始化标签翻译数据库（启动时调用一次）</summary>
-    public static async Task InitTagTranslationsAsync()
-    {
-        try
-        {
-            // 先尝试从本地缓存加载
-            if (File.Exists(TagDbPath) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(TagDbPath)).TotalDays < 7)
-            {
-                var json = await File.ReadAllTextAsync(TagDbPath);
-                var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                if (dict != null && dict.Count > 0)
-                {
-                    lock (_tagLock)
-                    {
-                        _tagTranslations = dict;
-                        _tagSearchIndex = BuildSearchIndex(dict);
-                    }
-                    return;
-                }
-            }
-
-            // 从 GitHub 下载二进制格式数据（EhViewer 格式：4字节大端长度头 + 文本行）
-            using var hc = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            var rawBytes = await hc.GetByteArrayAsync(TAG_DB_URL);
-            var decoded = ParseTagBinary(rawBytes);
-
-            if (decoded != null && decoded.Count > 0)
-            {
-                lock (_tagLock) _tagTranslations = decoded;
-                // 缓存为 JSON 格式
-                await File.WriteAllTextAsync(TagDbPath, JsonSerializer.Serialize(decoded));
-            }
-
-            // 构建搜索倒排索引
-            lock (_tagLock)
-            {
-                if (_tagTranslations != null)
-                    _tagSearchIndex = BuildSearchIndex(_tagTranslations);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[EH] 标签翻译加载失败: {ex.Message}");
-        }
-    }
-
-    /// <summary>预构建搜索用扁平列表（避免每次搜索遍历字典）</summary>
-    private static List<(string Key, string Cn, string Ns, string Tag, string EhSyntax)> BuildSearchIndex(Dictionary<string, string> dict)
-    {
-        var list = new List<(string, string, string, string, string)>(dict.Count);
-        foreach (var kv in dict)
-        {
-            var key = kv.Key;
-            var cn = kv.Value;
-            var colonIdx = key.IndexOf(':');
-            var nsPrefix = colonIdx > 0 ? key[..(colonIdx + 1)] : "";
-            var tagName = colonIdx > 0 ? key[(colonIdx + 1)..] : key;
-            var nsFull = nsPrefix switch
-            {
-                "a:" => "artist", "c:" => "character", "cos:" => "cosplayer",
-                "f:" => "female", "g:" => "group", "l:" => "language",
-                "m:" => "male", "x:" => "mixed", "o:" => "other",
-                "p:" => "parody", "r:" => "reclass", "n:" => "rows",
-                "temp:" => "temp", _ => ""
-            };
-            var ehSyntax = string.IsNullOrEmpty(nsFull) ? tagName : $"{nsFull}:{tagName.Replace(" ", "_")}";
-            list.Add((key, cn, nsFull, tagName, ehSyntax));
-        }
-        return list;
-    }
-
-    /// <summary>解析 EhViewer 二进制标签翻译格式</summary>
-    private static Dictionary<string, string>? ParseTagBinary(byte[] raw)
-    {
-        if (raw.Length < 4) return null;
-        // 4字节大端长度头
-        var totalBytes = (raw[0] << 24) | (raw[1] << 16) | (raw[2] << 8) | raw[3];
-        if (totalBytes <= 0 || totalBytes > raw.Length - 4) return null;
-
-        var text = Encoding.UTF8.GetString(raw, 4, totalBytes);
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var result = new Dictionary<string, string>(lines.Length);
-
-        foreach (var line in lines)
-        {
-            var idx = line.IndexOf('\r');
-            if (idx <= 0 || idx >= line.Length - 1) continue;
-            var key = line[..idx];
-            var b64 = line[(idx + 1)..];
-            try { result[key] = Encoding.UTF8.GetString(Convert.FromBase64String(b64)); }
-            catch { /* skip invalid */ }
-        }
-        return result;
-    }
-
-    // namespace 全名 → 短前缀映射（翻译字典使用短前缀）
-    private static readonly Dictionary<string, string> NsPrefixMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["artist"] = "a:", ["character"] = "c:", ["cosplayer"] = "cos:",
-        ["female"] = "f:", ["group"] = "g:", ["language"] = "l:",
-        ["male"] = "m:", ["mixed"] = "x:", ["other"] = "o:",
-        ["parody"] = "p:", ["reclass"] = "r:", ["rows"] = "n:",
-        ["temp"] = "temp:", ["misc"] = "",
-    };
-
-    /// <summary>获取标签翻译（namespace:tag → 中文翻译）</summary>
-    public static string? TranslateTag(string namespaceAndTag)
-    {
-        Dictionary<string, string>? dict;
-        lock (_tagLock) dict = _tagTranslations;
-        if (dict == null) return null;
-
-        // 先直接查
-        if (dict.TryGetValue(namespaceAndTag, out var v)) return v;
-
-        // 尝试将长 namespace 转换为短前缀再查
-        var colonIdx = namespaceAndTag.IndexOf(':');
-        if (colonIdx > 0)
-        {
-            var ns = namespaceAndTag[..colonIdx];
-            var tag = namespaceAndTag[(colonIdx + 1)..];
-            if (NsPrefixMap.TryGetValue(ns, out var prefix))
-            {
-                var shortKey = prefix + tag;
-                if (dict.TryGetValue(shortKey, out v)) return v;
-            }
-        }
-        return null;
-    }
-
-    /// <summary>获取 namespace 翻译（如 "female" → "女性"）</summary>
-    public static string? TranslateNamespace(string ns)
-    {
-        return TranslateTag($"n:{ns}");
-    }
-
-    /// <summary>搜索标签建议（对标 EhViewer TagSuggestion），使用预构建索引避免全表扫描</summary>
-    public static List<TagSuggestion> SuggestTags(string query, int limit = 30)
-    {
-        var results = new List<TagSuggestion>();
-        List<(string Key, string Cn, string Ns, string Tag, string EhSyntax)>? index;
-        lock (_tagLock) index = _tagSearchIndex;
-        if (index == null || string.IsNullOrWhiteSpace(query)) return results;
-
-        var q = query.ToLowerInvariant().Trim();
-        var seen = new HashSet<string>();
-
-        foreach (var (key, cn, nsFull, tagName, ehSyntax) in index)
-        {
-            // 搜索：英文标签名、中文翻译
-            bool keyMatch = tagName.Contains(q, StringComparison.OrdinalIgnoreCase);
-            bool cnMatch = cn.Contains(q, StringComparison.OrdinalIgnoreCase);
-
-            if (!keyMatch && !cnMatch) continue;
-
-            if (!seen.Add(ehSyntax.ToLowerInvariant())) continue;
-
-            results.Add(new TagSuggestion
-            {
-                Key = key,
-                Cn = cn,
-                Namespace = nsFull,
-                Tag = tagName,
-                EhSyntax = ehSyntax,
-                MatchType = cnMatch ? "cn" : "en"
-            });
-
-            if (results.Count >= limit * 3) break; // 多收集一些再排序截取
-        }
-
-        results = results
-            .OrderByDescending(r => r.MatchType == "cn" ? 1 : 0)
-            .ThenBy(r =>
-            {
-                var idx = r.MatchType == "cn"
-                    ? r.Cn.IndexOf(q, StringComparison.OrdinalIgnoreCase)
-                    : r.Tag.IndexOf(q, StringComparison.OrdinalIgnoreCase);
-                return idx < 0 ? int.MaxValue : idx;
-            })
-            .Take(limit)
-            .ToList();
-
-        return results;
-    }
-
-    // =========== 标签屏蔽（集成 E-Hentai My Tags） ===========
+    #region 标签屏蔽（集成 E-Hentai My Tags）
 
     private static HashSet<string> _blockedTags = new();
     private static readonly object _blockLock = new();
@@ -1411,86 +1219,5 @@ public class EhentaiService
         public bool IsWatched { get; set; }
     }
 
-    // =========== DTOs ===========
-
-    public class EhentaiCookie
-    {
-        [JsonPropertyName("ipb_member_id")] public string IpbMemberId { get; set; } = "";
-        [JsonPropertyName("ipb_pass_hash")] public string IpbPassHash { get; set; } = "";
-        [JsonPropertyName("igneous")] public string Igneous { get; set; } = "";
-        [JsonPropertyName("label")] public string Label { get; set; } = "默认";
-    }
-
-    public record ValidateResult(bool LoggedIn, bool Exhentai, string? Error);
-    public class GalleryListResult { public int Page { get; set; } public int TotalPages { get; set; } public string? NextCursor { get; set; } public bool IsExhentai { get; set; } public List<GalleryItem> Galleries { get; set; } = new(); }
-    public class GalleryItem { public int Gid { get; set; } public string Token { get; set; } = ""; public string? Title { get; set; } public string? ThumbUrl { get; set; } public int FileCount { get; set; } public double Rating { get; set; } public string? Category { get; set; } public bool IsExhentai { get; set; } }
-    public class TagGroup { public string Namespace { get; set; } = ""; public List<string> Tags { get; set; } = new(); }
-    public class GalleryDetail
-    {
-        public int Gid { get; set; } public string Token { get; set; } = "";
-        public string Title { get; set; } = ""; public string? TitleJpn { get; set; }
-        public string Category { get; set; } = "other"; public string Uploader { get; set; } = "";
-        public long Posted { get; set; } public int FileCount { get; set; }
-        public long FileSize { get; set; } public string Rating { get; set; } = "0";
-        public string? ThumbUrl { get; set; }
-        public List<string> Tags { get; set; } = new();          // 兼容旧格式
-        public List<TagGroup> TagGroups { get; set; } = new();    // namespace 分组
-        public string? Language { get; set; }
-        public int RatingCount { get; set; }
-        public int FavoriteCount { get; set; }
-        public bool IsFavorited { get; set; }
-        public string? FavoriteName { get; set; }
-        public int TorrentCount { get; set; }
-        public string? ParentGallery { get; set; }
-        public string? Visible { get; set; }
-        public bool IsExhentai { get; set; }
-    }
-    public class PageItem { public int Index { get; set; } public string ImageUrl { get; set; } = ""; public int Width { get; set; } public int Height { get; set; } public long FileSize { get; set; } }
-    public record PageResult(List<PageItem> Pages, string ImgKey, string ShowKey);
-
-    public class TagSuggestion
-    {
-        public string Key { get; set; } = "";        // 原始 key: "f:big breasts"
-        public string Cn { get; set; } = "";         // 中文翻译: "巨乳"
-        public string Namespace { get; set; } = "";  // 全名: "female"
-        public string Tag { get; set; } = "";        // 标签名: "big breasts"
-        public string EhSyntax { get; set; } = "";   // E-Hentai 搜索语法: "female:big_breasts"
-        public string MatchType { get; set; } = "";  // "cn" 或 "en"
-    }
-
-    private class GdataResponse { public List<GmItem> Gmetadata { get; set; } = new(); }
-    private class GmItem
-    {
-        public int Gid { get; set; } public string Token { get; set; } = "";
-        public string? Title { get; set; } public string? TitleJpn { get; set; }
-        public string? Category { get; set; } public string? Uploader { get; set; }
-        public JsonElement Posted { get; set; }
-        public JsonElement Filecount { get; set; }
-        public JsonElement Filesize { get; set; }
-        public string? Rating { get; set; }
-        public string? Thumb { get; set; } public List<string> Tags { get; set; } = new();
-
-        public long PostedLong => TryGetLong(Posted);
-        public int FilecountInt => TryGetInt(Filecount);
-        public long FilesizeLong => TryGetLong(Filesize);
-
-        private static long TryGetLong(JsonElement e) =>
-            e.ValueKind == JsonValueKind.Number ? e.GetInt64() :
-            e.ValueKind == JsonValueKind.String && long.TryParse(e.GetString(), out var v) ? v : 0;
-
-        private static int TryGetInt(JsonElement e) =>
-            e.ValueKind == JsonValueKind.Number ? e.GetInt32() :
-            e.ValueKind == JsonValueKind.String && int.TryParse(e.GetString(), out var v) ? v : 0;
-    }
-    private class GtokenResponse { public List<TkItem> TokenList { get; set; } = new(); }
-    private class TkItem { public int Gid { get; set; } public string Token { get; set; } = ""; public string Imgkey { get; set; } = ""; public string Showkey { get; set; } = ""; }
-    private class ShowPageResponse
-    {
-        public S1? s1 { get; set; } public S1? i2 { get; set; } public S1? i3 { get; set; }
-        public string? GetImage() => s1?.i ?? i2?.i ?? i3?.i;
-        public int GetWidth() => s1?.w ?? i2?.w ?? i3?.w ?? 0;
-        public int GetHeight() => s1?.h ?? i2?.h ?? i3?.h ?? 0;
-        public long GetFileSize() => s1?.s ?? i2?.s ?? i3?.s ?? 0;
-        public class S1 { public string i { get; set; } = ""; public int? w { get; set; } public int? h { get; set; } public long? s { get; set; } }
-    }
+    #endregion
 }

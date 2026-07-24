@@ -1,15 +1,9 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { getLocalCoverUrl, fetchGalleryMetaTags, translateEHTags } from '../api'
-
-const CATEGORY_COLORS = {
-  doujinshi: '#F44336', manga: '#FF9800', 'artist cg': '#FBC02D',
-  'game cg': '#4CAF50', western: '#8BC34A', 'non-h': '#2196F3',
-  imageset: '#9C27B0', cosplay: '#E91E63', 'asian porn': '#795548',
-  misc: '#607D8B', private: '#607D8B', other: '#607D8B'
-}
-const getCategoryColor = (cat) => CATEGORY_COLORS[(cat || '').toLowerCase()] || '#607D8B'
-const formatSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b + ' B'
+import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
+import { formatSize } from '../utils/format'
+const getCategoryColor = getCategoryColorDetail
 
 /**
  * 画廊详情弹窗
@@ -70,7 +64,7 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
       <div className="modal" style={{ maxWidth: 'min(640px, 90vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
         <div style={{ position: 'relative', background: 'linear-gradient(180deg, #1a1a3a 0%, #0f0f1a 100%)', padding: '20px 24px 16px', borderBottom: '1px solid #2a2a4a' }}>
           <button className="btn-sm" onClick={onClose} style={{ position: 'absolute', top: 10, right: 10, border: 'none', color: '#888', fontSize: '1.1rem' }}>✕</button>
-          <div style={{ display: 'flex', gap: 16 }}>
+          <div className="detail-header-layout" style={{ display: 'flex', gap: 16 }}>
             <div style={{ flexShrink: 0, width: 140, borderRadius: 8, overflow: 'hidden', border: '1px solid #2a2a4a', background: '#1a1a2e' }}><img src={getLocalCoverUrl(detail.gid)} alt="" style={{ width: '100%', display: 'block' }} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 title={detail.title} style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: '#e0e0e0', fontWeight: 600 }}>{detail.title}</h3>

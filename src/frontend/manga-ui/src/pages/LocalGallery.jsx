@@ -374,14 +374,25 @@ export default function LocalGallery() {
 
   const handleOpenReader = useCallback(async (gid) => {
     setHoveredGid(null)
+    const isRandom = randomMode
     const allGids = Object.values(albumConfig).flatMap(v => v.gids || [])
     let ag = null, ao = null
     if (activeGroup.startsWith('album:')) { const al = albumConfig[activeGroup.slice(6)]; if (al) { ag = al.gids || []; ao = sortBy === 'custom' ? (al.order || al.gids) : null } }
-    sessionStorage.setItem('reader-local-context', JSON.stringify({ group: activeGroup, search, sort: sortBy, gids: paged.map(g2 => g2.gid), total: pageTotal }))
+    // 随机模式下只传当前页 gids，不加载全量（避免覆盖随机结果）
+    sessionStorage.setItem('reader-local-context', JSON.stringify({
+      group: isRandom ? undefined : activeGroup,
+      search: isRandom ? undefined : search,
+      sort: isRandom ? undefined : sortBy,
+      gids: paged.map(g2 => g2.gid),
+      total: isRandom ? paged.length : pageTotal
+    }))
     sessionStorage.setItem('reader-local-return-url', window.location.search)
+    if (isRandom) sessionStorage.removeItem('reader-local-full-gids')
     navigate(`/reader-local/${gid}`)
-    try { const fg = await fetchLocalGalleryGids({ group: activeGroup === 'all' ? null : activeGroup, search: search || null, sort: sortBy || null, albumGids: activeGroup.startsWith('album:') ? ag : allGids.length > 0 ? allGids : null, albumOrder: ao }); if (fg?.length) sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fg)) } catch { }
-  }, [activeGroup, search, sortBy, pageTotal, paged, albumConfig, navigate])
+    if (!isRandom) {
+      try { const fg = await fetchLocalGalleryGids({ group: activeGroup === 'all' ? null : activeGroup, search: search || null, sort: sortBy || null, albumGids: activeGroup.startsWith('album:') ? ag : allGids.length > 0 ? allGids : null, albumOrder: ao }); if (fg?.length) sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fg)) } catch { }
+    }
+  }, [activeGroup, search, sortBy, pageTotal, paged, albumConfig, navigate, randomMode])
 
   const handleDelete = async (gid) => { setDeleting(true); try { await deleteLocalGallery(gid); setDeleteConfirm(null); setDetail(null); loadMetas(); loadPaged() } catch (e) { setError(e.message) } setDeleting(false) }
   const handleBatchDelete = async () => { setDeleting(true); try { for (const gid of selected) await deleteLocalGallery(gid); setSelected(new Set()); setBatchMode(false); setBatchDeleteConfirm(false); loadMetas(); loadPaged() } catch (e) { setError(e.message) } setDeleting(false) }
@@ -502,7 +513,7 @@ export default function LocalGallery() {
   // 渲染
   // ═══════════════════════════════════════════
   return (
-    <div className="container" style={{ display: 'flex', gap: 0, padding: 0, height: '100vh', overflow: 'hidden' }}>
+    <div className="container" style={{ display: 'flex', gap: 0, padding: 0, height: '100dvh', overflow: 'hidden' }}>
       {/* 侧边栏 */}
       <AlbumSidebar
         sidebarOpen={sidebarOpen} groups={groups} activeGroup={activeGroup}
@@ -518,7 +529,7 @@ export default function LocalGallery() {
       />
 
       {/* 主内容区 */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
         {/* ── 紧凑顶栏 ── */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 'var(--space-3)',

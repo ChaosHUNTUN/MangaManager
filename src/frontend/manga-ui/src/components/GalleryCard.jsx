@@ -1,16 +1,9 @@
 import { memo } from 'react'
 import { getLocalCoverUrl } from '../api'
 import { IconEye, IconBook } from './Icons'
+import { getCategoryColor, CATEGORY_COLORS_CARD as CATEGORY_COLORS } from '../constants/colors'
+import { formatSize } from '../utils/format'
 
-const CATEGORY_COLORS = {
-  doujinshi: '#c06060', manga: '#c08050', 'artist cg': '#b0a050',
-  'game cg': '#60a060', western: '#70a050', 'non-h': '#5070a0',
-  imageset: '#8050a0', cosplay: '#c06080', 'asian porn': '#907050',
-  misc: '#607080', private: '#607080', other: '#607080'
-}
-const getCategoryColor = (cat) => CATEGORY_COLORS[(cat || '').toLowerCase()] || '#607080'
-
-const formatSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b + ' B'
 const formatCount = (n) => n > 9999 ? (n / 1000).toFixed(1) + 'k' : String(n)
 
 const GalleryCard = memo(({
@@ -171,4 +164,5 @@ const GalleryCard = memo(({
 GalleryCard.displayName = 'GalleryCard'
 
 export { GalleryCard, getCategoryColor, formatSize, CATEGORY_COLORS }
+// 向后兼容导出 — 新代码请直接从 '../constants/colors' 和 '../utils/format' 导入
 export default GalleryCard

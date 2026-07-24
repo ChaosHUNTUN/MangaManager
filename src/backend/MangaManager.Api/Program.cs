@@ -42,12 +42,13 @@ else
 builder.Services.AddScoped<MangaService>();
 builder.Services.AddSingleton<LocalGalleryService>();
 builder.Services.AddSingleton<DownloadManager>();
-builder.Services.AddHostedService<GallerySyncService>();
+builder.Services.AddSingleton<GallerySyncService>();  // 同时注册为自身类型（供 DownloadManager 注入）
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GallerySyncService>());  // 作为 BackgroundService 启动
 
 // HttpClientFactory：E-Hentai 专用客户端（共享 Cookie、代理配置）
 builder.Services.AddHttpClient("ehentai", client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(30);
+    client.Timeout = TimeSpan.FromSeconds(120);  // 大图下载可能较慢
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
 })
 .ConfigurePrimaryHttpMessageHandler(sp =>

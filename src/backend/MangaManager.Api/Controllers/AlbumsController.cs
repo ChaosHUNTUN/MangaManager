@@ -80,8 +80,8 @@ public class AlbumsController : ControllerBase
                 {
                     tagNs = rawKeyTag.Substring(0, colonIdx);
                     tagValue = rawKeyTag.Substring(colonIdx + 1);
-                    nsCn = EhentaiService.TranslateNamespace(tagNs);
-                    tagCn = EhentaiService.TranslateTag(rawKeyTag);
+                    nsCn = EhentaiTagService.TranslateNamespace(tagNs);
+                    tagCn = EhentaiTagService.TranslateTag(rawKeyTag);
                 }
             }
             else
@@ -92,8 +92,8 @@ public class AlbumsController : ControllerBase
                 {
                     tagNs = key.Substring(0, colonIdx);
                     tagValue = key.Substring(colonIdx + 1);
-                    nsCn = EhentaiService.TranslateNamespace(tagNs);
-                    tagCn = EhentaiService.TranslateTag(key);
+                    nsCn = EhentaiTagService.TranslateNamespace(tagNs);
+                    tagCn = EhentaiTagService.TranslateTag(key);
                 }
                 else
                 {
@@ -108,8 +108,8 @@ public class AlbumsController : ControllerBase
                                 if (vals.Contains(key, StringComparer.OrdinalIgnoreCase))
                                 {
                                     tagNs = ns;
-                                    nsCn = EhentaiService.TranslateNamespace(ns);
-                                    tagCn = EhentaiService.TranslateTag($"{ns}:{key}");
+                                    nsCn = EhentaiTagService.TranslateNamespace(ns);
+                                    tagCn = EhentaiTagService.TranslateTag($"{ns}:{key}");
                                     break;
                                 }
                             }
@@ -117,16 +117,16 @@ public class AlbumsController : ControllerBase
                     }
                     if (tagNs == null)
                     {
-                        tagCn = EhentaiService.TranslateTag(key);
+                        tagCn = EhentaiTagService.TranslateTag(key);
                         if (tagCn == key)
                         {
                             foreach (var ns in new[] { "artist", "group", "parody", "character", "language", "female", "male", "misc" })
                             {
-                                var testCn = EhentaiService.TranslateTag($"{ns}:{key}");
+                                var testCn = EhentaiTagService.TranslateTag($"{ns}:{key}");
                                 if (testCn != $"{ns}:{key}")
                                 {
                                     tagNs = ns;
-                                    nsCn = EhentaiService.TranslateNamespace(ns);
+                                    nsCn = EhentaiTagService.TranslateNamespace(ns);
                                     tagCn = testCn;
                                     break;
                                 }

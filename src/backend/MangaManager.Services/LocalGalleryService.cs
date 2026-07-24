@@ -403,7 +403,7 @@ public class LocalGalleryService
             int ratingCount = 0, fileCount = 0;
             long totalSize = 0;
             List<string> artists = new(), groups = new(), tags = new();
-            var tagGroups = new List<EhentaiService.TagGroup>();
+            var tagGroups = new List<TagGroup>();
             var metaFile = Path.Combine(dir, ".meta.json");
             if (File.Exists(metaFile))
             {
@@ -435,7 +435,7 @@ public class LocalGalleryService
                                 .ToList();
                             if (nsTags.Count == 0) continue;
 
-                            tagGroups.Add(new EhentaiService.TagGroup { Namespace = ns.Name, Tags = nsTags });
+                            tagGroups.Add(new TagGroup { Namespace = ns.Name, Tags = nsTags });
                             tags.AddRange(nsTags);
 
                             if (ns.Name == "artist") artists = nsTags;
@@ -521,7 +521,7 @@ public class LocalGalleryService
     }
 
     /// <summary>从 EH 获取画廊详情（用于补全元数据）</summary>
-    public async Task<EhentaiService.GalleryDetail?> GetEHDetailAsync(int gid, string token)
+    public async Task<GalleryDetail?> GetEHDetailAsync(int gid, string token)
     {
         try { return await _eh.GetGalleryDetailAsync(gid, token); }
         catch { return null; }
@@ -812,7 +812,7 @@ public class LocalGalleryDetail
     public string? Language { get; set; }
     public long Posted { get; set; }
     public string Token { get; set; } = "";
-    public List<EhentaiService.TagGroup> TagGroups { get; set; } = new();
+    public List<TagGroup> TagGroups { get; set; } = new();
     public List<string> Tags { get; set; } = new();
     public List<LocalPageItem> Pages { get; set; } = new();
     public string DirPath { get; set; } = "";

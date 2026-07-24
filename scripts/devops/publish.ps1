@@ -19,8 +19,10 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "`n[1/4] 构建 React 前端..." -ForegroundColor Yellow
 Push-Location "$root\src\frontend\manga-ui"
 try {
-    npm install --silent 2>&1 | Out-Null
-    npm run build 2>&1 | Out-Null
+    npm install
+    if ($LASTEXITCODE -ne 0) { throw "npm install 失败" }
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw "npm run build 失败" }
     Write-Host "  前端构建完成" -ForegroundColor Green
 } finally {
     Pop-Location
@@ -35,7 +37,8 @@ try {
         -p:PublishSingleFile=false `
         -p:DebugType=none `
         -p:DebugSymbols=false `
-        -o $publishDir 2>&1 | Out-Null
+        -o $publishDir
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败" }
     Write-Host "  后端发布完成" -ForegroundColor Green
 } finally {
     Pop-Location

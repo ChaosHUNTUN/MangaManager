@@ -9,16 +9,9 @@ import {
   translateEHTags, fetchBlockedTags, addBlockedTag, removeBlockedTag,
   API_BASE, checkDownloaded, suggestEHTags, addDownloadTask
 } from '../api'
-
-// 分类颜色映射（对标 EhViewer）
-const CATEGORY_COLORS = {
-  doujinshi: '#F44336', manga: '#FF9800', 'artist cg': '#FBC02D',
-  'artist cg sets': '#FBC02D', 'game cg': '#4CAF50', 'game cg sets': '#4CAF50',
-  western: '#8BC34A', 'non-h': '#2196F3', 'imageset': '#9C27B0',
-  cosplay: '#E91E63', 'asian porn': '#795548', misc: '#607D8B',
-  private: '#607D8B', other: '#607D8B'
-}
-const getCategoryColor = (cat) => CATEGORY_COLORS[(cat || '').toLowerCase()] || '#607D8B'
+import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
+import { formatSize } from '../utils/format'
+const getCategoryColor = getCategoryColorDetail
 
 export default function EHentai() {
   // Cookie
@@ -58,6 +51,8 @@ export default function EHentai() {
 
   // 本地已下载的 gid 集合
   const [localGids, setLocalGids] = useState(new Set())
+  // 下载中的 gid 集合（点了下载按钮但还未完成）
+  const [downloadingGids, setDownloadingGids] = useState(new Set())
 
   // 屏蔽标签
   const [blockedTags, setBlockedTags] = useState([])
@@ -412,16 +407,31 @@ export default function EHentai() {
     try {
       const coverUrl = d.thumb || ''
       const r = await addDownloadTask(d.gid, d.token, d.title, coverUrl)
-      const msg = r.success ? '已加入下载队列' : (r.message || '失败')
-      setToast({ type: r.success ? 'success' : 'error', text: msg })
+      if (r.success) {
+        const status = r.data?.status
+        if (status === 'completed') {
+          setToast({ type: 'info', text: '已下载' })
+          setLocalGids(prev => new Set([...prev, d.gid]))
+        } else if (status === 'paused') {
+          setToast({ type: 'success', text: '已恢复下载' })
+          setDownloadingGids(prev => new Set([...prev, d.gid]))
+        } else if (status === 'downloading') {
+          setToast({ type: 'info', text: '正在下载中' })
+          setDownloadingGids(prev => new Set([...prev, d.gid]))
+        } else {
+          // pending 或新建
+          setToast({ type: 'success', text: '已加入下载队列' })
+          setDownloadingGids(prev => new Set([...prev, d.gid]))
+        }
+      } else {
+        setToast({ type: 'error', text: r.message || '添加失败' })
+      }
       setTimeout(() => setToast(null), 1500)
     } catch (e) {
       setToast({ type: 'error', text: e.message })
       setTimeout(() => setToast(null), 1500)
     }
   }
-
-  const formatSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b + ' B'
 
   // ===== 主界面 =====
   return (
@@ -716,12 +726,12 @@ export default function EHentai() {
                   <span style={{ fontSize: '2rem', opacity: 0.15 }}>📖</span>
                 </div>
               )}
-              {/* 已下载角标 */}
-              {localGids.has(g.gid) && (
-                <div className="badge" style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(107,139,107,0.85)', color: '#fff', borderColor: 'transparent' }}>
-                  已下载
-                </div>
-              )}
+              {/* 状态角标 */}
+              {localGids.has(g.gid) ? (
+                <div className="badge" style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(107,139,107,0.85)', color: '#fff', borderColor: 'transparent' }}>已下载</div>
+              ) : downloadingGids.has(g.gid) ? (
+                <div className="badge" style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(80,128,160,0.85)', color: '#fff', borderColor: 'transparent' }}>下载中</div>
+              ) : null}
               {/* Hover 操作层 — 底部毛玻璃按钮组 */}
               <div className="gallery-hover-overlay" style={{ position: 'absolute', inset: 0, display: 'none', alignItems: 'flex-end', justifyContent: 'center', gap: 'var(--space-2)', padding: 'var(--space-2)', background: 'linear-gradient(transparent 60%, rgba(0,0,0,0.5))', zIndex: 5 }}>
                 <button onClick={(e) => { e.stopPropagation(); openDetail(g.gid, g.token) }}
@@ -730,6 +740,8 @@ export default function EHentai() {
                   onMouseLeave={e2 => { e2.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}>详情</button>
                 {localGids.has(g.gid) ? (
                   <button style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(107,139,107,0.45)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'default' }}>已下载</button>
+                ) : downloadingGids.has(g.gid) ? (
+                  <button style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(80,128,160,0.45)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'default' }}>下载中</button>
                 ) : (
                   <button onClick={(e) => { e.stopPropagation(); handleDownload({ gid: g.gid, token: g.token, title: g.title }) }}
                     style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'pointer', backdropFilter: 'blur(6px)' }}
@@ -905,6 +917,8 @@ export default function EHentai() {
               <button className="btn-sm" onClick={() => openReader(detail)} style={{ borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</button>
               {localGids.has(detail.gid) ? (
                 <button className="btn-sm" disabled style={{ borderColor: '#10b981', color: '#6ee7b7', opacity: 0.7 }}>✅ 已下载</button>
+              ) : downloadingGids.has(detail.gid) ? (
+                <button className="btn-sm" disabled style={{ borderColor: '#60a5fa', color: '#93c5fd', opacity: 0.7 }}>⏳ 下载中</button>
               ) : (
                 <button className="btn-sm" onClick={() => handleDownload(detail)} style={{ borderColor: '#f59e0b', color: '#fbbf24' }}>⬇ 下载</button>
               )}

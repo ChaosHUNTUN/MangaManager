@@ -46,6 +46,13 @@
 - `_timersPaused` 标志在服务启停期间暂停轮询
 - HTTP 调用移出 UI 线程
 
+### 8. ExHentai 下载 Bug 修复（2026-07-21）
+- **根因**: `GetPagesAsync` → `GetGalleryPageHtmlAsync` 硬编码使用 `HOST_E` (e-hentai.org)，导致里站专有作品获取页面HTML时返回 "unavailable"，解析出 0 个图片页面
+- **修复**: 
+  - `GetPagesAsync`、`GetGalleryPageHtmlAsync`、`FetchImageFromPageAsync` 增加 `bool isExhentai` 参数
+  - `DownloadManager.DownloadTaskAsync` 将 `detail.IsExhentai` 传递给上述方法
+  - `GetGalleryPageHtmlAsync` 增加自动回退：表站返回 "unavailable" 时自动重试里站
+
 ## 项目路径
 - 后端: `d:\MangaManager\src\backend\MangaManager.Api`
 - 前端: `d:\MangaManager\src\frontend\manga-ui`

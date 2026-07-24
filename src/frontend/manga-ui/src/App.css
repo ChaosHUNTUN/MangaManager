@@ -325,11 +325,13 @@
   position: fixed; inset: 0; background: var(--canvas);
   display: flex; flex-direction: column; user-select: none;
   overflow: hidden;
+  touch-action: manipulation; /* 禁止双击缩放，提升触摸响应 */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 /* ── 顶栏（毛玻璃） ── */
 .reader-topbar {
-  position: absolute; top: 0; left: 0; right: 0; height: 44px;
+  position: absolute; top: env(safe-area-inset-top); left: 0; right: 0; height: 44px;
   background: var(--glass-bg);
   backdrop-filter: blur(20px) saturate(1.2);
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
@@ -355,11 +357,11 @@
 
 /* ── 底栏（实体深色） ── */
 .reader-bottombar {
-  position: absolute; bottom: 0; left: 0; right: 0;
+  position: absolute; bottom: env(safe-area-inset-bottom); left: 0; right: 0;
   background: var(--surface);
   border-top: 1px solid var(--divider);
   z-index: 20;
-  padding: var(--space-2) var(--space-4) var(--space-3);
+  padding: var(--space-2) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
   transition: opacity var(--duration-normal) var(--ease-out),
               transform var(--duration-normal) var(--ease-out);
 }
@@ -622,6 +624,8 @@
   .tag-pills { gap: var(--space-1); }
   .tag-pill { padding: 3px var(--space-2); font-size: 0.7rem; }
   .detail-layout { grid-template-columns: 1fr; gap: var(--space-4); }
+  .detail-header-layout { flex-direction: column !important; }
+  .detail-header-layout > div:first-child { width: 120px !important; margin: 0 auto; }
   .detail-title { font-size: var(--text-lg); }
   .detail-cover { max-height: 50vh; object-fit: contain; }
   .read-modes-btns { flex-direction: column; }
@@ -632,7 +636,7 @@
   .meta-value { font-size: var(--text-xs); }
   .tag-input-row { flex-direction: column; }
   .tag-input-row input { width: 100%; }
-  .batch-bar { left: var(--space-2); right: var(--space-2); transform: none; border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); flex-wrap: wrap; gap: var(--space-1); }
+  .batch-bar { left: var(--space-2); right: var(--space-2); bottom: calc(var(--space-2) + env(safe-area-inset-bottom)); transform: none; border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); flex-wrap: wrap; gap: var(--space-1); }
   .modal { width: 95%; padding: var(--space-4); max-height: 85vh; }
   .slideshow-panel { flex-wrap: wrap; justify-content: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); }
 
@@ -648,6 +652,22 @@
   .reader-thumb-grid { grid-template-columns: repeat(4, 1fr); }
   .reader-hotzone { width: 25%; }
   .reader-scroll-page { min-height: 100vh !important; }
+}
+
+/* 阅读器底栏控件溢出处理 — 360px 以下超小屏 */
+@media (max-width: 420px) {
+  .reader-controls {
+    display: grid !important;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
+    gap: 4px;
+  }
+  .reader-controls-left { grid-column: 1; }
+  .reader-controls-center { grid-column: 1 / -1; order: 0; }
+  .reader-controls-right { grid-column: 2; display: flex; flex-wrap: wrap; gap: 3px; }
+  .reader-controls-left .reader-btn,
+  .reader-controls-right .reader-btn { padding: 4px 8px; font-size: 0.75rem; }
+  .reader-select { font-size: 0.6rem; padding: 2px 1px; max-width: 56px; }
 }
 
 @media (max-width: 480px) {
@@ -675,4 +695,9 @@
   .btn-primary, .btn-green, .btn-outline, .btn-sm { min-height: 40px; padding: var(--space-2) var(--space-4); }
   .card { border-radius: var(--radius-sm); }
   .reader-touch-zone { width: 30%; }
+  /* iOS 惯性滚动 + 全局禁用文本选择 */
+  .reader-scroll-container,
+  .detail-content,
+  .modal { -webkit-overflow-scrolling: touch; }
+  * { -webkit-tap-highlight-color: transparent; }
 }

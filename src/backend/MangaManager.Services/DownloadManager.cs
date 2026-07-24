@@ -367,7 +367,18 @@ public class DownloadManager
                 }
                 else if (task.FailedPages > 0)
                 {
-                    task.Status = "failed";
+                    double successRate = task.TotalPages > 0 ? (double)task.DownloadedPages / task.TotalPages : 0;
+                    // 成功率 >= 95% 视为完成（最后几页因网络波动失败可接受）
+                    if (successRate >= 0.95)
+                    {
+                        task.Status = "completed";
+                        task.ErrorMsg = $"{task.FailedPages} 页下载失败（成功率 {(successRate * 100):F1}%），可能是 EH 限速";
+                    }
+                    else
+                    {
+                        task.Status = "failed";
+                        task.ErrorMsg = $"{task.FailedPages} 页下载失败（成功率 {(successRate * 100):F1}%）";
+                    }
                 }
                 else
                 {
@@ -431,7 +442,7 @@ public class DownloadManager
             _logger.LogInformation($"[DownloadManager] {task.Title} 从第 {startFrom + 1} 页继续 (已下载 {task.DownloadedBytes} bytes)");
         }
 
-        var pages = await ehService.GetPagesAsync(task.Gid, task.Token);
+        var pages = await ehService.GetPagesAsync(task.Gid, task.Token, detail.IsExhentai);
         if (task.TotalPages == 0) task.TotalPages = pages.Pages.Count;
 
         task.DownloadedPages = startFrom;
@@ -453,6 +464,7 @@ public class DownloadManager
 
             var p = pages.Pages[i];
             byte[]? imageData = null;
+            string? lastError = null;
 
             for (int retry = 0; retry < 3; retry++)
             {
@@ -460,8 +472,9 @@ public class DownloadManager
                 {
                     if (p.ImageUrl.Contains("/s/"))
                     {
-                        var (data, _) = await ehService.FetchImageFromPageAsync(p.ImageUrl);
+                        var (data, _) = await ehService.FetchImageFromPageAsync(p.ImageUrl, detail.IsExhentai);
                         if (data != null) { imageData = data; break; }
+                        if (retry < 2) lastError = $"缩略页返回空数据 (URL: {p.ImageUrl})";
                     }
                     else
                     {
@@ -471,12 +484,19 @@ public class DownloadManager
                 }
                 catch (Exception ex)
                 {
+                    lastError = ex.Message;
                     if (retry < 2)
                     {
-                        _logger.LogInformation($"[DownloadManager] {task.Title} 第 {i + 1} 页重试 {retry + 1}: {ex.Message}");
+                        _logger.LogInformation("[DownloadManager] {Title} 第 {Page} 页重试 {Retry}: {Msg}", task.Title, i + 1, retry + 1, ex.Message);
                         await Task.Delay(1000 * (retry + 1), ct);
                     }
                 }
+            }
+
+            if (imageData == null && lastError != null)
+            {
+                _logger.LogWarning("[DownloadManager] {Title} 第 {Page} 页下载失败 (共{Total}页): {Msg}", task.Title, i + 1, pages.Pages.Count, lastError);
+                task.ErrorMsg = $"第 {i + 1} 页: {lastError}";
             }
 
             if (imageData != null && imageData.Length > 0)
@@ -502,6 +522,12 @@ public class DownloadManager
                 // 更新任务状态
                 task.DownloadedPages = i + 1;
                 task.DownloadedBytes = totalBytes;
+
+                // 大画廊渐进延迟，避免触发 EH 限速
+                if (task.TotalPages > 200 && i > 0 && i % 50 == 0)
+                {
+                    await Task.Delay(2000, ct);  // 每 50 页暂停 2s
+                }
                 task.FailedPages = failed;
                 task.CalculateSpeed();
                 task.UpdatedAt = DateTime.UtcNow;
@@ -703,7 +729,7 @@ public class DownloadManager
     }
 
     /// <summary>根据作品标签自动分配到匹配的专辑（KeyTag 格式: "namespace:tag"）</summary>
-    private static async Task AutoAssignToAlbumsAsync(IServiceScope scope, int gid, List<EhentaiService.TagGroup>? tagGroups)
+    private static async Task AutoAssignToAlbumsAsync(IServiceScope scope, int gid, List<TagGroup>? tagGroups)
     {
         if (tagGroups == null || tagGroups.Count == 0) return;
         try

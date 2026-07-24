@@ -1,22 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import PageImage from './PageImage'
 import { fetchEHGalleryPages, getEHImageProxyUrl, API_BASE } from '../api'
-
-const FIT_MODES = [
-  { key: 'fit-width', label: '适应宽度', icon: '↔' },
-  { key: 'fit-height', label: '适应高度', icon: '↕' },
-  { key: 'fit-both', label: '适应页面', icon: '⊡' },
-  { key: 'original', label: '原始大小', icon: '1:1' },
-]
-const TRANSITIONS = [
-  { key: 'fade', label: '淡入淡出', icon: '🌫' },
-  { key: 'slide', label: '滑动', icon: '⇢' },
-  { key: 'none', label: '无效果', icon: '▯' },
-]
-const READ_MODES = [
-  { key: 'paged', label: '翻页', icon: '📖' },
-  { key: 'scroll', label: '滚动', icon: '📜' },
-]
+import { FIT_MODES, TRANSITIONS, READ_MODES } from '../constants/reader'
 
 /**
  * E-Hentai 在线阅读器（内嵌组件）
@@ -37,6 +22,8 @@ export default function EhentaiReader({ detail, onClose, onError }) {
   const [showUI, setShowUI] = useState(true)
   const [showHelp, setShowHelp] = useState(false)
   const scrollRef = useRef(null)
+  const pageRefsRef = useRef({})
+  const lastIndexRef = useRef(0)
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 })
 
   // 帮助面板 4 秒自动消失
@@ -111,20 +98,54 @@ export default function EhentaiReader({ detail, onClose, onError }) {
     return () => window.removeEventListener('keydown', handler)
   }, [!!pages, fitMode])
 
-  // 滚动模式处理
+  // 滚动模式处理——自然流布局，通过各页 ref 算当前位置
+  const handleScrollRef = useRef(null)
+  const handleScroll = useCallback(() => {
+    const c = scrollRef.current; if (!c || !pages) return
+    const refs = pageRefsRef.current
+    // 找到第一个完全在视口上方的页
+    let best = 0
+    for (let i = 0; i < pages.length; i++) {
+      const el = refs[i]
+      if (el) {
+        const rect = el.getBoundingClientRect()
+        if (rect.top <= c.clientHeight * 0.5) best = i
+      }
+    }
+    if (best !== index) setIndex(best)
+    const viewH = c.clientHeight
+    const st = c.scrollTop
+    const pageH = viewH * 0.95
+    const start = Math.max(0, Math.floor(st / pageH) - 2)
+    const end = Math.min(pages.length, Math.ceil((st + viewH) / pageH) + 2)
+    setVisibleRange({ start, end })
+  }, [pages, index])
+  handleScrollRef.current = handleScroll
+
+  // 始终跟踪当前 index，模式切换时维持位置
+  useEffect(() => { lastIndexRef.current = index }, [index])
+
+  // 切换到滚动模式时，跳到之前在翻页模式中的位置
+  useEffect(() => {
+    if (readMode !== 'scroll' || !pages?.length) return
+    const targetIdx = lastIndexRef.current
+    if (targetIdx <= 0) return
+    const raf = requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        const pageH = window.innerHeight * 0.95
+        scrollRef.current.scrollTop = Math.min(targetIdx * pageH, scrollRef.current.scrollHeight - scrollRef.current.clientHeight)
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [readMode])
+
   useEffect(() => {
     if (!pages || readMode !== 'scroll') return
     const c = scrollRef.current; if (!c) return
-    const onScroll = () => {
-      const pageH = window.innerHeight * 0.95
-      const start = Math.max(0, Math.floor(c.scrollTop / pageH) - 2)
-      const end = Math.min(pages.length, Math.ceil((c.scrollTop + c.clientHeight) / pageH) + 2)
-      setVisibleRange({ start, end })
-      setIndex(Math.round(c.scrollTop / pageH))
-    }
-    c.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
-    return () => c.removeEventListener('scroll', onScroll)
+    const listener = () => handleScrollRef.current()
+    c.addEventListener('scroll', listener, { passive: true })
+    listener()
+    return () => c.removeEventListener('scroll', listener)
   }, [pages, readMode])
 
   if (loading) {
@@ -173,6 +194,7 @@ export default function EhentaiReader({ detail, onClose, onError }) {
       <div className={`reader-topbar ${showUI ? '' : 'hidden'}`}>
         <div className="reader-topbar-left">
           <button className="reader-back-btn" onClick={onClose}>← 返回</button>
+          <span className="reader-title" style={{ marginLeft: 12, fontSize: '0.85rem', color: '#ccc', maxWidth: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail?.title || `GID ${detail?.gid}`}</span>
         </div>
         <div className="reader-topbar-right">
           <button className="reader-btn" onClick={() => setShowHelp(s => !s)} title="快捷键 (?/H)" style={{ fontSize: '0.7rem', padding: '2px 6px', marginRight: 8 }}>?</button>
@@ -184,7 +206,13 @@ export default function EhentaiReader({ detail, onClose, onError }) {
       <div className={`reader-bottombar ${showUI ? '' : 'hidden'}`}>
         <div className="reader-progress-track" onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
-          setIndex(Math.round((e.clientX - rect.left) / rect.width * (pages.length - 1)))
+          const pct = (e.clientX - rect.left) / rect.width
+          if (readMode === 'scroll' && scrollRef.current) {
+            scrollRef.current.scrollTop = pct * (scrollRef.current.scrollHeight - scrollRef.current.clientHeight)
+            handleScrollRef.current()
+          } else {
+            setIndex(Math.round(pct * (pages.length - 1)))
+          }
         }}>
           <div className="reader-progress-fill" style={{ width: `${progressPct}%` }} />
         </div>
@@ -213,17 +241,19 @@ export default function EhentaiReader({ detail, onClose, onError }) {
       {/* 主内容 */}
       {readMode === 'scroll' ? (
         <div className="reader-scroll-container" ref={scrollRef}>
-          <div className="reader-scroll-inner" style={{ height: pages.length * window.innerHeight * 0.95 }}>
-            {pages.map((rp, i) => {
-              const inRange = i >= visibleRange.start && i <= visibleRange.end
-              const pageUrl = getImgUrl(rp)
-              return (
-                <div key={i} className="reader-scroll-page" style={{ height: window.innerHeight * 0.95, position: 'absolute', top: i * window.innerHeight * 0.95, left: 0, right: 0 }}>
-                  {inRange ? <PageImage src={pageUrl} fitMode={fitMode} transition={transition} current={index} index={i} scrollMode /> : <div className="reader-scroll-placeholder" />}
-                </div>
-              )
-            })}
-          </div>
+          {pages.map((rp, i) => {
+            const inRange = i >= visibleRange.start && i <= visibleRange.end
+            const pageUrl = getImgUrl(rp)
+            return (
+              <div key={i} className="reader-scroll-page" ref={el => { pageRefsRef.current[i] = el }}>
+                {inRange ? (
+                  <PageImage src={pageUrl} fitMode={fitMode} transition={transition} current={index} index={i} scrollMode />
+                ) : (
+                  <div className="reader-scroll-placeholder" style={{ height: window.innerHeight * 0.95 }} />
+                )}
+              </div>
+            )
+          })}
         </div>
       ) : (
         <>
@@ -233,9 +263,9 @@ export default function EhentaiReader({ detail, onClose, onError }) {
             <div className="reader-transition-wrapper">
               {transition === 'slide' ? (
                 <>
-                  <PageImage src={getImgUrl(pages[index - 1])} fitMode={fitMode} transition={transition} current={index} index={index - 1} />
+                  {pages[index - 1] && <PageImage src={getImgUrl(pages[index - 1])} fitMode={fitMode} transition={transition} current={index} index={index - 1} />}
                   <PageImage src={getImgUrl(p)} fitMode={fitMode} transition={transition} current={index} index={index} />
-                  <PageImage src={getImgUrl(pages[index + 1])} fitMode={fitMode} transition={transition} current={index} index={index + 1} />
+                  {pages[index + 1] && <PageImage src={getImgUrl(pages[index + 1])} fitMode={fitMode} transition={transition} current={index} index={index + 1} />}
                 </>
               ) : (
                 <PageImage src={getImgUrl(p)} fitMode={fitMode} transition={transition} current={index} index={index} />
@@ -250,7 +280,6 @@ export default function EhentaiReader({ detail, onClose, onError }) {
 
       {/* 预加载 */}
       {preloadPages.map(pp => <link key={pp.idx} rel="preload" as="image" href={pp.url} />)}
-      {preloadPages.map(pp => <img key={'pre' + pp.idx} src={pp.url} style={{ display: 'none' }} alt="" />)}
 
       {/* 快捷键帮助面板 */}
       {showHelp && (

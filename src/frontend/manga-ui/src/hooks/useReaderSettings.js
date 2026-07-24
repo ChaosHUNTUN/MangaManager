@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchReaderSettings, saveReaderSettings } from './api'
+import { fetchReaderSettings, saveReaderSettings } from '../api'
 
 // 默认值
 const DEFAULTS = {

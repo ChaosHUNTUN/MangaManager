@@ -1,26 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { fetchLocalGalleryPagesAbortable, API_BASE, fetchReadingProgressAbortable, saveReadingProgress } from '../api'
-import { useReaderSettings } from '../useReaderSettings'
+import { useReaderSettings } from '../hooks/useReaderSettings'
 import PageImage from '../components/PageImage'
-
-const FIT_MODES = [
-  { key: 'fit-width', label: '适应宽度', icon: '↔' },
-  { key: 'fit-height', label: '适应高度', icon: '↕' },
-  { key: 'fit-both', label: '适应页面', icon: '⊡' },
-  { key: 'original', label: '原始大小', icon: '1:1' },
-]
-
-const TRANSITIONS = [
-  { key: 'fade', label: '淡入淡出', icon: '🌫' },
-  { key: 'slide', label: '滑动', icon: '⇢' },
-  { key: 'none', label: '无效果', icon: '▯' },
-]
-
-const READ_MODES = [
-  { key: 'paged', label: '翻页', icon: '📖' },
-  { key: 'scroll', label: '滚动', icon: '📜' },
-]
+import { FIT_MODES, TRANSITIONS, READ_MODES } from '../constants/reader'
 
 export default function ReaderLocal() {
   const { gid } = useParams()
@@ -66,7 +49,14 @@ export default function ReaderLocal() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [])
   useEffect(() => {
-    return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current) }
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+      // 组件卸载时保存阅读进度（React Router 导航离开、非 Esc 退出）
+      const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+      if (items.length > 0) {
+        try { navigator.sendBeacon(`${API_BASE}/api/readingprogress`, JSON.stringify(items)) } catch {}
+      }
+    }
   }, [])
 
   // 使用数据库持久化的阅读器设置
@@ -98,7 +88,6 @@ export default function ReaderLocal() {
       try {
         const fullGids = JSON.parse(sessionStorage.getItem('reader-local-full-gids') || 'null')
         if (fullGids && Array.isArray(fullGids) && fullGids.length > 0 && fullGids.length !== displayGids.length) {
-          console.log(`[ReaderLocal] 检测到完整 gid 列表: ${fullGids.length} 部`)
           setDisplayGids(fullGids)
           setGidsTotal(fullGids.length)
           clearInterval(timer)
@@ -202,8 +191,6 @@ export default function ReaderLocal() {
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
     if (!slideshow || isHovering || pages.length === 0) return
 
-    console.log('[ReaderLocal Slideshow] start, mode:', readModeRef2.current)
-
     if (readModeRef2.current === 'scroll') {
       let lastTime = performance.now()
       const animate = (now) => {
@@ -285,12 +272,47 @@ export default function ReaderLocal() {
       else if (e.key === '?' || e.key === 'h' || e.key === 'H') { e.preventDefault(); setShowHelp(s => !s) }
     }
     window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+
+    // 移动端触摸手势：翻页模式水平滑动翻页，垂直滑动切换UI，滚动模式不拦截
+    let touchStartX = 0, touchStartY = 0, touchStartTime = 0
+    const touchStart = (e) => {
+      if (e.touches.length > 1) return
+      touchStartX = e.touches[0].clientX
+      touchStartY = e.touches[0].clientY
+      touchStartTime = Date.now()
+    }
+    const touchEnd = (e) => {
+      if (readModeRef3.current !== 'paged') return
+      const dx = touchStartX - e.changedTouches[0].clientX
+      const dy = touchStartY - e.changedTouches[0].clientY
+      const elapsed = Date.now() - touchStartTime
+      // 快速轻点 (< 300ms && < 30px 位移) → 不处理（可能是无意触碰）
+      if (elapsed < 300 && Math.abs(dx) < 30 && Math.abs(dy) < 30) return
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+        e.preventDefault()
+        if (dx > 0) actionsRef.current.goNextPage()
+        else actionsRef.current.goPrevPage()
+      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 50) {
+        if (dy > 0) setShowUI(false)
+        else { setShowUI(true); resetHideTimer() }
+      }
+    }
+    window.addEventListener('touchstart', touchStart, { passive: true })
+    window.addEventListener('touchend', touchEnd, { passive: true })
+
+    return () => {
+      window.removeEventListener('keydown', handler)
+      window.removeEventListener('touchstart', touchStart)
+      window.removeEventListener('touchend', touchEnd)
+    }
   }, [updateSetting])
 
   // 滚动模式：存储每张图片 DOM 的 ref，用于精确计算页码
   const pageRefsRef = useRef([])
   const scrollPosRef = useRef({ scrollTop: 0, clientHeight: 0 })
+  const pagesRef = useRef(pages)
+  const lastIndexRef = useRef(0)
+  pagesRef.current = pages
 
   const handleScroll = useCallback(() => {
     if (readMode !== 'scroll') return
@@ -299,6 +321,7 @@ export default function ReaderLocal() {
     const clientHeight = c.clientHeight
     const viewCenter = scrollTop + clientHeight / 2
     scrollPosRef.current = { scrollTop, clientHeight }
+    const pages = pagesRef.current
 
     const refs = pageRefsRef.current
     let currentIdx = 0
@@ -352,6 +375,28 @@ export default function ReaderLocal() {
     setScrollProgress(maxScroll > 0 ? (scrollTop / maxScroll * 100) : 0)
   }, [readMode, pages.length])
 
+  // 保存最新 handleScroll 到 ref 供进度条等场景使用
+  const handleScrollRef = useRef(handleScroll)
+  handleScrollRef.current = handleScroll
+
+  // 始终跟踪当前 index，用于模式切换时维持位置
+  useEffect(() => { lastIndexRef.current = index }, [index])
+
+  // 切换到滚动模式时，跳到之前在翻页模式中的位置
+  useEffect(() => {
+    if (readMode !== 'scroll' || !pages.length) return
+    const targetIdx = lastIndexRef.current
+    if (targetIdx <= 0) return
+    const raf = requestAnimationFrame(() => {
+      const c = scrollRef.current
+      if (c) {
+        const pageH = window.innerHeight * 0.95
+        c.scrollTop = Math.min(targetIdx * pageH, c.scrollHeight - c.clientHeight)
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [readMode])
+
   useEffect(() => {
     if (readMode !== 'scroll') return
     const c = scrollRef.current; if (!c) return
@@ -404,6 +449,7 @@ export default function ReaderLocal() {
       const rect = e.currentTarget.getBoundingClientRect()
       const pct = (e.clientX - rect.left) / rect.width
       c.scrollTop = pct * (c.scrollHeight - c.clientHeight)
+      handleScrollRef.current()
     } else {
       const rect = e.currentTarget.getBoundingClientRect()
       setIndex(Math.round((e.clientX - rect.left) / rect.width * (pages.length - 1)))
@@ -569,7 +615,6 @@ export default function ReaderLocal() {
 
       {/* 预加载 */}
       {preloadPages.map(pp => <link key={pp.idx} rel="preload" as="image" href={pp.url} />)}
-      {preloadPages.map(pp => <img key={'pre' + pp.idx} src={pp.url} style={{ display: 'none' }} alt="" />)}
     </div>
   )
 }
