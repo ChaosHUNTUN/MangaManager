@@ -5,8 +5,6 @@
              xmlns:local="clr-namespace:MangaManager.Console">
     <Application.Resources>
         <ResourceDictionary>
-            <local:ProgressToGridLengthConverter x:Key="ProgressConverter"/>
-
             <ContextMenu x:Key="TrayMenu" x:Shared="false">
                 <MenuItem Header="📋 显示控制台" Click="ShowWindow_Click"/>
                 <Separator/>

@@ -71,25 +71,17 @@ public partial class App : Application
 
     private void ShowWindow_Click(object sender, RoutedEventArgs e) => ShowWindow();
 
-    private void StartAll_Click(object sender, RoutedEventArgs e)
+    private async void StartAll_Click(object sender, RoutedEventArgs e)
     {
         ShowWindow();
-        _mainWindow?.Dispatcher.Invoke(() =>
-        {
-            var win = _mainWindow;
-            typeof(MainWindow).GetMethod("StartApi", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(win, null);
-            typeof(MainWindow).GetMethod("StartUi", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(win, null);
-        });
+        if (_mainWindow != null)
+            await _mainWindow.StartAllServicesAsync();
     }
 
-    private void StopAll_Click(object sender, RoutedEventArgs e)
+    private async void StopAll_Click(object sender, RoutedEventArgs e)
     {
-        _mainWindow?.Dispatcher.Invoke(() =>
-        {
-            var win = _mainWindow;
-            typeof(MainWindow).GetMethod("StopApi", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(win, null);
-            typeof(MainWindow).GetMethod("StopUi", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(win, null);
-        });
+        if (_mainWindow != null)
+            await _mainWindow.StopAllServicesAsync();
     }
 
     private void OpenWeb_Click(object sender, RoutedEventArgs e)
@@ -97,12 +89,13 @@ public partial class App : Application
         Process.Start(new ProcessStartInfo("http://localhost:5173") { UseShellExecute = true });
     }
 
-    private void Exit_Click(object sender, RoutedEventArgs e)
+    private async void Exit_Click(object sender, RoutedEventArgs e)
     {
+        if (_mainWindow != null)
+            await _mainWindow.StopAllServicesAsync();
         _trayIcon?.Dispose();
-        _mainWindow?.Close();
         _appMutex?.ReleaseMutex();
-        Environment.Exit(0);
+        Application.Current.Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -23,6 +24,10 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _statusTimer;
     private readonly DispatcherTimer _downloadTimer;
     private volatile bool _timersPaused;  // 服务启停期间暂停轮询，防止 UI 线程堆积
+    private volatile bool _refreshingStatus;   // 防 RefreshServiceStatus 重入
+    private volatile bool _refreshingTasks;    // 防 RefreshDownloadTasks 重入
+    private DateTime _lastScrollTime;          // ScrollToEnd 节流
+    private const int MaxLogLines = 2000;      // 日志最大行数
     private readonly string _apiUrl = "http://localhost:5000";
     private readonly string _apiProject;
     private readonly string _uiDir;
@@ -64,11 +69,21 @@ public partial class MainWindow : Window
         TasksList.ItemsSource = _tasks;
 
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _statusTimer.Tick += async (_, _) => await RefreshServiceStatus();
+        _statusTimer.Tick += async (_, _) =>
+        {
+            if (_refreshingStatus) return;
+            _refreshingStatus = true;
+            try { await RefreshServiceStatus(); } finally { _refreshingStatus = false; }
+        };
         _statusTimer.Start();
 
         _downloadTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _downloadTimer.Tick += async (_, _) => await RefreshDownloadTasks();
+        _downloadTimer.Tick += async (_, _) =>
+        {
+            if (_refreshingTasks) return;
+            _refreshingTasks = true;
+            try { await RefreshDownloadTasks(); } finally { _refreshingTasks = false; }
+        };
         _downloadTimer.Start();
     }
 
@@ -114,18 +129,6 @@ public partial class MainWindow : Window
             await StopUi();
             Application.Current.Shutdown();
         }
-    }
-
-    private void CloseBtn_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (sender is Button btn) btn.Foreground = new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromRgb(0xEF, 0x44, 0x44));
-    }
-
-    private void CloseBtn_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (sender is Button btn) btn.Foreground = new System.Windows.Media.SolidColorBrush(
-            System.Windows.Media.Color.FromRgb(0x88, 0x88, 0x88));
     }
 
     private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -194,6 +197,38 @@ public partial class MainWindow : Window
         catch { return false; }
     }
 
+    /// <summary>从 PATH 中查找 npx，回退到常见安装路径。</summary>
+    private static string ResolveNpxPath()
+    {
+        const string exeName = "npx.cmd";
+
+        // 1. 优先检查 PATH
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrEmpty(pathEnv))
+        {
+            foreach (var dir in pathEnv.Split(System.IO.Path.PathSeparator))
+            {
+                var candidate = System.IO.Path.Combine(dir.Trim(), exeName);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+
+        // 2. 常见 Node.js 安装路径回退
+        foreach (var dir in new[]
+        {
+            Environment.GetEnvironmentVariable("ProgramFiles") + @"\nodejs",
+            Environment.GetEnvironmentVariable("ProgramFiles(x86)") + @"\nodejs",
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + @"\Programs\nodejs"
+        })
+        {
+            var candidate = System.IO.Path.Combine(dir, exeName);
+            if (File.Exists(candidate)) return candidate;
+        }
+
+        // 3. 最终回退：靠系统解析
+        return "npx";
+    }
+
     private Process StartProcess(string fileName, string arguments, string? workingDir = null)
     {
         var psi = new ProcessStartInfo(fileName, arguments)
@@ -207,9 +242,10 @@ public partial class MainWindow : Window
             WorkingDirectory = workingDir ?? System.IO.Path.GetDirectoryName(fileName) ?? ""
         };
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        p.OutputDataReceived += (_, e) => { if (e.Data != null) Dispatcher.Invoke(() => Log(e.Data)); };
-        p.ErrorDataReceived += (_, e) => { if (e.Data != null) Dispatcher.Invoke(() => Log($"[ERR] {e.Data}")); };
-        p.Exited += (_, _) => Dispatcher.Invoke(async () =>
+        // 使用 BeginInvoke 而非 Invoke：避免管道缓冲区塞满导致子进程 stdout 阻塞 → 父子进程互相等待死锁
+        p.OutputDataReceived += (_, e) => { if (e.Data != null) Dispatcher.BeginInvoke(() => Log(e.Data)); };
+        p.ErrorDataReceived += (_, e) => { if (e.Data != null) Dispatcher.BeginInvoke(() => Log($"[ERR] {e.Data}")); };
+        p.Exited += (_, _) => Dispatcher.BeginInvoke(async () =>
         {
             Log($"进程已退出 (ExitCode: {p.ExitCode})");
             await RefreshServiceStatus();
@@ -303,8 +339,7 @@ public partial class MainWindow : Window
             Log("正在启动 Web 前端...");
             await Task.Run(() => KillPort(5173));
             await Task.Delay(500);
-            var npxPath = System.IO.File.Exists(@"C:\Program Files\nodejs\npx.cmd")
-                ? @"C:\Program Files\nodejs\npx.cmd" : "npx";
+            var npxPath = ResolveNpxPath();
             _uiProcess = StartProcess(npxPath, "vite --host 0.0.0.0 --port 5173", _uiDir);
         }
         catch (Exception ex) { Log($"启动 UI 失败: {ex.Message}"); }
@@ -348,31 +383,54 @@ public partial class MainWindow : Window
         }
     }
 
+    internal async Task StartAllServicesAsync()
+    {
+        await StartApiAsync();
+        await StartUiAsync();
+    }
+
+    internal async Task StopAllServicesAsync()
+    {
+        await StopApi();
+        await StopUi();
+    }
+
     private static void KillPort(int port)
     {
         try
         {
-            var psi = new ProcessStartInfo("cmd", $"/c netstat -ano | findstr :{port} | findstr LISTENING")
+            var endPoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port);
+            var listeners = System.Net.NetworkInformation.IPGlobalProperties
+                .GetIPGlobalProperties()
+                .GetActiveTcpListeners();
+            foreach (var listener in listeners)
             {
-                RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true
-            };
-            using var p = Process.Start(psi);
-            if (p == null) return;
-            var output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(3000);
-
-            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 5 && int.TryParse(parts[4], out var pid))
+                if (listener.Port == port)
                 {
-                    try
+                    // Find and kill the process holding this port
+                    var psi = new ProcessStartInfo("cmd", $"/c netstat -ano | findstr :{port}")
                     {
-                        var proc = Process.GetProcessById(pid);
-                        proc.Kill();
-                        proc.WaitForExit(3000);
+                        RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true
+                    };
+                    using var p = Process.Start(psi);
+                    if (p == null) continue;
+                    var output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(3000);
+
+                    foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 5 && int.TryParse(parts[^1], out var pid))
+                        {
+                            try
+                            {
+                                using var proc = Process.GetProcessById(pid);
+                                proc.Kill();
+                                proc.WaitForExit(3000);
+                            }
+                            catch { }
+                        }
                     }
-                    catch { }
                 }
             }
         }
@@ -525,8 +583,34 @@ public partial class MainWindow : Window
     private void Log(string message)
     {
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
-        TxtLog.AppendText($"[{timestamp}] {message}\n");
-        TxtLog.ScrollToEnd();
+        var text = TxtLog;
+        var newLine = $"[{timestamp}] {message}\n";
+
+        // 超过行数上限时从头部截断
+        if (text.LineCount > MaxLogLines + 100)
+        {
+            var lineIdx = text.GetLineIndexFromCharacterIndex(text.Text.IndexOf('\n', text.Text.Length / 5));
+            if (lineIdx > 0) text.Text = text.Text[(text.GetCharacterIndexFromLineIndex(lineIdx))..];
+        }
+
+        text.AppendText(newLine);
+
+        // ScrollToEnd 节流：每 200ms 最多滚动一次，避免高频日志导致阻塞
+        var now = DateTime.UtcNow;
+        if ((now - _lastScrollTime).TotalMilliseconds > 200)
+        {
+            _lastScrollTime = now;
+            text.ScrollToEnd();
+        }
+        else
+        {
+            // 延迟滚动到后台优先级，不阻塞当前批次处理
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            {
+                var t = TxtLog;
+                if (t != null) t.ScrollToEnd();
+            });
+        }
     }
 }
 
