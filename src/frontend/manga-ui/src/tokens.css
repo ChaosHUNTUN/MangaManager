@@ -28,6 +28,7 @@
   --accent-border: rgba(139, 122, 160, 0.30);
   --accent-teal-bg: rgba(90, 138, 138, 0.12);
   --accent-teal-bg-hover: rgba(90, 138, 138, 0.18);
+  --accent-teal-border: rgba(90, 138, 138, 0.30);
 
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-card: rgba(255, 255, 255, 0.05);
@@ -135,6 +136,55 @@
 
 /* ── 暗色模式为默认主题 ── */
 
+/* ================================================================
+ *  亮色主题 (Light Theme)
+ *  selector: [data-theme="light"]
+ *  ================================================================ */
+[data-theme="light"] {
+  --canvas: #f5f4f7;
+  --surface: #edeaf2;
+  --surface-high: #ffffff;
+  --surface-card: #ffffff;
+  --surface-hover: #f0eef6;
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-bg-light: rgba(255, 255, 255, 0.70);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-hover: rgba(0, 0, 0, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.50);
+
+  --text-primary: #25222a;
+  --text-secondary: #5c5870;
+  --text-muted: #8b85a0;
+  --text-dim: #b5afc5;
+
+  --accent: #6d5c8a;
+  --accent-teal: #3d6b6b;
+  --accent-bg: rgba(109, 92, 138, 0.08);
+  --accent-bg-hover: rgba(109, 92, 138, 0.14);
+  --accent-border: rgba(109, 92, 138, 0.25);
+  --accent-teal-bg: rgba(61, 107, 107, 0.08);
+  --accent-teal-bg-hover: rgba(61, 107, 107, 0.14);
+  --accent-teal-border: rgba(61, 107, 107, 0.25);
+
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --border-card: rgba(0, 0, 0, 0.06);
+  --border-input: rgba(0, 0, 0, 0.10);
+  --border-active: rgba(0, 0, 0, 0.16);
+
+  --divider: rgba(0, 0, 0, 0.06);
+  --grid-line: rgba(0, 0, 0, 0.03);
+
+  --error: #b05050;
+  --success: #5d8a5d;
+  --warning: #8a7040;
+
+  --hover-brighten: brightness(0.97);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.22);
+}
+
 /* ── 动效偏好适配 ── */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -211,7 +261,7 @@ body {
   color: var(--text-primary);
 }
 .btn-ghost:active {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--hover-bg);
 }
 
 /* 紧凑号牌 */
@@ -228,7 +278,7 @@ body {
 }
 .badge-accent { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
 .badge-teal  { background: var(--accent-teal-bg); color: var(--accent-teal); border-color: rgba(90, 138, 138, 0.30); }
-.badge-muted { background: rgba(255,255,255,0.04); color: var(--text-muted); }
+.badge-muted { background: var(--hover-bg); color: var(--text-muted); }
 
 /* 分割线 */
 .divider { height: 1px; background: var(--divider); border: none; margin: 0; }

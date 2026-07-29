@@ -223,6 +223,34 @@
 }
 .btn-danger:hover { background: rgba(176, 96, 96, 0.25); }
 
+/* ── Icon-in-Button 统一样式 ── */
+/* 任何 button 内嵌的 svg（Lucide / Ant Design Icons）自动匹配按钮字号 */
+button:has(> svg) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+button > svg {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: middle;
+  stroke-width: 1.75;
+}
+/* 按钮尺寸越大，svg 自动变大（保持 1em 比例） */
+.btn-primary > svg,
+.btn-green > svg {
+  width: 16px;
+  height: 16px;
+}
+.btn-outline > svg,
+.btn-sm > svg,
+.btn-danger > svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* ── Batch Bar ── */
 .batch-bar {
   position: fixed; bottom: var(--space-5); left: 50%; transform: translateX(-50%);
@@ -242,7 +270,7 @@
 
 /* ── Modal ── */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  position: fixed; inset: 0; background: color-mix(in srgb, var(--canvas) 75%, transparent);
   display: flex; align-items: center; justify-content: center; z-index: 200;
 }
 .modal {
@@ -306,7 +334,7 @@
 }
 .gallery-skeleton-cover {
   width: 100%; padding-bottom: 140%;
-  background: linear-gradient(90deg, var(--surface-high) 0%, #222228 50%, var(--surface-high) 100%);
+  background: linear-gradient(90deg, var(--surface-high) 0%, var(--surface) 50%, var(--surface-high) 100%);
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s infinite;
 }
@@ -460,11 +488,19 @@
 
 /* ── 翻页热区 ── */
 .reader-hotzone {
-  position: absolute; top: 0; bottom: 0; width: 22%;
+  position: absolute; top: 0; bottom: 0;
   cursor: pointer; z-index: 5;
 }
-.reader-hotzone-left { left: 0; }
-.reader-hotzone-right { right: 0; }
+.reader-hotzone-left { left: 0; width: 30%; }
+.reader-hotzone-center { left: 30%; width: 40%; }
+.reader-hotzone-right { right: 0; width: 30%; }
+
+/* 桌面端缩小热区，鼠标精确 */
+@media (hover: hover) and (pointer: fine) {
+  .reader-hotzone-left { width: 22%; }
+  .reader-hotzone-center { width: 56%; }
+  .reader-hotzone-right { width: 22%; }
+}
 
 /* ── 悬浮提示 ── */
 .reader-hover-hint {
@@ -651,7 +687,6 @@
   .reader-page-indicator { font-size: var(--text-xs); }
   .reader-thumb-grid { grid-template-columns: repeat(4, 1fr); }
   .reader-hotzone { width: 25%; }
-  .reader-scroll-page { min-height: 100vh !important; }
 }
 
 /* 阅读器底栏控件溢出处理 — 360px 以下超小屏 */
@@ -679,6 +714,12 @@
   .header h1 { font-size: var(--text-sm); }
   .header-actions { gap: var(--space-1); }
   .btn-outline, .btn-sm { padding: 5px var(--space-2); font-size: 0.72rem; }
+
+  /* 移动端阅读器底部栏 */
+  .reader-bottombar { padding: var(--space-2) var(--space-3) var(--space-2); }
+  .reader-controls-left .reader-btn, .reader-controls-right .reader-btn { min-height: 38px; min-width: 38px; padding: 6px 10px; font-size: 0.9rem; }
+  .reader-page-num { font-size: var(--text-xs); }
+  .reader-scroll-page { min-height: 100vh !important; }
 }
 
 @media (min-width: 1200px) {
