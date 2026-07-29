@@ -18,7 +18,7 @@ export {
 // E-Hentai
 export {
   checkEHConnectivity, fetchEHentaiCookie, updateEHentaiCookie, validateEHentaiCookie,
-  fetchEHGalleries, fetchEHGalleryDetail, fetchEHGalleryPages, downloadEHGallery,
+  fetchEHGalleries, fetchEHGalleryDetail, fetchEHGalleryPages, fetchEHGalleryLocalPages,
   translateEHSearch, getEHImageProxyUrl,
   suggestEHTags, translateEHTags,
   fetchBlockedTags, addBlockedTag, removeBlockedTag

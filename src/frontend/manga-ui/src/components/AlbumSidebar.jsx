@@ -165,6 +165,15 @@ export default function AlbumSidebar({
 
   const totalAlbums = Object.values(albumSections).flat().length
 
+  const functionalAlbums = useMemo(() => {
+    const keys = ['__uncategorized__', '__multi_author__']
+    return keys.map(k => {
+      const cfg = albumConfig[k]
+      if (!cfg) return null
+      return { key: `album:${k}`, name: cfg.name, color: cfg.color, count: (cfg.gids || []).length }
+    }).filter(Boolean)
+  }, [albumConfig])
+
   const sidebarContent = (
     <div ref={sidebarScrollRef} style={{ padding: 'var(--space-2) 0 var(--space-3)', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {/* 标题行 */}
@@ -234,8 +243,10 @@ export default function AlbumSidebar({
             padding: '0 var(--space-3) var(--space-1)', marginTop: 'var(--space-2)', fontSize: 'var(--text-2xs)',
             fontWeight: 'var(--weight-semibold)', color: 'var(--text-muted)', borderBottom: '1px solid var(--divider)', marginBottom: 2
           }}>自动分组 ({autoGroups.length})</div>
-          {autoGroups.map(grp => (
-            <div key={grp.key} style={{ padding: '0 var(--space-3)' }}>
+          {autoGroups.map(grp => {
+            const canConvert = grp.type === 'artist' || grp.type === 'group'
+            return (
+            <div key={grp.key} style={{ padding: '0 var(--space-3)' }} className="album-sidebar-row">
               <div onClick={() => onSelectGroup?.(grp.key)}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -250,13 +261,44 @@ export default function AlbumSidebar({
                   {grp.name}
                 </span>
                 <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', marginLeft: 4 }}>{grp.count}</span>
-                <button className="btn-sm" onClick={e => { e.stopPropagation(); onConvertToAlbum?.(grp) }}
-                  style={{ padding: '1px 5px', fontSize: 'var(--text-3xs)', borderColor: 'var(--border-input)', color: 'var(--text-muted)', background: 'transparent', marginLeft: 2 }}
-                  title="转为专辑">+</button>
+                {canConvert && (
+                  <button className="btn-sm album-actions" onClick={e => { e.stopPropagation(); onConvertToAlbum?.(grp) }}
+                    title="转为专辑"
+                    style={{
+                      padding: '1px 5px', fontSize: 'var(--text-3xs)',
+                      borderColor: 'var(--border-input)', color: 'var(--text-muted)',
+                      background: 'transparent', cursor: 'pointer', marginLeft: 4
+                    }}>📁</button>
+                )}
               </div>
             </div>
-          ))}
+          )})}
         </>
+      )}
+
+      {functionalAlbums.length > 0 && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--divider)' }}>
+          {functionalAlbums.map(fa => {
+            const isActive = activeGroup === fa.key
+            return (
+              <div key={fa.key}
+                onClick={() => { onSelectGroup(fa.key); if (!pinned) onClose() }}
+                onDragOver={e => { e.preventDefault(); onDragOver(e) }}
+                style={{
+                  padding: '5px 10px', cursor: 'pointer', borderRadius: 'var(--radius-xs)',
+                  background: isActive ? 'var(--accent-bg)' : 'transparent',
+                  margin: '0 var(--space-1)', display: 'flex', alignItems: 'center', gap: 6
+                }}>
+                <span style={{
+                  flexShrink: 0, width: 7, height: 7, borderRadius: '50%',
+                  background: fa.color || '#888', opacity: 0.6, display: 'inline-block'
+                }} />
+                <span style={{ fontSize: 'var(--text-xs)', color: isActive ? 'var(--accent)' : 'var(--text-muted)', flex: 1 }}>{fa.name}</span>
+                <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>{fa.count}</span>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

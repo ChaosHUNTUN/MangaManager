@@ -12,17 +12,18 @@ export async function fetchLocalGalleryMetas() {
   return json.data || []
 }
 
-export async function fetchLocalGalleriesPaged({ group, search, sort, page = 1, pageSize = 20, albumGids, albumOrder } = {}) {
+export async function fetchLocalGalleriesPaged({ group, search, sort, page = 1, pageSize = 20, albumGids, albumOrder, signal } = {}) {
   const json = await request('/api/local/galleries/paged', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ group, search, sort, page, pageSize, albumGids, albumOrder })
+    body: JSON.stringify({ group, search, sort, page, pageSize, albumGids, albumOrder }),
+    signal
   })
   return json.data || { items: [], total: 0, totalPages: 0, page: 1, pageSize: 20 }
 }
 
-export async function fetchLocalGalleriesRandom(count = 20) {
-  const json = await request(`/api/local/galleries/random?count=${count}`)
+export async function fetchLocalGalleriesRandom(count = 20, signal) {
+  const json = await request(`/api/local/galleries/random?count=${count}`, { signal })
   return json.data || { items: [], total: 0, totalPages: 0 }
 }
 

@@ -69,10 +69,10 @@ public class EhentaiController : ControllerBase
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             
             bool eReachable = false;
-            try { var r = await client.GetAsync("https://e-hentai.org/", cts.Token); eReachable = r.IsSuccessStatusCode; } catch { }
+            try { var r = await client.GetAsync("https://e-hentai.org/", cts.Token); eReachable = r.IsSuccessStatusCode; } catch { /* network check timeout */ }
             
             bool exReachable = false;
-            try { var r = await client.GetAsync("https://exhentai.org/", cts.Token); exReachable = r.IsSuccessStatusCode; } catch { }
+            try { var r = await client.GetAsync("https://exhentai.org/", cts.Token); exReachable = r.IsSuccessStatusCode; } catch { /* network check timeout */ }
             
             return Ok(new ApiResponse<object>(true, new { reachable = eReachable || exReachable, eReachable, exReachable }));
         }

@@ -110,7 +110,7 @@ public class MangaService
                 await writer.WriteAsync($"data: {json}\n\n");
                 await writer.FlushAsync();
             }
-            catch { }
+            catch (Exception ex) { _logger.LogDebug(ex, "SSE write failed (client disconnected)"); }
         }
     }
 
@@ -304,7 +304,7 @@ public class MangaService
                     return true;
             }
         }
-        catch { }
+        catch (Exception ex) { _logger.LogDebug(ex, "HasImageFilesDeep failed on directory"); }
         return false;
     }
 

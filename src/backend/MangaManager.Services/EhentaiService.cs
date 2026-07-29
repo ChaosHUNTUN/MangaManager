@@ -1,10 +1,8 @@
-using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace MangaManager.Services;
@@ -17,102 +15,38 @@ public class EhentaiService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<EhentaiService> _logger;
-    private readonly CookieContainer _cookieContainer;
-    private readonly string _cookieFile;
+    private readonly EhentaiAuthService _auth;
 
-    private EhentaiCookie _cookie = new();
-    private static readonly JsonSerializerOptions _jsonOpts = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
+    // ====== 编译正则（避免重复创建 Regex 实例） ======
+    private static readonly Regex RatingCountRe = new(@"id=""rating_count""[^>]*>(\d+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex FavoriteBtnRe = new(@"id=""gdf""[^>]*>([^<]+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex TorrentCountRe = new(@"Torrent Download\s*\((\d+)\)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ApiUidRe = new(@"var\s+apiuid\s*=\s*(\d+)", RegexOptions.Compiled);
+    private static readonly Regex ApiKeyRe = new(@"var\s+apikey\s*=\s*""([^""]+)""", RegexOptions.Compiled);
 
-    private const string HOST_E = "https://e-hentai.org";
-    private const string HOST_EX = "https://exhentai.org";
+    public const string HOST_E = "https://e-hentai.org";
+    public const string HOST_EX = "https://exhentai.org";
     private const string API_URL = "https://api.e-hentai.org/api.php";
 
     /// <summary>获取共享的 HttpClient（由 IHttpClientFactory 管理）</summary>
     private HttpClient _http => _httpClientFactory.CreateClient("ehentai");
 
-    public EhentaiService(IHttpClientFactory httpClientFactory, IWebHostEnvironment env, ILogger<EhentaiService> logger,
-        [FromKeyedServices("EhentaiCookies")] CookieContainer cookieContainer)
+    public EhentaiService(IHttpClientFactory httpClientFactory, ILogger<EhentaiService> logger,
+        EhentaiAuthService auth)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
-        _cookieContainer = cookieContainer;
-        _cookieFile = Path.Combine(env.ContentRootPath, "ehentai_cookies.json");
-        LoadCookies();
-        ApplyCookies();
+        _auth = auth;
     }
 
-    #region Cookie 管理
-
-    public EhentaiCookie GetCookie() => _cookie;
-
-    public bool SetCookie(EhentaiCookie cookie)
-    {
-        _cookie = cookie;
-        SaveCookies();
-        ApplyCookies();
-        return true;
-    }
-
-    public bool HasCookie() =>
-        !string.IsNullOrWhiteSpace(_cookie.IpbMemberId) &&
-        !string.IsNullOrWhiteSpace(_cookie.IpbPassHash);
-
-    private void LoadCookies()
-    {
-        try { if (File.Exists(_cookieFile)) _cookie = JsonSerializer.Deserialize<EhentaiCookie>(File.ReadAllText(_cookieFile), _jsonOpts) ?? new(); }
-        catch { _cookie = new(); }
-    }
-
-    private void SaveCookies()
-    {
-        try { File.WriteAllText(_cookieFile, JsonSerializer.Serialize(_cookie, _jsonOpts)); } catch { }
-    }
-
-    private void ApplyCookies()
-    {
-        var cc = _cookieContainer;
-        cc.Add(new Cookie("ipb_member_id", _cookie.IpbMemberId ?? "", "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
-        cc.Add(new Cookie("ipb_pass_hash", _cookie.IpbPassHash ?? "", "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
-        if (!string.IsNullOrWhiteSpace(_cookie.Igneous))
-        {
-            cc.Add(new Cookie("igneous", _cookie.Igneous, "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
-            cc.Add(new Cookie("igneous", _cookie.Igneous, "/", ".exhentai.org") { Expires = DateTime.Now.AddYears(1) });
-        }
-        cc.Add(new Cookie("sl", "dm_2", "/", ".e-hentai.org") { Expires = DateTime.Now.AddYears(1) });
-    }
-
-    #endregion
-
-    #region 登录验证
-
-    public async Task<ValidateResult> ValidateAsync()
-    {
-        if (!HasCookie()) return new(false, false, "未配置 Cookie。请在设置中填入 E-Hentai Cookie 信息。");
-        try
-        {
-            var resp = await _http.GetAsync($"{HOST_E}/?inline_set=dm_l");
-            var html = await resp.Content.ReadAsStringAsync();
-            bool loggedIn = html.Contains("home.php") || html.Contains("nbw");
-            bool ex = false;
-            try
-            {
-                var er = await _http.GetAsync($"{HOST_EX}/?inline_set=dm_l");
-                var eh = await er.Content.ReadAsStringAsync();
-                if (eh.Contains("Your IP address has been temporarily banned")) return new(loggedIn, false, "IP 被暂时封禁，请稍后重试或更换网络。");
-                ex = !eh.Contains("This gallery is unavailable") && !eh.Contains("content warning");
-            }
-            catch { }
-            if (!loggedIn) return new(false, false, "Cookie 已失效，请重新获取。");
-            return new(loggedIn, ex, ex ? null : "里站权限未开通(igneous 不正确)。");
-        }
-        catch (Exception ex) { return new(false, false, $"网络错误: {ex.Message}"); }
-    }
-
-    #endregion
+    // Cookie/认证委托方法（保持原有 API 兼容）
+    public EhentaiCookie GetCookie() => _auth.GetCookie();
+    public bool SetCookie(EhentaiCookie c) => _auth.SetCookie(c);
+    public bool HasCookie() => _auth.HasCookie();
+    public async Task<ValidateResult> ValidateAsync() => await _auth.ValidateAsync(_httpClientFactory);
 
     #region 画廊浏览/搜索
 
@@ -419,197 +353,196 @@ public class EhentaiService
             }
 
             // 提取 apiuid 和 apikey
-            var uidMatch = Regex.Match(html, @"var\s+apiuid\s*=\s*(\d+)");
-            var keyMatch = Regex.Match(html, @"var\s+apikey\s*=\s*""([^""]+)""");
+            var uidMatch = ApiUidRe.Match(html);
+            var keyMatch = ApiKeyRe.Match(html);
             if (uidMatch.Success) apiUid = uidMatch.Groups[1].Value;
             if (keyMatch.Success) apiKey = keyMatch.Groups[1].Value;
         }
         catch { /* HTML 获取失败，尝试直接用 API */ }
 
-        // 第2步：用 apiuid/apikey 调用 JSON API
+        // 第2步：用 JSON API 解析（apiuid/apikey 已知时）
         if (!string.IsNullOrEmpty(apiUid) && !string.IsNullOrEmpty(apiKey))
         {
-            var payload = new
-            {
-                method = "gdata",
-                gidlist = new[] { new object[] { gid, token } },
-                @namespace = 1
-            };
-            // 添加 apiuid/apikey 到请求（E-Hentai API 通过 URL 参数或请求头传递）
-            var apiUrlWithAuth = $"{API_URL}?apiuid={apiUid}&apikey={apiKey}";
-            var body = await PostJson(apiUrlWithAuth, payload);
-            var r = JsonSerializer.Deserialize<GdataResponse>(body, _jsonOpts);
-
-            if (r?.Gmetadata != null && r.Gmetadata.Count > 0 &&
-                !(r.Gmetadata[0].Title ?? "").Contains("error", StringComparison.OrdinalIgnoreCase))
-            {
-                var m = r.Gmetadata[0];
-                if (m.Token == null) m.Token = token;
-
-                // 从 API tags 构造 tagGroups（API 带 @namespace=1 时返回 namespace:tag 格式）
-                var tagGroups = BuildTagGroups(m.Tags);
-
-                // 尝试从 HTML 补充 language 等字段
-                string? language = null; int ratingCount = 0; int favoriteCount = 0;
-                int torrentCount = 0; string? parentGallery = null; string? visible = null;
-                bool isFavorited = false; string? favoriteName = null;
-                try
-                {
-                    var htmlResp2 = await _http.GetAsync(htmlUrl);
-                    var html2 = await htmlResp2.Content.ReadAsStringAsync();
-                    language = ExtractDetailField(html2, "Language");
-                    visible = ExtractDetailField(html2, "Visible");
-                    parentGallery = ExtractDetailParent(html2);
-                    var rcMatch = Regex.Match(html2, @"id=""rating_count""[^>]*>(\d+)", RegexOptions.IgnoreCase);
-                    if (rcMatch.Success) int.TryParse(rcMatch.Groups[1].Value, out ratingCount);
-                    var fcMatch = Regex.Match(html2, @"Favorited:</td>.*?(\d+)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-                    if (fcMatch.Success) int.TryParse(fcMatch.Groups[1].Value, out favoriteCount);
-                    var favMatch = Regex.Match(html2, @"id=""gdf""[^>]*>([^<]+)", RegexOptions.IgnoreCase);
-                    var favText = favMatch.Success ? favMatch.Groups[1].Value.Trim() : "";
-                    isFavorited = !favText.Contains("Add to Favorites", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(favText);
-                    if (isFavorited) favoriteName = favText;
-                    var torMatch = Regex.Match(html2, @"Torrent Download\s*\((\d+)\)", RegexOptions.IgnoreCase);
-                    if (torMatch.Success) int.TryParse(torMatch.Groups[1].Value, out torrentCount);
-                    // 如果 API 没返回 tagGroups，从 HTML 补充
-                    if (tagGroups.Count == 0)
-                        tagGroups = ParseTagGroupsFromHtml(html2);
-                }
-                catch { /* HTML 补充失败不影响主流程 */ }
-
-                return new GalleryDetail
-                {
-                    Gid = m.Gid, Token = m.Token ?? token,
-                    Title = m.Title ?? "未知", TitleJpn = m.TitleJpn,
-                    Category = m.Category ?? "other", Uploader = m.Uploader ?? "未知",
-                    Posted = m.PostedLong, FileCount = m.FilecountInt,
-                    FileSize = m.FilesizeLong, Rating = m.Rating ?? "0",
-                    ThumbUrl = m.Thumb, Tags = m.Tags ?? new(),
-                    TagGroups = tagGroups, Language = language,
-                    RatingCount = ratingCount, FavoriteCount = favoriteCount,
-                    IsFavorited = isFavorited, FavoriteName = favoriteName,
-                    TorrentCount = torrentCount, ParentGallery = parentGallery, Visible = visible,
-                    IsExhentai = isExhentai
-                };
-            }
+            var result = await TryParseFromApiAsync(gid, token, apiUid, apiKey, host, htmlUrl, isExhentai);
+            if (result != null) return result;
         }
 
-        // 第3步：回退到 HTML 解析（增强版：对标 EhViewer GalleryDetailParser）
+        // 第3步：回退到 HTML 解析
+        return await ParseFromHtmlAsync(gid, token, host, htmlUrl, isExhentai);
+    }
+
+    private async Task<GalleryDetail?> TryParseFromApiAsync(
+        int gid, string token, string apiUid, string apiKey,
+        string host, string htmlUrl, bool isExhentai)
+    {
+        var payload = new
+        {
+            method = "gdata",
+            gidlist = new[] { new object[] { gid, token } },
+            @namespace = 1
+        };
+        var apiUrlWithAuth = $"{API_URL}?apiuid={apiUid}&apikey={apiKey}";
+        var body = await PostJson(apiUrlWithAuth, payload);
+        var r = JsonSerializer.Deserialize<GdataResponse>(body, EhentaiJsonOptions.Instance);
+
+        if (r?.Gmetadata == null || r.Gmetadata.Count == 0 ||
+            (r.Gmetadata[0].Title ?? "").Contains("error", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var m = r.Gmetadata[0];
+        if (m.Token == null) m.Token = token;
+        var tagGroups = BuildTagGroups(m.Tags);
+
+        // 补充 HTML 中独有的字段（language/rating/fav/torrent）
+        var extra = await ExtractHtmlSupplementAsync(htmlUrl, tagGroups);
+
+        return new GalleryDetail
+        {
+            Gid = m.Gid, Token = m.Token ?? token,
+            Title = m.Title ?? "未知", TitleJpn = m.TitleJpn,
+            Category = m.Category ?? "other", Uploader = m.Uploader ?? "未知",
+            Posted = m.PostedLong, FileCount = m.FilecountInt,
+            FileSize = m.FilesizeLong, Rating = m.Rating ?? "0",
+            ThumbUrl = m.Thumb, Tags = m.Tags ?? new(),
+            TagGroups = tagGroups, Language = extra.Language,
+            RatingCount = extra.RatingCount, FavoriteCount = extra.FavoriteCount,
+            IsFavorited = extra.IsFavorited, FavoriteName = extra.FavoriteName,
+            TorrentCount = extra.TorrentCount, ParentGallery = extra.ParentGallery,
+            Visible = extra.Visible, IsExhentai = isExhentai
+        };
+    }
+
+    private async Task<GalleryDetail> ParseFromHtmlAsync(
+        int gid, string token, string host, string htmlUrl, bool isExhentai)
+    {
+        var htmlResp = await _http.GetAsync(htmlUrl);
+        var html = await htmlResp.Content.ReadAsStringAsync();
+
+        var titleMatch = Regex.Match(html, @"<h1[^>]*id=""gn""[^>]*>(.+?)</h1>", RegexOptions.Singleline);
+        var title = titleMatch.Success
+            ? HttpUtility.HtmlDecode(Regex.Replace(titleMatch.Groups[1].Value, @"<[^>]+>", "").Trim())
+            : $"Gallery #{gid}";
+
+        var jpMatch = Regex.Match(html, @"<h1[^>]*id=""gj""[^>]*>(.+?)</h1>", RegexOptions.Singleline);
+        var titleJpn = jpMatch.Success
+            ? HttpUtility.HtmlDecode(Regex.Replace(jpMatch.Groups[1].Value, @"<[^>]+>", "").Trim())
+            : null;
+
+        var catMatch = Regex.Match(html, @"<div[^>]*id=""gdc""[^>]*>(.+?)</div>", RegexOptions.Singleline);
+        var category = catMatch.Success
+            ? HttpUtility.HtmlDecode(Regex.Replace(catMatch.Groups[1].Value, @"<[^>]+>", "").Trim())
+            : "other";
+
+        var uploaderMatch = Regex.Match(html, @"<div[^>]*id=""gdn""[^>]*>.*?<a[^>]*>(.+?)</a>", RegexOptions.Singleline);
+        var uploader = uploaderMatch.Success ? uploaderMatch.Groups[1].Value.Trim() : "未知";
+
+        // 解析 #gdd 表格
+        var meta = ParseGddTable(html);
+
+        var ratingMatch = Regex.Match(html, @"id=""rating_label""[^>]*>([\d.]+)", RegexOptions.IgnoreCase);
+        var rating = ratingMatch.Success ? ratingMatch.Groups[1].Value : "0";
+
+        var favMatch = FavoriteBtnRe.Match(html);
+        var favText = favMatch.Success ? favMatch.Groups[1].Value.Trim() : "";
+
+        var torMatch = TorrentCountRe.Match(html);
+        var torrentCount = torMatch.Success ? int.Parse(torMatch.Groups[1].Value) : 0;
+
+        var tagGroups = ParseTagGroupsFromHtml(html);
+        var tags = tagGroups.SelectMany(g => g.Tags).ToList();
+
+        var thumbMatch = Regex.Match(html, @"<div[^>]*id=""gd1""[^>]*>.*?url\(([^)]+)\)", RegexOptions.Singleline);
+
+        return new GalleryDetail
+        {
+            Gid = gid, Token = token, Title = title, TitleJpn = titleJpn,
+            Category = category, Uploader = uploader, Posted = meta.Posted,
+            FileCount = meta.FileCount, FileSize = meta.FileSize, Rating = rating,
+            ThumbUrl = thumbMatch.Success ? thumbMatch.Groups[1].Value.Trim() : null,
+            Tags = tags, TagGroups = tagGroups,
+            Language = meta.Language, RatingCount = meta.RatingCount,
+            FavoriteCount = meta.FavoriteCount,
+            IsFavorited = !favText.Contains("Add to Favorites", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(favText),
+            FavoriteName = favText.Contains("Add") ? null : favText,
+            TorrentCount = torrentCount, ParentGallery = meta.ParentGallery,
+            Visible = meta.Visible, IsExhentai = isExhentai
+        };
+    }
+
+    /// <summary>HTML 补充字段（API 路径所需）</summary>
+    private async Task<HtmlSupplement> ExtractHtmlSupplementAsync(string htmlUrl, List<TagGroup> tagGroups)
+    {
+        var s = new HtmlSupplement();
         try
         {
-            var htmlResp = await _http.GetAsync(htmlUrl);
-            var html = await htmlResp.Content.ReadAsStringAsync();
+            var resp = await _http.GetAsync(htmlUrl);
+            var html = await resp.Content.ReadAsStringAsync();
+            s.Language = ExtractDetailField(html, "Language");
+            s.Visible = ExtractDetailField(html, "Visible");
+            s.ParentGallery = ExtractDetailParent(html);
 
-            var titleMatch = Regex.Match(html, @"<h1[^>]*id=""gn""[^>]*>(.+?)</h1>", RegexOptions.Singleline);
-            var title = titleMatch.Success ? HttpUtility.HtmlDecode(Regex.Replace(titleMatch.Groups[1].Value, @"<[^>]+>", "").Trim()) : $"Gallery #{gid}";
+            var rcMatch = RatingCountRe.Match(html);
+            if (rcMatch.Success) int.TryParse(rcMatch.Groups[1].Value, out s.RatingCount);
 
-            var jpMatch = Regex.Match(html, @"<h1[^>]*id=""gj""[^>]*>(.+?)</h1>", RegexOptions.Singleline);
-            var titleJpn = jpMatch.Success ? HttpUtility.HtmlDecode(Regex.Replace(jpMatch.Groups[1].Value, @"<[^>]+>", "").Trim()) : null;
+            var fcMatch = Regex.Match(html, @"Favorited:</td>.*?(\d+)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (fcMatch.Success) int.TryParse(fcMatch.Groups[1].Value, out s.FavoriteCount);
 
-            // 分类（从 #gdc 中提取）
-            var catMatch = Regex.Match(html, @"<div[^>]*id=""gdc""[^>]*>(.+?)</div>", RegexOptions.Singleline);
-            var category = catMatch.Success ? HttpUtility.HtmlDecode(Regex.Replace(catMatch.Groups[1].Value, @"<[^>]+>", "").Trim()) : "other";
-
-            // 上传者（#gdn）
-            var uploaderMatch = Regex.Match(html, @"<div[^>]*id=""gdn""[^>]*>.*?<a[^>]*>(.+?)</a>", RegexOptions.Singleline);
-            var uploader = uploaderMatch.Success ? uploaderMatch.Groups[1].Value.Trim() : "未知";
-
-            // 从 #gdd 表格中提取元数据
-            long posted = 0; int fileCount = 0; long fileSize = 0;
-            string? language = null; int ratingCount = 0; int favoriteCount = 0;
-            string? parentGallery = null; string? visible = null;
-
-            var gddBlock = Regex.Match(html, @"<div[^>]*id=""gdd""[^>]*>(.+?)</table>", RegexOptions.Singleline);
-            if (gddBlock.Success)
-            {
-                var block = gddBlock.Groups[1].Value;
-                // 解析每一行: <td class="gdt1">Key:</td><td class="gdt2">Value</td>
-                var rows = Regex.Matches(block, @"<td[^>]*class=""gdt1""[^>]*>(.+?):</td>\s*<td[^>]*class=""gdt2""[^>]*>(.+?)</td>", RegexOptions.Singleline);
-                foreach (Match row in rows)
-                {
-                    var key = Regex.Replace(row.Groups[1].Value, @"<[^>]+>", "").Trim().ToLower();
-                    var value = HttpUtility.HtmlDecode(Regex.Replace(row.Groups[2].Value, @"<[^>]+>", "").Trim());
-                    switch (key)
-                    {
-                        case "posted": if (DateTime.TryParse(value, out var dt)) posted = ((DateTimeOffset)dt).ToUnixTimeSeconds(); break;
-                        case "language": language = value; break;
-                        case "file size":
-                            if (value.Contains("GB")) fileSize = (long)(double.Parse(value.Replace("GB", "").Trim()) * 1e9);
-                            else if (value.Contains("MB")) fileSize = (long)(double.Parse(value.Replace("MB", "").Trim()) * 1e6);
-                            else if (value.Contains("KB")) fileSize = (long)(double.Parse(value.Replace("KB", "").Trim()) * 1e3);
-                            break;
-                        case "length": int.TryParse(value.Replace("pages", "").Trim(), out fileCount); break;
-                        case "favorited": if (int.TryParse(value.Split(' ')[0], out var fc)) favoriteCount = fc; break;
-                        case "parent": var pl = Regex.Match(row.Groups[2].Value, @"href=""([^""]+)"""); if (pl.Success) parentGallery = pl.Groups[1].Value; break;
-                        case "visible": visible = value; break;
-                    }
-                }
-            }
-
-            // 评分
-            var ratingMatch = Regex.Match(html, @"id=""rating_label""[^>]*>([\d.]+)", RegexOptions.IgnoreCase);
-            var rating = ratingMatch.Success ? ratingMatch.Groups[1].Value : "0";
-            var rcMatch = Regex.Match(html, @"id=""rating_count""[^>]*>(\d+)", RegexOptions.IgnoreCase);
-            if (rcMatch.Success) int.TryParse(rcMatch.Groups[1].Value, out ratingCount);
-
-            // 收藏状态
-            var favMatch = Regex.Match(html, @"id=""gdf""[^>]*>([^<]+)", RegexOptions.IgnoreCase);
+            var favMatch = FavoriteBtnRe.Match(html);
             var favText = favMatch.Success ? favMatch.Groups[1].Value.Trim() : "";
-            var isFavorited = !favText.Contains("Add to Favorites", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(favText);
+            s.IsFavorited = !favText.Contains("Add to Favorites", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(favText);
+            if (s.IsFavorited) s.FavoriteName = favText;
 
-            // 种子
-            var torMatch = Regex.Match(html, @"Torrent Download\s*\((\d+)\)", RegexOptions.IgnoreCase);
-            var torrentCount = torMatch.Success ? int.Parse(torMatch.Groups[1].Value) : 0;
+            var torMatch = TorrentCountRe.Match(html);
+            if (torMatch.Success) int.TryParse(torMatch.Groups[1].Value, out s.TorrentCount);
 
-            // 标签分组（EhViewer 策略：从 #taglist 中按 <tr> 分组）
-            var tagGroups = new List<TagGroup>();
-            var tags = new List<string>();
-            var tagListMatch = Regex.Match(html, @"<div[^>]*id=""taglist""[^>]*>(.+?)</div>", RegexOptions.Singleline);
-            if (tagListMatch.Success)
-            {
-                var tagBlock = tagListMatch.Groups[1].Value;
-                var trMatches = Regex.Matches(tagBlock, @"<tr[^>]*>(.+?)</tr>", RegexOptions.Singleline);
-                foreach (Match tr in trMatches)
-                {
-                    var row = tr.Groups[1].Value;
-                    var nsMatch = Regex.Match(row, @"<td[^>]*>(.+?):</td>", RegexOptions.Singleline);
-                    var nsName = nsMatch.Success ? Regex.Replace(nsMatch.Groups[1].Value, @"<[^>]+>", "").Trim() : "other";
-
-                    var groupTags = new List<string>();
-                    var aMatches = Regex.Matches(row, @"<a[^>]*>(.+?)</a>", RegexOptions.Singleline);
-                    foreach (Match a in aMatches)
-                    {
-                        var t = HttpUtility.HtmlDecode(Regex.Replace(a.Groups[1].Value, @"<[^>]+>", "").Trim());
-                        if (!string.IsNullOrWhiteSpace(t))
-                        {
-                            groupTags.Add(t);
-                            tags.Add(t);
-                        }
-                    }
-                    if (groupTags.Count > 0)
-                        tagGroups.Add(new TagGroup { Namespace = nsName, Tags = groupTags });
-                }
-            }
-
-            // 缩略图
-            var thumbMatch = Regex.Match(html, @"<div[^>]*id=""gd1""[^>]*>.*?url\(([^)]+)\)", RegexOptions.Singleline);
-            var thumb = thumbMatch.Success ? thumbMatch.Groups[1].Value.Trim() : null;
-
-            return new GalleryDetail
-            {
-                Gid = gid, Token = token, Title = title, TitleJpn = titleJpn,
-                Category = category, Uploader = uploader, Posted = posted,
-                FileCount = fileCount, FileSize = fileSize, Rating = rating,
-                ThumbUrl = thumb, Tags = tags, TagGroups = tagGroups,
-                Language = language, RatingCount = ratingCount, FavoriteCount = favoriteCount,
-                IsFavorited = isFavorited, FavoriteName = isFavorited ? favText : null,
-                TorrentCount = torrentCount, ParentGallery = parentGallery, Visible = visible,
-                IsExhentai = isExhentai
-            };
+            if (tagGroups.Count == 0) tagGroups.AddRange(ParseTagGroupsFromHtml(html));
         }
-        catch (Exception ex)
+        catch { /* HTML 补充失败不影响主流程 */ }
+        return s;
+    }
+
+    private class HtmlSupplement
+    {
+        public string? Language, Visible, ParentGallery, FavoriteName;
+        public int RatingCount, FavoriteCount, TorrentCount;
+        public bool IsFavorited;
+    }
+
+    /// <summary>解析 #gdd 表格返回文件大小/日期等元数据</summary>
+    private static (long Posted, int FileCount, long FileSize, string? Language,
+        int RatingCount, int FavoriteCount, string? ParentGallery, string? Visible)
+        ParseGddTable(string html)
+    {
+        long posted = 0; int fileCount = 0; long fileSize = 0; int ratingCount = 0; int favoriteCount = 0;
+        string? language = null, parentGallery = null, visible = null;
+
+        var gdd = Regex.Match(html, @"<div[^>]*id=""gdd""[^>]*>(.+?)</table>", RegexOptions.Singleline);
+        if (!gdd.Success) return (posted, fileCount, fileSize, language, ratingCount, favoriteCount, parentGallery, visible);
+
+        var rows = Regex.Matches(gdd.Groups[1].Value,
+            @"<td[^>]*class=""gdt1""[^>]*>(.+?):</td>\s*<td[^>]*class=""gdt2""[^>]*>(.+?)</td>",
+            RegexOptions.Singleline);
+        foreach (Match row in rows)
         {
-            throw new Exception($"获取画廊详情失败: {ex.Message}");
+            var key = Regex.Replace(row.Groups[1].Value, @"<[^>]+>", "").Trim().ToLower();
+            var value = HttpUtility.HtmlDecode(Regex.Replace(row.Groups[2].Value, @"<[^>]+>", "").Trim());
+            switch (key)
+            {
+                case "posted": if (DateTime.TryParse(value, out var dt)) posted = ((DateTimeOffset)dt).ToUnixTimeSeconds(); break;
+                case "language": language = value; break;
+                case "file size":
+                    if (value.Contains("GB")) fileSize = (long)(double.Parse(value.Replace("GB", "").Trim()) * 1e9);
+                    else if (value.Contains("MB")) fileSize = (long)(double.Parse(value.Replace("MB", "").Trim()) * 1e6);
+                    else if (value.Contains("KB")) fileSize = (long)(double.Parse(value.Replace("KB", "").Trim()) * 1e3);
+                    break;
+                case "length": int.TryParse(value.Replace("pages", "").Trim(), out fileCount); break;
+                case "favorited": if (int.TryParse(value.Split(' ')[0], out var fc)) favoriteCount = fc; break;
+                case "parent": var pl = Regex.Match(row.Groups[2].Value, @"href=""([^""]+)""");
+                    if (pl.Success) parentGallery = pl.Groups[1].Value; break;
+                case "visible": visible = value; break;
+            }
         }
+        return (posted, fileCount, fileSize, language, ratingCount, favoriteCount, parentGallery, visible);
     }
 
     #endregion
@@ -718,10 +651,11 @@ public class EhentaiService
             }
             else
             {
-                // 兜底：如果总页数未知，持续遍历直到没有新图片
-                _logger.LogInformation($"[EH] Unknown total, iterating until empty...");
+                // 兜底：如果总页数未知，持续遍历直到没有新图片（最多 500 页防止死循环）
+                const int maxPages = 500;
+                _logger.LogInformation($"[EH] Unknown total, iterating until empty (max {maxPages} pages)...");
                 int p = 1;
-                while (true)
+                while (p <= maxPages)
                 {
                     try
                     {
@@ -886,7 +820,7 @@ public class EhentaiService
 
     private async Task<string> PostJson(string url, object payload)
     {
-        var json = JsonSerializer.Serialize(payload, _jsonOpts);
+        var json = JsonSerializer.Serialize(payload, EhentaiJsonOptions.Instance);
         _logger.LogInformation($"[EH] POST {url} body={json[..Math.Min(200, json.Length)]}");
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         var resp = await _http.PostAsync(url, content);
@@ -933,11 +867,8 @@ public class EhentaiService
     // 默认下载目录（已废弃，请使用 EhentaiFileHelper.DefaultDownloadDir）
     public static string DefaultDownloadDir => EhentaiFileHelper.DefaultDownloadDir;
 
-    /// <summary>获取画廊本地目录路径（{下载目录}/{gid}-{标题}/）</summary>
-    public static string GetGalleryLocalDir(int gid, string title)
-    {
-        return Path.Combine(DefaultDownloadDir, $"{gid}-{SanitizeFileName(title)}");
-    }
+    /// <summary>获取画廊本地目录路径（{下载目录}/{gid}-{标题}/），委托 EhentaiFileHelper</summary>
+    public static string GetGalleryLocalDir(int gid, string title) => EhentaiFileHelper.GetGalleryLocalDir(gid, title);
 
     /// <summary>检查画廊是否已下载（目录存在且有图片文件）</summary>
     public static bool IsGalleryDownloaded(int gid, string title)
@@ -1046,7 +977,7 @@ public class EhentaiService
                 success++;
 
                 // 更新进度文件（断点续传）
-                try { await File.WriteAllTextAsync(progressFile, (i + 1).ToString()); } catch { }
+                try { await File.WriteAllTextAsync(progressFile, (i + 1).ToString()); } catch (Exception ex) { _logger.LogDebug(ex, "[EH] Progress write failed"); }
 
                 // 下载间隔（对标 EhViewer downloadDelay）
                 if (i < pages.Pages.Count - 1)
@@ -1061,7 +992,7 @@ public class EhentaiService
         _logger.LogInformation($"[EH] 下载完成: {success} 成功, {failed} 失败");
 
         // 清理进度文件
-        try { if (File.Exists(progressFile)) File.Delete(progressFile); } catch { }
+        try { if (File.Exists(progressFile)) File.Delete(progressFile); } catch (Exception ex) { _logger.LogDebug(ex, "[EH] Progress cleanup failed"); }
 
         // 保存元文件（gid, token 等，供本地画廊使用）
         try
@@ -1069,155 +1000,12 @@ public class EhentaiService
             var ehFile = Path.Combine(downloadDir, ".eh");
             await File.WriteAllLinesAsync(ehFile, new[] { $"gid={gid}", $"token={token}" });
         }
-        catch { }
+        catch (Exception ex) { _logger.LogDebug(ex, "[EH] SaveEhMarker failed"); }
     }
 
     private static string SanitizeFileName(string name) =>
         string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
 
     /// <summary>中文搜索词 → E-Hentai 标签语法</summary>
-    #endregion
-
-    #region 标签屏蔽（集成 E-Hentai My Tags）
-
-    private static HashSet<string> _blockedTags = new();
-    private static readonly object _blockLock = new();
-    private static string BlockedTagsPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "eh_blocked_tags.json");
-
-    public static void InitBlockedTags()
-    {
-        try
-        {
-            if (File.Exists(BlockedTagsPath))
-            {
-                var json = File.ReadAllText(BlockedTagsPath);
-                var list = JsonSerializer.Deserialize<List<string>>(json);
-                lock (_blockLock) _blockedTags = list != null ? new HashSet<string>(list) : new();
-            }
-        }
-        catch { }
-    }
-
-    private static void SaveBlockedTags()
-    {
-        List<string> list;
-        lock (_blockLock) list = _blockedTags.ToList();
-        File.WriteAllText(BlockedTagsPath, JsonSerializer.Serialize(list));
-    }
-
-    public static List<string> GetBlockedTags()
-    {
-        lock (_blockLock) return _blockedTags.OrderBy(t => t).ToList();
-    }
-
-    /// <summary>添加屏蔽标签（本地 + E-Hentai My Tags）</summary>
-    public async Task AddBlockedTagAsync(string tag)
-    {
-        lock (_blockLock) { if (!_blockedTags.Add(tag)) return; }
-        SaveBlockedTags();
-
-        // 同步到 E-Hentai My Tags（设置为隐藏）
-        try
-        {
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["usertag_action"] = "add",
-                ["tagname_new"] = tag,
-                ["taghide_new"] = "on",
-                ["tagwatch_new"] = "",
-                ["tagweight_new"] = "-1",
-                ["tagcolor_new"] = "",
-            });
-            await _http.PostAsync($"{HOST_E}/mytags", content);
-        }
-        catch { /* 网络失败不影响本地存储 */ }
-    }
-
-    /// <summary>移除屏蔽标签（本地 + E-Hentai My Tags）</summary>
-    public async Task RemoveBlockedTagAsync(string tag)
-    {
-        lock (_blockLock) { if (!_blockedTags.Remove(tag)) return; }
-        SaveBlockedTags();
-
-        // 同步到 E-Hentai My Tags（删除对应标签）
-        try
-        {
-            // 先获取 mytags 页面找到该 tag 的 ID
-            var html = await _http.GetStringAsync($"{HOST_E}/mytags");
-            var escapedTag = Regex.Escape(tag);
-            var idMatch = Regex.Match(html, $@"id=""usertag_(\d+)"".*?""{escapedTag}""", RegexOptions.Singleline);
-            if (!idMatch.Success)
-                idMatch = Regex.Match(html, $@"id=""usertag_(\d+)"".*?{escapedTag}", RegexOptions.Singleline);
-            if (idMatch.Success)
-            {
-                var uid = idMatch.Groups[1].Value;
-                var content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["usertag_action"] = "remove",
-                    [$"usertag_{uid}"] = "on",
-                });
-                await _http.PostAsync($"{HOST_E}/mytags", content);
-            }
-        }
-        catch { /* 网络失败不影响本地存储 */ }
-    }
-
-    public static bool IsTagBlocked(string tag)
-    {
-        lock (_blockLock) return _blockedTags.Contains(tag);
-    }
-
-    /// <summary>从 E-Hentai 获取 My Tags 列表（用于校验和同步）</summary>
-    public async Task<List<MyTagInfo>> FetchMyTagsAsync()
-    {
-        var result = new List<MyTagInfo>();
-        try
-        {
-            var html = await _http.GetStringAsync($"{HOST_E}/mytags");
-            var matches = Regex.Matches(html, @"<div\s+id=""tagpreview_(\d+)""[^>]*title=""([^""]+)""[^>]*>([^<]+)</div>");
-            foreach (Match m in matches)
-            {
-                var uid = m.Groups[1].Value;
-                var fullTag = m.Groups[2].Value;
-                var isHide = Regex.IsMatch(html, $@"id=""taghide_{uid}""\s+checked");
-                var isWatch = Regex.IsMatch(html, $@"id=""tagwatch_{uid}""\s+checked");
-                result.Add(new MyTagInfo
-                {
-                    Id = uid,
-                    Tag = fullTag,
-                    IsHidden = isHide,
-                    IsWatched = isWatch,
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new Exception($"获取 My Tags 失败: {ex.Message}");
-        }
-        return result;
-    }
-
-    /// <summary>同步：将 E-Hentai 上的隐藏标签拉取到本地屏蔽列表</summary>
-    public async Task<List<string>> SyncBlockedTagsFromEHAsync()
-    {
-        var myTags = await FetchMyTagsAsync();
-        var hiddenTags = myTags.Where(t => t.IsHidden).Select(t => t.Tag).ToList();
-        lock (_blockLock)
-        {
-            foreach (var t in hiddenTags)
-                _blockedTags.Add(t);
-        }
-        SaveBlockedTags();
-        return hiddenTags;
-    }
-
-    public class MyTagInfo
-    {
-        public string Id { get; set; } = "";
-        public string Tag { get; set; } = "";
-        public bool IsHidden { get; set; }
-        public bool IsWatched { get; set; }
-    }
-
     #endregion
 }

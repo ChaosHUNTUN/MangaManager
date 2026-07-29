@@ -185,9 +185,9 @@ public class LocalGalleryService
                 var albumKey = group[6..];
                 query = query.Where(g => g.AlbumKey == albumKey);
 
-                // 自定义排序时检查 fallback
+                // AlbumKey 可能未完全同步 → 数量不符时用 gid 列表兜底
                 var count = query.Count();
-                if (count == 0 && albumGids != null && albumGids.Count > 0)
+                if (count < (albumGids?.Count ?? 0) && albumGids != null && albumGids.Count > 0)
                 {
                     var gidSet = new HashSet<int>(albumGids);
                     query = db.LocalGalleries.AsNoTracking().Where(g => gidSet.Contains(g.Gid));
@@ -211,6 +211,8 @@ public class LocalGalleryService
                 }
                 else if (group.StartsWith("artist:"))
                 {
+                    // TODO: Artists/Groups 存为 JSON 字符串，用 StartsWith 筛选依赖序列化格式（如 ["name"...]）。
+                    // 任何 JsonSerializerOptions 变更会导致静默失败。应启用 EF Core JSON 列映射或 value converter。
                     var namePattern = $"[\"{group[7..]}\"";
                     query = query.Where(g => g.Artists != null && g.Artists.StartsWith(namePattern));
                 }
@@ -303,22 +305,6 @@ public class LocalGalleryService
         };
     }
 
-    // 内存排序（album: 大批量 gid 时全量加载实体后排序）
-    private static IEnumerable<LocalGallery> ApplyMemSort(IEnumerable<LocalGallery> items, string? sort)
-    {
-        if (string.IsNullOrEmpty(sort)) return items.OrderByDescending(g => g.LastModified);
-        var parts = sort.Split('-');
-        var desc = parts.Length > 1 && parts[1] == "desc";
-        return parts[0] switch
-        {
-            "modified" => desc ? items.OrderByDescending(g => g.LastModified) : items.OrderBy(g => g.LastModified),
-            "title" => desc ? items.OrderByDescending(g => g.Title) : items.OrderBy(g => g.Title),
-            "pages" => desc ? items.OrderByDescending(g => g.FileCount) : items.OrderBy(g => g.FileCount),
-            "size" => desc ? items.OrderByDescending(g => g.FileSize) : items.OrderBy(g => g.FileSize),
-            _ => items.OrderByDescending(g => g.LastModified)
-        };
-    }
-
 
 
     /// <summary>随机抽取 N 部作品（DB 随机排序）</summary>
@@ -347,6 +333,15 @@ public class LocalGalleryService
             .ToList();
 
         var map = new Dictionary<string, GroupInfo>();
+
+        var existingAlbumKeyTags = db.AlbumConfigs
+            .Where(a => !string.IsNullOrEmpty(a.KeyTag))
+            .Select(a => a.KeyTag)
+            .ToHashSet();
+
+        var albumsToCreate = new Dictionary<string, (string Name, string Ns, int Gid)>();
+        var blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "unknown", "original", "various", "none" };
+
         foreach (var g in all)
         {
             var artists = DeserializeJsonList(g.Artists);
@@ -354,21 +349,18 @@ public class LocalGalleryService
 
             if (artists.Count == 1 && grps.Count == 0)
             {
-                var key = $"artist:{artists[0]}";
-                if (!map.ContainsKey(key)) map[key] = new GroupInfo { Key = key, Type = "artist", Name = artists[0], Count = 0 };
-                map[key].Count++;
+                if (!blacklist.Contains(artists[0]))
+                    albumsToCreate[$"artist:{artists[0]}"] = (artists[0], "artist", g.Gid);
             }
             else if (grps.Count == 1 && artists.Count == 0)
             {
-                var key = $"group:{grps[0]}";
-                if (!map.ContainsKey(key)) map[key] = new GroupInfo { Key = key, Type = "group", Name = grps[0], Count = 0 };
-                map[key].Count++;
+                if (!blacklist.Contains(grps[0]))
+                    albumsToCreate[$"group:{grps[0]}"] = (grps[0], "group", g.Gid);
             }
             else if (artists.Count == 1 && grps.Count == 1)
             {
-                var key = $"artist:{artists[0]}";
-                if (!map.ContainsKey(key)) map[key] = new GroupInfo { Key = key, Type = "artist", Name = artists[0], Count = 0 };
-                map[key].Count++;
+                if (!blacklist.Contains(artists[0]))
+                    albumsToCreate[$"artist:{artists[0]}"] = (artists[0], "artist", g.Gid);
             }
             else if (artists.Count + grps.Count > 1)
             {
@@ -382,8 +374,35 @@ public class LocalGalleryService
             }
         }
 
+        // 批量创建专辑（去重）
+        if (albumsToCreate.Count > 0)
+        {
+            var existingKeys = db.AlbumConfigs.Select(a => a.Key).ToHashSet();
+            var autoColors = new[] { "#4a90d9", "#6b4e9e", "#d4782f", "#3d8b5e", "#b85c7c", "#5b8fa8", "#c48038", "#5e548e" };
+            foreach (var (keyTag, (name, ns, _)) in albumsToCreate)
+            {
+                var safeKey = name.Replace(" ", "_").Replace("/", "-").Replace("\\", "-");
+                if (existingKeys.Contains(safeKey)) continue;
+                var gids = all.Where(g => {
+                    var a = DeserializeJsonList(g.Artists);
+                    var b = DeserializeJsonList(g.Groups);
+                    if (ns == "artist") return a.Count == 1 && b.Count == 0 && a[0] == name;
+                    return b.Count == 1 && a.Count == 0 && b[0] == name;
+                }).Select(g => g.Gid).ToList();
+                if (gids.Count == 0) continue;
+                var color = autoColors[Math.Abs(safeKey.GetHashCode()) % autoColors.Length];
+                db.AlbumConfigs.Add(new AlbumConfig {
+                    Key = safeKey, Name = name, Color = color,
+                    KeyTag = keyTag, Gids = System.Text.Json.JsonSerializer.Serialize(gids),
+                    Count = gids.Count, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+                });
+                existingKeys.Add(safeKey);
+            }
+            db.SaveChanges();
+        }
 
-        return map.Values.OrderByDescending(g => g.Count).ToList();
+                var groups = map.Values.OrderByDescending(g => g.Count).ToList();
+                return groups;
     }
 
     /// <summary>获取画廊详情（优先本地 meta.json，页面列表懒加载）</summary>
@@ -443,7 +462,7 @@ public class LocalGalleryService
                         }
                     }
                 }
-                catch { }
+                catch { /* meta.json tags format may vary */ }
             }
 
             // 如果没有 meta.json 或缺少 fileCount，回退到文件系统扫描
@@ -453,7 +472,7 @@ public class LocalGalleryService
                 fileCount = files.Count;
                 foreach (var f in files)
                 {
-                    try { totalSize += new FileInfo(f).Length; } catch { }
+                    try { totalSize += new FileInfo(f).Length; } catch { /* file may be locked or deleted */ }
                 }
             }
 
@@ -676,7 +695,7 @@ public class LocalGalleryService
                 existingMeta = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
                     File.ReadAllText(metaFile));
             }
-            catch { }
+            catch { /* meta.json format changed, will overwrite */ }
         }
 
         var meta = new Dictionary<string, object>
@@ -736,14 +755,14 @@ public class LocalGalleryService
                 return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(tags.GetRawText());
             }
         }
-        catch { }
+        catch { /* meta.json corrupted or old schema */ }
         return null;
     }
 
+    // TODO: GetMetaTags 和 GetCachedMetaTags 有大量重复代码，应合并为单方法 + 可选 dir 参数
     /// <summary>获取缓存的 meta 标签（不读文件，避免专辑详情页大量 IO）</summary>
     public static Dictionary<string, List<string>>? GetCachedMetaTags(int gid)
     {
-        // 直接读取 meta.json（后续可加内存缓存）
         var localDir = FindLocalDirStatic(gid);
         if (localDir == null) return null;
         var metaFile = Path.Combine(localDir, ".meta.json");
@@ -756,7 +775,7 @@ public class LocalGalleryService
                 return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(tags.GetRawText());
             }
         }
-        catch { }
+        catch { /* meta.json corrupted or old schema */ }
         return null;
     }
 

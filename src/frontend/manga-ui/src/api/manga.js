@@ -34,7 +34,11 @@ export function subscribeScanProgress(clientId, onProgress) {
       if (data.isComplete) es.close()
     } catch {}
   }
-  es.onerror = () => es.close()
+  // EventSource 默认自动重连，不要无条件 close
+  es.onerror = () => {
+    if (es.readyState === EventSource.CLOSED) return // 已关闭
+    // readyState === CONNECTING 时 EventSource 会自动重试，无需操作
+  }
   return es
 }
 

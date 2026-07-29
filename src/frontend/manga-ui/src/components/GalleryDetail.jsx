@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { getLocalCoverUrl, fetchGalleryMetaTags, translateEHTags } from '../api'
 import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
@@ -42,9 +42,23 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
     return artists.length > 0 || grps.length > 0
   }, [albumConfig, detail, galleries])
 
-  // 计算当前作品标签匹配的自定义专辑
+  // 命名 handler：提取内联逻辑防止 UI 改动时破坏
+  const handleOpenReader = useCallback(() => {
+    try { sessionStorage.setItem('reader-local-context', JSON.stringify({ gids: filtered.map(g => g.gid) })) } catch { }
+  }, [filtered])
+
+  const handleAddToAlbum = useCallback(() => {
+    const tags = []
+    detail.tagGroups?.forEach(grp => {
+      const ns = grp.namespace.toLowerCase()
+      if (ns === 'artist' || ns === 'group' || ns === 'other') grp.tags.forEach(t => tags.push({ ns: grp.namespace, tag: t }))
+    })
+    onAddToAlbum?.({ gid: detail.gid, title: detail.title, tags, matchedAlbums }); onClose()
+  }, [detail, matchedAlbums, onAddToAlbum, onClose])
+
+  // 计算当前作品标签匹配的其他自定义专辑（排除已归属的专辑）
   const matchedAlbums = useMemo(() => {
-    if (!albumConfig || !detail || !inCustomAlbum) return []
+    if (!albumConfig || !detail) return []
     const g = galleries?.find(g => g.gid === detail.gid)
     if (!g) return []
     const tags = [...(g.artists || []), ...(g.groups || [])]
@@ -57,7 +71,7 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
         return tags.some(t => t.toLowerCase() === key.toLowerCase())
       })
       .map(([key, val]) => ({ key, name: val.name || key, count: (val.gids || []).length }))
-  }, [albumConfig, detail, galleries, inCustomAlbum])
+  }, [albumConfig, detail, galleries])
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -98,14 +112,11 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
         )}
         <div style={{ padding: '14px 24px', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Link to={`/reader-local/${detail.gid}`} onClick={() => { try { sessionStorage.setItem('reader-local-context', JSON.stringify({ gids: filtered.map(g => g.gid) })) } catch { } }} className="btn-sm" style={{ textDecoration: 'none', borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</Link>
+            <Link to={`/reader-local/${detail.gid}`} onClick={handleOpenReader} className="btn-sm" style={{ textDecoration: 'none', borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</Link>
             {detail.token && <a href={`https://${detail.isExhentai ? 'exhentai' : 'e-hentai'}.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer" className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 {detail.isExhentai ? 'ExHentai' : 'E-Hentai'} 查看</a>}
             {/* 只在作品未处于任何自定义专辑时显示"添加到专辑" */}
             {!inCustomAlbum && (
-              <button className="btn-sm" onClick={() => {
-                const tags = []; detail.tagGroups?.forEach(grp => { const ns = grp.namespace.toLowerCase(); if (ns === 'artist' || ns === 'group' || ns === 'other') grp.tags.forEach(t => tags.push({ ns: grp.namespace, tag: t })) })
-                onAddToAlbum?.({ gid: detail.gid, title: detail.title, tags, matchedAlbums }); onClose()
-              }} style={{ borderColor: '#8b5cf6', color: '#c4b5fd' }}>
+              <button className="btn-sm" onClick={handleAddToAlbum} style={{ borderColor: '#8b5cf6', color: '#c4b5fd' }}>
                 📁 添加到专辑
                 {matchedAlbums.length > 0 && <span style={{ marginLeft: 4, fontSize: '0.65rem', color: '#fbbf24' }}>({matchedAlbums.length} 个匹配)</span>}
               </button>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 /**
  * 统一页面图片组件 — 原生 img 渐进渲染，无 spinner 延迟
@@ -17,12 +17,14 @@ export default function PageImage({ src, fitMode, fitPercent, transition, curren
   const [error, setError] = useState(false)
 
   // 图片切换时重置状态
-  const loadedRef = useRef(null)
-  if (loadedRef.current !== src) {
-    loadedRef.current = src
-    if (loaded) setLoaded(false)
-    if (error) setError(false)
-  }
+  const prevSrcRef = useRef(src)
+  useEffect(() => {
+    if (prevSrcRef.current !== src) {
+      prevSrcRef.current = src
+      setLoaded(false)
+      setError(false)
+    }
+  }, [src])
 
   const isCurrent = index === current
   let cls = 'reader-page-slot'

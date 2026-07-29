@@ -21,11 +21,18 @@ export default function DownloadMonitor() {
   const [tasks, setTasks] = useState([])
   const [expanded, setExpanded] = useState(false)
   const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
   const eventSourceRef = useRef(null)
+  const dataVersionRef = useRef(0)
+
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) }, [])
 
   useEffect(() => {
-    // 初始加载
-    fetchDownloadTasks().then(setTasks).catch(() => {})
+    // 初始加载（版本号防护：SSE 先到时跳过）
+    const loadVersion = ++dataVersionRef.current
+    fetchDownloadTasks().then(data => {
+      if (dataVersionRef.current === loadVersion) setTasks(data)
+    }).catch(() => {})
 
     // SSE 实时更新
     const es = new EventSource(`${API_BASE}/api/download/events`)
@@ -35,6 +42,7 @@ export default function DownloadMonitor() {
       try {
         const msg = JSON.parse(e.data)
         if (msg.type === 'download_init') {
+          dataVersionRef.current++
           setTasks(msg.data || [])
         } else if (msg.type === 'download_update') {
           const update = msg.data
@@ -64,7 +72,8 @@ export default function DownloadMonitor() {
 
   const showToast = (text, type = 'info') => {
     setToast({ text, type })
-    setTimeout(() => setToast(null), 2000)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 2000)
   }
 
   const activeCount = tasks.filter(t => t.status === 'downloading').length

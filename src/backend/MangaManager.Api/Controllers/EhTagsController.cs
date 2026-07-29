@@ -12,8 +12,13 @@ namespace MangaManager.Api.Controllers;
 public class EhTagsController : ControllerBase
 {
     private readonly EhentaiService _svc;
+    private readonly EhentaiBlockedTagService _blockedTag;
 
-    public EhTagsController(EhentaiService svc) => _svc = svc;
+    public EhTagsController(EhentaiService svc, EhentaiBlockedTagService blockedTag)
+    {
+        _svc = svc;
+        _blockedTag = blockedTag;
+    }
 
     // ==================== 标签翻译 ====================
 
@@ -57,7 +62,7 @@ public class EhTagsController : ControllerBase
     [HttpGet("blocked-tags")]
     public IActionResult GetBlockedTags()
     {
-        var tags = EhentaiService.GetBlockedTags();
+        var tags = _blockedTag.GetBlockedTags();
         return Ok(new ApiResponse<object>(true, tags));
     }
 
@@ -67,7 +72,7 @@ public class EhTagsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(req.Tag))
             return BadRequest(new ApiResponse<object>(false, null, "标签不能为空"));
-        await _svc.AddBlockedTagAsync(req.Tag);
+        await _blockedTag.AddBlockedTagAsync(req.Tag);
         return Ok(new ApiResponse<object>(true, new { message = "已添加，已同步到 E-Hentai" }));
     }
 
@@ -75,7 +80,7 @@ public class EhTagsController : ControllerBase
     [HttpDelete("blocked-tags")]
     public async Task<IActionResult> RemoveBlockedTag([FromBody] BlockedTagRequest req)
     {
-        await _svc.RemoveBlockedTagAsync(req.Tag ?? "");
+        await _blockedTag.RemoveBlockedTagAsync(req.Tag ?? "");
         return Ok(new ApiResponse<object>(true, new { message = "已移除，已同步到 E-Hentai" }));
     }
 
@@ -85,8 +90,8 @@ public class EhTagsController : ControllerBase
     {
         try
         {
-            var tags = await _svc.FetchMyTagsAsync();
-            var local = EhentaiService.GetBlockedTags();
+            var tags = await _blockedTag.FetchMyTagsAsync();
+            var local = _blockedTag.GetBlockedTags();
             return Ok(new ApiResponse<object>(true, new { ehentai = tags, local, ehentaiCount = tags.Count, localCount = local.Count }));
         }
         catch (Exception ex)
@@ -101,7 +106,7 @@ public class EhTagsController : ControllerBase
     {
         try
         {
-            var synced = await _svc.SyncBlockedTagsFromEHAsync();
+            var synced = await _blockedTag.SyncBlockedTagsFromEHAsync();
             return Ok(new ApiResponse<object>(true, new { synced, count = synced.Count, message = $"已从 E-Hentai 同步 {synced.Count} 个隐藏标签" }));
         }
         catch (Exception ex)

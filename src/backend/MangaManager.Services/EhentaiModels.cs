@@ -15,6 +15,16 @@ public class EhentaiCookie
 }
 
 public record ValidateResult(bool LoggedIn, bool Exhentai, string? Error);
+
+/// <summary>E-Hentai 相关 JSON 序列化选项（snake_case），全局共享</summary>
+public static class EhentaiJsonOptions
+{
+    public static readonly JsonSerializerOptions Instance = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+}
 public class GalleryListResult { public int Page { get; set; } public int TotalPages { get; set; } public string? NextCursor { get; set; } public bool IsExhentai { get; set; } public List<GalleryItem> Galleries { get; set; } = new(); }
 public class GalleryItem { public int Gid { get; set; } public string Token { get; set; } = ""; public string? Title { get; set; } public string? ThumbUrl { get; set; } public int FileCount { get; set; } public double Rating { get; set; } public string? Category { get; set; } public bool IsExhentai { get; set; } }
 public class TagGroup { public string Namespace { get; set; } = ""; public List<string> Tags { get; set; } = new(); }

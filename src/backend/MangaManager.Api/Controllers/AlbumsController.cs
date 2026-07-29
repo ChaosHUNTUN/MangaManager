@@ -40,7 +40,10 @@ public class AlbumsController : ControllerBase
             }
 
             var list = await _db.AlbumConfigs.ToListAsync();
-            var result = list.ToDictionary(a => a.Key, a => new
+            // 功能性专辑独立管理，不在常规列表中出现
+            var functionalKeys = new HashSet<string> { "__uncategorized__" };
+            var result = list.Where(a => !functionalKeys.Contains(a.Key))
+                .ToDictionary(a => a.Key, a => new
             {
                 name = a.Name,
                 color = string.IsNullOrEmpty(a.Color) ? null : a.Color,

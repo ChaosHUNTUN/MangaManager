@@ -139,7 +139,7 @@ public class DownloadManager
                 if (File.Exists(progressFile)) File.Delete(progressFile);
             }
         }
-        catch { }
+        catch { /* ReEnqueueFailed: best-effort cleanup */ }
 
         t.DownloadedPages = 0;
         t.FailedPages = 0;
@@ -218,7 +218,7 @@ public class DownloadManager
                 if (parts.Length > 0) int.TryParse(parts[0], out downloadedPages);
                 if (parts.Length > 2) long.TryParse(parts[2], out downloadedBytes);
             }
-            catch { }
+            catch { /* progress format may be partial */ }
         }
 
         // 如果没有 .progress 但有文件，通过文件数量推断
@@ -243,7 +243,7 @@ public class DownloadManager
                              || f.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
                     .Sum(f => new FileInfo(f).Length);
             }
-            catch { }
+            catch { /* directory scan for existing files, skip on error */ }
         }
 
         var task = new DownloadTask
@@ -277,6 +277,14 @@ public class DownloadManager
             {
                 FullMode = System.Threading.Channels.BoundedChannelFullMode.DropOldest
             }));
+    }
+
+    /// <summary>释放 SSE 通道（客户端断开时调用，防止 Channel 泄漏）</summary>
+    public void ReleaseSseChannel(int? gid = null)
+    {
+        var key = gid ?? 0;
+        if (_sseChannels.TryRemove(key, out var ch))
+            ch.Writer.TryComplete();
     }
 
     // ==================== 内部逻辑 ====================
@@ -517,7 +525,7 @@ public class DownloadManager
                 {
                     await File.WriteAllTextAsync(progressFile, $"{i + 1}|{task.TotalPages}|{totalBytes}", ct);
                 }
-                catch { }
+                catch { /* progress write is advisory, ignore failures */ }
 
                 // 更新任务状态
                 task.DownloadedPages = i + 1;
@@ -558,7 +566,7 @@ public class DownloadManager
         // 下载完成
         if (task.Status == "downloading")
         {
-            try { if (File.Exists(progressFile)) File.Delete(progressFile); } catch { }
+            try { if (File.Exists(progressFile)) File.Delete(progressFile); } catch { /* cleanup is best-effort */ }
 
             var ehFile = Path.Combine(downloadDir, ".eh");
             await File.WriteAllLinesAsync(ehFile, new[] { $"gid={task.Gid}", $"token={task.Token}" });
@@ -728,24 +736,27 @@ public class DownloadManager
         }
     }
 
-    /// <summary>根据作品标签自动分配到匹配的专辑（KeyTag 格式: "namespace:tag"）</summary>
+    /// <summary>自动分配作品到专辑：优先匹配已有 KeyTag 专辑 → 无匹配则自动创建 → 兜底到未分类</summary>
     private static async Task AutoAssignToAlbumsAsync(IServiceScope scope, int gid, List<TagGroup>? tagGroups)
     {
         if (tagGroups == null || tagGroups.Count == 0) return;
         try
         {
             var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
-            var albums = db.AlbumConfigs.Where(a => a.KeyTag != null).ToList();
+            var allAlbums = db.AlbumConfigs.ToList();
+            var albumsWithKeyTag = allAlbums.Where(a => !string.IsNullOrEmpty(a.KeyTag)).ToList();
             var matchedAlbums = new List<(string Key, int Priority)>();
 
-            foreach (var album in albums)
+            // 第1步：匹配已有 KeyTag 专辑（仅限 artist / group 命名空间）
+            foreach (var album in albumsWithKeyTag)
             {
-                if (string.IsNullOrEmpty(album.KeyTag)) continue;
-                var colonIdx = album.KeyTag.IndexOf(':');
+                var colonIdx = album.KeyTag!.IndexOf(':');
                 if (colonIdx <= 0) continue;
                 var ns = album.KeyTag[..colonIdx].ToLower();
+                // 只允许 artist 和 group 命名空间的 KeyTag 参与自动匹配，
+                // 排除 other / language / parody 等泛化标签（避免产生“超级桶”）
+                if (ns is not "artist" and not "group") continue;
                 var tag = album.KeyTag[(colonIdx + 1)..];
-
                 var group = tagGroups.FirstOrDefault(g => g.Namespace.Equals(ns, StringComparison.OrdinalIgnoreCase));
                 if (group != null && group.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase)))
                 {
@@ -754,32 +765,163 @@ public class DownloadManager
                 }
             }
 
-            if (matchedAlbums.Count == 0) return;
+            var assignedAlbumKey = (string?)null;
 
-            // 添加到所有匹配专辑的 Gids
-            foreach (var (albumKey, _) in matchedAlbums)
+            if (matchedAlbums.Count > 0)
             {
-                var album = albums.First(a => a.Key == albumKey);
-                var gids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(album.Gids) ?? new();
-                if (!gids.Contains(gid))
-                {
-                    gids.Add(gid);
-                    album.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
-                    album.Count = gids.Count;
-                }
+                // 已有匹配 → 直接加入
+                assignedAlbumKey = AddGidToMatchedAlbums(db, allAlbums, gid, matchedAlbums);
+            }
+            else
+            {
+                // 第2步：无匹配 → 自动创建专辑
+                assignedAlbumKey = AutoCreateAlbumFromTags(db, allAlbums, gid, tagGroups);
             }
 
-            // AlbumKey 设为最高优先级匹配的专辑
-            var best = matchedAlbums.OrderBy(m => m.Priority).First().Key;
-            var gallery = await db.LocalGalleries.FindAsync(gid);
-            if (gallery != null) gallery.AlbumKey = best;
+            // 第3步：多作者检查
+            var artistTags = tagGroups
+                .Where(g => g.Namespace.Equals("artist", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(g => g.Tags).Distinct().ToList();
+            var groupTags = tagGroups
+                .Where(g => g.Namespace.Equals("group", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(g => g.Tags).Distinct().ToList();
+            if (artistTags.Count > 1 || groupTags.Count > 1)
+            {
+                assignedAlbumKey = EnsureFunctionalAlbum(db, allAlbums, gid, "multi", "多作者", "#e85347", assignedAlbumKey);
+            }
+
+            // 第4步：兜底 — 如果仍然没有任何专辑分配，放入未分类
+            if (assignedAlbumKey == null)
+            {
+                assignedAlbumKey = EnsureFunctionalAlbum(db, allAlbums, gid, "__uncategorized__", "未分类", "#888888", null);
+            }
 
             await db.SaveChangesAsync();
-            Console.WriteLine($"[DownloadManager] 自动分配 gid={gid} 到 {matchedAlbums.Count} 个专辑: [{string.Join(", ", matchedAlbums.Select(m => m.Key))}]");
+            Console.WriteLine($"[DownloadManager] AutoAssign gid={gid} → Album={assignedAlbumKey}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[DownloadManager] 自动分配异常 (gid={gid}): {ex.Message}");
         }
+    }
+
+    /// <summary>将 gid 加入匹配专辑列表，返回最高优先级的专辑 key</summary>
+    private static string AddGidToMatchedAlbums(MangaDbContext db, List<AlbumConfig> allAlbums,
+        int gid, List<(string Key, int Priority)> matchedAlbums)
+    {
+        foreach (var (albumKey, _) in matchedAlbums)
+        {
+            var album = allAlbums.First(a => a.Key == albumKey);
+            var gids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(album.Gids) ?? new();
+            if (!gids.Contains(gid))
+            {
+                gids.Add(gid);
+                album.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
+                album.Count = gids.Count;
+            }
+        }
+        return matchedAlbums.OrderBy(m => m.Priority).First().Key;
+    }
+
+    /// <summary>从作品的 artist/group 标签自动创建专辑，返回新专辑的 key</summary>
+    private static string? AutoCreateAlbumFromTags(MangaDbContext db, List<AlbumConfig> allAlbums,
+        int gid, List<TagGroup> tagGroups)
+    {
+        var artistTags = tagGroups
+            .Where(g => g.Namespace.Equals("artist", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(g => g.Tags).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct().ToList();
+        var groupTags = tagGroups
+            .Where(g => g.Namespace.Equals("group", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(g => g.Tags).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct().ToList();
+
+        // 优先用 artist 创建（排除无意义的 artist 名）
+        var blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "unknown", "original", "various", "none" };
+        var usableArtist = artistTags.Where(a => !blacklist.Contains(a)).ToList();
+        var usableGroup = groupTags.Where(a => !blacklist.Contains(a)).ToList();
+
+        string? chosenTag = null;
+        string tagNs = "artist";
+
+        if (usableArtist.Count >= 1)
+        {
+            chosenTag = usableArtist[0];
+            tagNs = "artist";
+        }
+        else if (usableGroup.Count >= 1)
+        {
+            chosenTag = usableGroup[0];
+            tagNs = "group";
+        }
+
+        if (string.IsNullOrEmpty(chosenTag)) return null;
+
+        // 生成 key（简单处理特殊字符）
+        var safeKey = chosenTag.Replace(" ", "_").Replace("/", "-").Replace("\\", "-");
+        // 已存在同名 KeyTag 专辑 → 直接用（理论不会走到这里，因为已匹配过）
+        var existing = allAlbums.FirstOrDefault(a => a.Key.Equals(safeKey, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            var egids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(existing.Gids) ?? new();
+            if (!egids.Contains(gid)) { egids.Add(gid); existing.Gids = System.Text.Json.JsonSerializer.Serialize(egids); existing.Count = egids.Count; }
+            return existing.Key;
+        }
+
+        // 自动创建专辑：颜色循环
+        var autoColors = new[] { "#4a90d9", "#6b4e9e", "#d4782f", "#3d8b5e", "#b85c7c", "#5b8fa8", "#c48038", "#5e548e" };
+        var color = autoColors[Math.Abs(safeKey.GetHashCode()) % autoColors.Length];
+
+        var newAlbum = new AlbumConfig
+        {
+            Key = safeKey,
+            Name = chosenTag,
+            Color = color,
+            KeyTag = $"{tagNs}:{chosenTag}",
+            Gids = System.Text.Json.JsonSerializer.Serialize(new List<int> { gid }),
+            Count = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.AlbumConfigs.Add(newAlbum);
+        allAlbums.Add(newAlbum); // 保持本地列表同步
+        Console.WriteLine($"[DownloadManager] 自动创建专辑: {safeKey} ({chosenTag})");
+        return safeKey;
+    }
+
+    /// <summary>确保功能性专辑存在并添加 gid，设置 AlbumKey（可选覆盖）</summary>
+    private static string? EnsureFunctionalAlbum(MangaDbContext db, List<AlbumConfig> allAlbums,
+        int gid, string albumKey, string albumName, string color, string? primaryAlbumKey)
+    {
+        var album = allAlbums.FirstOrDefault(a => a.Key == albumKey);
+        if (album == null)
+        {
+            album = new AlbumConfig
+            {
+                Key = albumKey,
+                Name = albumName,
+                Color = color,
+                Gids = System.Text.Json.JsonSerializer.Serialize(new List<int>()),
+                Count = 0,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.AlbumConfigs.Add(album);
+            allAlbums.Add(album);
+        }
+
+        // 不覆盖 KeyTag — 功能性专辑不参与标签匹配
+        var gids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(album.Gids) ?? new();
+        if (!gids.Contains(gid))
+        {
+            gids.Add(gid);
+            album.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
+            album.Count = gids.Count;
+        }
+
+        // AlbumKey 设为功能性专辑（如果 primary 为 null 则覆盖，否则保留 primary）
+        var gallery = db.LocalGalleries.Find(gid);
+        if (gallery != null && primaryAlbumKey == null)
+            gallery.AlbumKey = albumKey;
+
+        return primaryAlbumKey ?? albumKey;
     }
 }

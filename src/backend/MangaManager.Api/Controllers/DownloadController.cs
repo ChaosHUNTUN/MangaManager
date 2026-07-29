@@ -162,26 +162,41 @@ public class DownloadController : ControllerBase
         await Response.WriteAsync($"data: {initJson}\n\n", Encoding.UTF8);
         await Response.Body.FlushAsync();
 
-        // 持续推送
+        // 持续推送（用 WaitToReadAsync 替代 TryRead 轮询，避免 busy-wait）
         try
         {
             while (!HttpContext.RequestAborted.IsCancellationRequested)
             {
-                if (channel.Reader.TryRead(out var msg))
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+                cts.CancelAfter(TimeSpan.FromSeconds(30)); // 最长无数据等待后发心跳
+
+                try
                 {
-                    await Response.WriteAsync(msg, Encoding.UTF8, HttpContext.RequestAborted);
-                    await Response.Body.FlushAsync();
+                    if (await channel.Reader.WaitToReadAsync(cts.Token))
+                    {
+                        while (channel.Reader.TryRead(out var msg))
+                        {
+                            await Response.WriteAsync(msg, Encoding.UTF8, HttpContext.RequestAborted);
+                            await Response.Body.FlushAsync();
+                        }
+                    }
                 }
-                else
+                catch (OperationCanceledException)
                 {
-                    await Task.Delay(200, HttpContext.RequestAborted);
-                    // 发送心跳
-                    await Response.WriteAsync(": heartbeat\n\n", Encoding.UTF8, HttpContext.RequestAborted);
-                    await Response.Body.FlushAsync();
+                    // 超时无数据：发送心跳保持连接
+                    if (!HttpContext.RequestAborted.IsCancellationRequested)
+                    {
+                        await Response.WriteAsync(": heartbeat\n\n", Encoding.UTF8, HttpContext.RequestAborted);
+                        await Response.Body.FlushAsync();
+                    }
                 }
             }
         }
         catch (OperationCanceledException) { }
+        finally
+        {
+            _dm.ReleaseSseChannel(gid);
+        }
     }
 
 }

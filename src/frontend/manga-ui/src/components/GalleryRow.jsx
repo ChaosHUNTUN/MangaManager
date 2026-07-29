@@ -1,8 +1,7 @@
 import { memo } from 'react'
 import { getLocalCoverUrl } from '../api'
 import { getCategoryColor, formatSize } from './GalleryCard'
-
-const formatCount = (n) => n > 9999 ? (n / 1000).toFixed(1) + 'k' : String(n)
+import { formatCount } from '../utils/format'
 
 const GalleryRow = memo(({
   g, isSel, dragGid, albumInfo, ribbonText,

@@ -276,7 +276,7 @@ public class GallerySyncService : BackgroundService
                     else if (line.StartsWith("url=")) item.OnlineUrl = line[4..];
                 }
             }
-            catch { }
+            catch (Exception ex) { _logger.LogDebug(ex, "[GallerySync] .eh file parse failed, using defaults"); }
         }
 
         return item;

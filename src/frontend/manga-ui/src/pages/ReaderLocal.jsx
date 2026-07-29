@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { fetchLocalGalleryPagesAbortable, API_BASE, fetchReadingProgressAbortable, saveReadingProgress } from '../api'
 import { useReaderSettings } from '../hooks/useReaderSettings'
+import useReaderScroll from '../hooks/useReaderScroll'
+import useReaderSlideshow from '../hooks/useReaderSlideshow'
+import useReaderKeyboard from '../hooks/useReaderKeyboard'
 import PageImage from '../components/PageImage'
 import { FIT_MODES, TRANSITIONS, READ_MODES } from '../constants/reader'
 
@@ -15,18 +18,16 @@ export default function ReaderLocal() {
   const [displayGids, setDisplayGids] = useState([])
   const [gidsTotal, setGidsTotal] = useState(0) // 分页列表的总数（用于显示）
   const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) }, [])
   const [showUI, setShowUI] = useState(true)
   const hideTimerRef = useRef(null)
-  const scrollRef = useRef(null)
 
   // 阅读进度追踪：记录本次阅读中所有漫画的当前页码
   const progressRef = useRef({})
   const progressSeededRef = useRef(false) // 防止 pages 加载覆盖进度
   const abortRef = useRef(null) // AbortController 用于取消旧的页面加载请求
   const currentGid = parseInt(gid)
-  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 10 })
-  const loadedPagesRef = useRef(new Set())
-  const [scrollProgress, setScrollProgress] = useState(0)
 
   // 沉浸模式：3秒无鼠标移动隐藏 UI
   const showUIRef = useRef(showUI)
@@ -40,9 +41,12 @@ export default function ReaderLocal() {
   // 页面关闭时用 sendBeacon 确保进度保存
   useEffect(() => {
     const handler = () => {
-      const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+      const items = Object.entries(progressRef.current)
+        .map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+        .filter(item => !Number.isNaN(item.gid))
       if (items.length > 0) {
-        navigator.sendBeacon(`${API_BASE}/api/readingprogress`, JSON.stringify(items))
+        const blob = new Blob([JSON.stringify(items)], { type: 'application/json' })
+        navigator.sendBeacon(`${API_BASE}/api/readingprogress`, blob)
       }
     }
     window.addEventListener('beforeunload', handler)
@@ -51,19 +55,31 @@ export default function ReaderLocal() {
   useEffect(() => {
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-      // 组件卸载时保存阅读进度（React Router 导航离开、非 Esc 退出）
-      const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+      const items = Object.entries(progressRef.current)
+        .map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+        .filter(item => !Number.isNaN(item.gid))
       if (items.length > 0) {
-        try { navigator.sendBeacon(`${API_BASE}/api/readingprogress`, JSON.stringify(items)) } catch {}
+        try { const blob = new Blob([JSON.stringify(items)], { type: 'application/json' }); navigator.sendBeacon(`${API_BASE}/api/readingprogress`, blob) } catch {}
       }
     }
   }, [])
 
-  // 使用数据库持久化的阅读器设置
+  // 使用数据库持久化的阅读器设置（必须在依赖它的 Hooks 之前调用）
   const { settings, updateSetting } = useReaderSettings()
   const { fitMode, fitPercent, transition, readMode, slideInterval, scrollSpeed, loopMode } = settings
 
-  // 从 sessionStorage 获取 gid 列表上下文（由 LocalGallery 传入）
+  // 滚动模式（依赖 readMode → 必须在 settings 之后）
+  const { scrollRef, pageRefsRef, visibleRange, loadedPagesRef, scrollProgress, handleScrollRef, setLastIndex } = useReaderScroll({
+    readMode, pages, onIndexChange: (idx) => setIndex(idx)
+  })
+
+  // 幻灯片（依赖 readMode/scrollRef → 必须在 settings + useReaderScroll 之后）
+  const { slideshow, setSlideshow, isHovering, setIsHovering } = useReaderSlideshow({
+    pages, readMode, slideInterval, scrollSpeed, loopMode, scrollRef, setIndex
+  })
+
+  // 同步 index 到 Hook 供模式切换时保持位置
+  useEffect(() => { setLastIndex(index) }, [index, setLastIndex])
   useEffect(() => {
     try {
       // 优先使用完整 gid 列表（后台异步加载的）
@@ -82,23 +98,21 @@ export default function ReaderLocal() {
     } catch { }
   }, [gid])
 
-  // 轮询 reader-local-full-gids（handleOpenReader 在同一 tab 内异步写入，不触发 storage 事件）
+  // 监听 CustomEvent 接收异步加载的全量 gid 列表
   useEffect(() => {
-    const timer = setInterval(() => {
-      try {
-        const fullGids = JSON.parse(sessionStorage.getItem('reader-local-full-gids') || 'null')
-        if (fullGids && Array.isArray(fullGids) && fullGids.length > 0 && fullGids.length !== displayGids.length) {
-          setDisplayGids(fullGids)
-          setGidsTotal(fullGids.length)
-          clearInterval(timer)
-        }
-      } catch { }
-    }, 500)
-    return () => clearInterval(timer)
-  }, [displayGids.length])
+    const handler = (e) => {
+      const fullGids = e.detail
+      if (fullGids && Array.isArray(fullGids) && fullGids.length > 0) {
+        setDisplayGids(fullGids); setGidsTotal(fullGids.length)
+      }
+    }
+    window.addEventListener('reader-gids-updated', handler)
+    return () => window.removeEventListener('reader-gids-updated', handler)
+  }, [])
 
   // 加载当前漫画的阅读进度（只在 gid 变化时请求，取消旧请求）
   useEffect(() => {
+    if (Number.isNaN(currentGid)) return
     progressSeededRef.current = false
     const ctrl = new AbortController()
     fetchReadingProgressAbortable(currentGid, ctrl.signal).then(savedPage => {
@@ -111,12 +125,14 @@ export default function ReaderLocal() {
   }, [currentGid])
 
   useEffect(() => {
+    const gidNum = parseInt(gid)
+    if (Number.isNaN(gidNum)) return
     if (abortRef.current) abortRef.current.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
     setLoading(true)
-    fetchLocalGalleryPagesAbortable(parseInt(gid), ctrl.signal)
+    fetchLocalGalleryPagesAbortable(gidNum, ctrl.signal)
       .then(p => {
         setPages(p)
         if (!progressSeededRef.current) setIndex(0)
@@ -135,11 +151,13 @@ export default function ReaderLocal() {
   // index 变化时实时更新阅读进度（ref 用于退出时批量保存）
   const saveTimerRef = useRef(null)
   useEffect(() => {
-    progressRef.current[currentGid] = index
+    if (!Number.isNaN(currentGid)) progressRef.current[currentGid] = index
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
-      saveReadingProgress(items)
+      const items = Object.entries(progressRef.current)
+        .map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+        .filter(item => !Number.isNaN(item.gid))
+      if (items.length > 0) saveReadingProgress(items)
     }, 2000)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [index, currentGid])
@@ -148,7 +166,7 @@ export default function ReaderLocal() {
     if (currentIdx > 0) {
       navigate(`/reader-local/${displayGids[currentIdx - 1]}`)
     } else {
-      setToast('已经是第一部'); setTimeout(() => setToast(null), 1500)
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current); setToast('已经是第一部'); toastTimerRef.current = setTimeout(() => setToast(null), 1500)
     }
   }
 
@@ -156,20 +174,22 @@ export default function ReaderLocal() {
     if (currentIdx < displayGids.length - 1) {
       navigate(`/reader-local/${displayGids[currentIdx + 1]}`)
     } else {
-      setToast('已经是最后一部'); setTimeout(() => setToast(null), 1500)
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current); setToast('已经是最后一部'); toastTimerRef.current = setTimeout(() => setToast(null), 1500)
     }
   }
 
   const setFitModeAndSave = (m) => { updateSetting('fitMode', m); requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))) }
 
-  // 幻灯片
-  const [slideshow, setSlideshow] = useState(false)
-  const [isHovering, setIsHovering] = useState(false)
-  const timerRef = useRef(null)
-  const animFrameRef = useRef(null)
-
-  // 快捷键帮助
+  // 快捷键帮助 state（必须在 useReaderKeyboard 之前）
   const [showHelp, setShowHelp] = useState(false)
+
+  // 键盘+触摸（必须在所有函数定义之后）
+  useReaderKeyboard({
+    readMode, fitMode, updateSetting,
+    goPrevPage, goNextPage, goPrevGallery, goNextGallery,
+    setSlideshow, setShowHelp, resetHideTimer, setShowUI,
+    progressRef,
+  })
   const helpTimerRef = useRef(null)
   useEffect(() => {
     if (!showHelp) return
@@ -177,237 +197,6 @@ export default function ReaderLocal() {
     helpTimerRef.current = setTimeout(() => setShowHelp(false), 4000)
     return () => { if (helpTimerRef.current) clearTimeout(helpTimerRef.current) }
   }, [showHelp])
-
-  // 幻灯片 ref
-  const readModeRef2 = useRef(readMode)
-  const loopModeRef2 = useRef(loopMode)
-  const scrollSpeedRef = useRef(scrollSpeed)
-  useEffect(() => { readModeRef2.current = readMode }, [readMode])
-  useEffect(() => { loopModeRef2.current = loopMode }, [loopMode])
-  useEffect(() => { scrollSpeedRef.current = scrollSpeed }, [scrollSpeed])
-
-  useEffect(() => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
-    if (!slideshow || isHovering || pages.length === 0) return
-
-    if (readModeRef2.current === 'scroll') {
-      let lastTime = performance.now()
-      const animate = (now) => {
-        const c = scrollRef.current
-        if (!c) { animFrameRef.current = requestAnimationFrame(animate); return }
-        const dt = Math.min((now - lastTime) / 1000, 0.1)
-        lastTime = now
-        c.scrollTop += scrollSpeedRef.current * dt
-        const maxTop = c.scrollHeight - c.clientHeight
-        if (c.scrollTop >= maxTop - 2) {
-          if (loopModeRef2.current) c.scrollTop = 0
-        }
-        animFrameRef.current = requestAnimationFrame(animate)
-      }
-      animFrameRef.current = requestAnimationFrame(animate)
-    } else {
-      timerRef.current = setInterval(() => {
-        setIndex(prev => {
-          const next = prev + 1
-          if (next >= pages.length) return loopModeRef2.current ? 0 : prev
-          return next
-        })
-      }, slideInterval * 1000)
-    }
-    return () => {
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
-      if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
-    }
-  }, [slideshow, isHovering, slideInterval, pages.length, readMode])
-
-  // 键盘
-  const fitModeRef = useRef(fitMode)
-  const readModeRef3 = useRef(readMode)
-  useEffect(() => { fitModeRef.current = fitMode }, [fitMode])
-  useEffect(() => { readModeRef3.current = readMode }, [readMode])
-
-  const actionsRef = useRef({ goPrevPage, goNextPage, goPrevGallery, goNextGallery })
-  actionsRef.current = { goPrevPage, goNextPage, goPrevGallery, goNextGallery }
-
-  useEffect(() => {
-    const handler = (e) => {
-      const tag = e.target.tagName
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
-
-      if (e.key === 'ArrowLeft' || e.key === 'a') { e.preventDefault(); actionsRef.current.goPrevPage() }
-      else if (e.key === 'ArrowRight' || e.key === 'd') { e.preventDefault(); actionsRef.current.goNextPage() }
-      // 滚动模式下 ArrowUp/Down 不切换画廊（让浏览器默认滚动）
-      else if (e.key === 'ArrowUp') {
-        if (readModeRef3.current !== 'scroll') { e.preventDefault(); actionsRef.current.goPrevGallery() }
-      }
-      else if (e.key === 'ArrowDown') {
-        if (readModeRef3.current !== 'scroll') { e.preventDefault(); actionsRef.current.goNextGallery() }
-      }
-      // Ctrl+ArrowUp/Down 在任何模式下切换画廊
-      else if (e.ctrlKey && e.key === 'ArrowUp') { e.preventDefault(); actionsRef.current.goPrevGallery() }
-      else if (e.ctrlKey && e.key === 'ArrowDown') { e.preventDefault(); actionsRef.current.goNextGallery() }
-      else if (e.key === 'Escape') {
-        e.preventDefault()
-        const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
-        saveReadingProgress(items)
-        const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
-        navigate(`/local${returnUrl}`, { replace: true })
-      }
-      else if (e.key === ' ') { e.preventDefault(); setSlideshow(s => !s) }
-      else if (e.key === 't' || e.key === 'T') { e.preventDefault() }
-      else if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault()
-        const modes = FIT_MODES.map(m => m.key)
-        const idx = modes.indexOf(fitModeRef.current)
-        const next = modes[(idx + 1) % modes.length]
-        updateSetting('fitMode', next)
-        requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
-      }
-      else if (e.key === 'm' || e.key === 'M') {
-        e.preventDefault()
-        const n = readModeRef3.current === 'paged' ? 'scroll' : 'paged'
-        updateSetting('readMode', n)
-      }
-      else if (e.key === '?' || e.key === 'h' || e.key === 'H') { e.preventDefault(); setShowHelp(s => !s) }
-    }
-    window.addEventListener('keydown', handler)
-
-    // 移动端触摸手势：翻页模式水平滑动翻页，垂直滑动切换UI，滚动模式不拦截
-    let touchStartX = 0, touchStartY = 0, touchStartTime = 0
-    const touchStart = (e) => {
-      if (e.touches.length > 1) return
-      touchStartX = e.touches[0].clientX
-      touchStartY = e.touches[0].clientY
-      touchStartTime = Date.now()
-    }
-    const touchEnd = (e) => {
-      if (readModeRef3.current !== 'paged') return
-      const dx = touchStartX - e.changedTouches[0].clientX
-      const dy = touchStartY - e.changedTouches[0].clientY
-      const elapsed = Date.now() - touchStartTime
-      // 快速轻点 (< 300ms && < 30px 位移) → 不处理（可能是无意触碰）
-      if (elapsed < 300 && Math.abs(dx) < 30 && Math.abs(dy) < 30) return
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
-        e.preventDefault()
-        if (dx > 0) actionsRef.current.goNextPage()
-        else actionsRef.current.goPrevPage()
-      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 50) {
-        if (dy > 0) setShowUI(false)
-        else { setShowUI(true); resetHideTimer() }
-      }
-    }
-    window.addEventListener('touchstart', touchStart, { passive: true })
-    window.addEventListener('touchend', touchEnd, { passive: true })
-
-    return () => {
-      window.removeEventListener('keydown', handler)
-      window.removeEventListener('touchstart', touchStart)
-      window.removeEventListener('touchend', touchEnd)
-    }
-  }, [updateSetting])
-
-  // 滚动模式：存储每张图片 DOM 的 ref，用于精确计算页码
-  const pageRefsRef = useRef([])
-  const scrollPosRef = useRef({ scrollTop: 0, clientHeight: 0 })
-  const pagesRef = useRef(pages)
-  const lastIndexRef = useRef(0)
-  pagesRef.current = pages
-
-  const handleScroll = useCallback(() => {
-    if (readMode !== 'scroll') return
-    const c = scrollRef.current; if (!c) return
-    const scrollTop = c.scrollTop
-    const clientHeight = c.clientHeight
-    const viewCenter = scrollTop + clientHeight / 2
-    scrollPosRef.current = { scrollTop, clientHeight }
-    const pages = pagesRef.current
-
-    const refs = pageRefsRef.current
-    let currentIdx = 0
-    for (let i = 0; i < refs.length; i++) {
-      const el = refs[i]
-      if (el) {
-        const rect = el.getBoundingClientRect()
-        const elTop = rect.top + scrollTop - c.offsetTop
-        const elBottom = elTop + rect.height
-        if (viewCenter >= elTop && viewCenter < elBottom) {
-          currentIdx = i
-          break
-        }
-        if (i < refs.length - 1) {
-          const nextEl = refs[i + 1]
-          if (nextEl) {
-            const nextRect = nextEl.getBoundingClientRect()
-            const nextTop = nextRect.top + scrollTop - c.offsetTop
-            if (viewCenter >= elBottom && viewCenter < nextTop) {
-              currentIdx = (viewCenter - elBottom < nextTop - viewCenter) ? i : i + 1
-              break
-            }
-          }
-        }
-      }
-    }
-    if (scrollTop + clientHeight >= c.scrollHeight - 2) {
-      currentIdx = pages.length - 1
-    }
-
-    const bufferPx = clientHeight * 3
-    const viewTop = scrollTop - bufferPx
-    const viewBottom = scrollTop + clientHeight + bufferPx
-    let start = 0, end = pages.length - 1
-    for (let i = 0; i < refs.length; i++) {
-      const el = refs[i]
-      if (el) {
-        const rect = el.getBoundingClientRect()
-        const elTop = rect.top + scrollTop - c.offsetTop
-        const elBottom = elTop + rect.height
-        if (elBottom >= viewTop && elTop <= viewBottom) {
-          if (start === 0) start = i
-          end = i
-        }
-      }
-    }
-    setVisibleRange({ start, end })
-    for (let i = start; i <= end; i++) loadedPagesRef.current.add(i)
-    setIndex(currentIdx)
-    const maxScroll = c.scrollHeight - clientHeight
-    setScrollProgress(maxScroll > 0 ? (scrollTop / maxScroll * 100) : 0)
-  }, [readMode, pages.length])
-
-  // 保存最新 handleScroll 到 ref 供进度条等场景使用
-  const handleScrollRef = useRef(handleScroll)
-  handleScrollRef.current = handleScroll
-
-  // 始终跟踪当前 index，用于模式切换时维持位置
-  useEffect(() => { lastIndexRef.current = index }, [index])
-
-  // 切换到滚动模式时，跳到之前在翻页模式中的位置
-  useEffect(() => {
-    if (readMode !== 'scroll' || !pages.length) return
-    const targetIdx = lastIndexRef.current
-    if (targetIdx <= 0) return
-    const raf = requestAnimationFrame(() => {
-      const c = scrollRef.current
-      if (c) {
-        const pageH = window.innerHeight * 0.95
-        c.scrollTop = Math.min(targetIdx * pageH, c.scrollHeight - c.clientHeight)
-      }
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [readMode])
-
-  useEffect(() => {
-    if (readMode !== 'scroll') return
-    const c = scrollRef.current; if (!c) return
-    c.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll()
-    return () => c.removeEventListener('scroll', handleScroll)
-  }, [readMode, pages.length, handleScroll])
-
-  useEffect(() => {
-    if (readMode === 'scroll') loadedPagesRef.current = new Set()
-  }, [readMode])
 
   // 进度条百分比：滚动模式用实际滚动位置，翻页模式用页码
   const progressPct = readMode === 'scroll'
@@ -470,8 +259,10 @@ export default function ReaderLocal() {
         <div className="reader-topbar-left">
           <a href="/local" className="reader-back-btn" onClick={e => {
             e.preventDefault()
-            const items = Object.entries(progressRef.current).map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
-            saveReadingProgress(items)
+            const items = Object.entries(progressRef.current)
+              .map(([g, p]) => ({ gid: parseInt(g), pageIndex: p }))
+              .filter(item => !Number.isNaN(item.gid))
+            if (items.length > 0) saveReadingProgress(items)
             const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
             navigate(`/local${returnUrl}`, { replace: true })
           }}>← 返回</a>
@@ -590,6 +381,7 @@ export default function ReaderLocal() {
       ) : (
         <>
           <div className="reader-hotzone reader-hotzone-left" onClick={goPrevPage} />
+          <div className="reader-hotzone reader-hotzone-center" onClick={() => { setShowUI(s => { resetHideTimer(); return !s }) }} />
           <div className="reader-hotzone reader-hotzone-right" onClick={goNextPage} />
           <div className="reader-image-area" onMouseMove={resetHideTimer}>
             <div className="reader-transition-wrapper">

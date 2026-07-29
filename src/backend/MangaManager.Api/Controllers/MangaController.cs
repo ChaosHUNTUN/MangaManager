@@ -72,7 +72,7 @@ public class MangaController : ControllerBase
             // 保持连接直到客户端断开
             await Task.Delay(TimeSpan.FromMinutes(10));
         }
-        catch { }
+        catch (OperationCanceledException) { /* client disconnected */ }
         finally
         {
             _mangaService.UnregisterSSEClient(clientId);

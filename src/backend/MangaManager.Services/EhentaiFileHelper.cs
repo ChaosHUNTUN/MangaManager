@@ -12,7 +12,7 @@ public static class EhentaiFileHelper
         set
         {
             _defaultDownloadDir = value;
-            try { Directory.CreateDirectory(value); } catch { }
+            try { Directory.CreateDirectory(value); } catch { /* permission denied or path invalid */ }
         }
     }
 

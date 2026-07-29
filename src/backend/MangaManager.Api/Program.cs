@@ -68,6 +68,8 @@ builder.Services.AddHttpClient("ehentai", client =>
     return handler;
 });
 builder.Services.AddKeyedSingleton("EhentaiCookies", new System.Net.CookieContainer());
+builder.Services.AddSingleton<EhentaiAuthService>();
+builder.Services.AddSingleton<EhentaiBlockedTagService>();
 builder.Services.AddSingleton<EhentaiService>();
 
 builder.Services.AddControllers();
@@ -115,6 +117,8 @@ app.MapControllers();
 
 // 健康检查端点
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow, version = "2.0" }));
+
+var dlDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? EhentaiFileHelper.DefaultDownloadDir;
 
 // EF Core Migrations：自动建库/升级，兼容已有数据库
 using (var scope = app.Services.CreateScope())
@@ -176,58 +180,8 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
     app.Logger.LogInformation("[DB] 数据库迁移完成");
 
-    // 一次性回填 AllTags：旧记录在迁移前未存储 AllTags（为 null 或"[]"），从 .meta.json 重读回填
-    var dlDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? EhentaiFileHelper.DefaultDownloadDir;
-    if (!string.IsNullOrEmpty(dlDir) && Directory.Exists(dlDir))
-    {
-        var staleCount = db.LocalGalleries.Count(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]");
-        if (staleCount > 0)
-        {
-            app.Logger.LogInformation($"[DB] 检测到 {staleCount} 条旧记录 AllTags 为空，开始从 .meta.json 回填...");
-            var updated = 0;
-            var galleries = db.LocalGalleries.Where(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]").ToList();
-            foreach (var g in galleries)
-            {
-                try
-                {
-                    var dirName = EhentaiFileHelper.GetGalleryLocalDir(g.Gid, g.Title ?? "");
-                    var parentDir = Path.GetDirectoryName(dirName);
-                    if (parentDir == null || !Directory.Exists(parentDir)) continue;
-                    var dir = Directory.GetDirectories(parentDir, $"{g.Gid}-*").FirstOrDefault();
-                    if (dir == null) continue;
-                    var metaFile = Path.Combine(dir, ".meta.json");
-                    if (!File.Exists(metaFile)) continue;
-                    var metaJson = File.ReadAllText(metaFile);
-                    using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
-                    var root = doc.RootElement;
-                    if (root.TryGetProperty("tags", out var tags) && tags.ValueKind == System.Text.Json.JsonValueKind.Object)
-                    {
-                        var allTagList = new List<string>();
-                        foreach (var nsProp in tags.EnumerateObject())
-                        {
-                            if (nsProp.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
-                            {
-                                foreach (var tagEl in nsProp.Value.EnumerateArray())
-                                {
-                                    var tagVal = tagEl.GetString();
-                                    if (!string.IsNullOrEmpty(tagVal))
-                                        allTagList.Add($"{nsProp.Name.ToLower()}:{tagVal}");
-                                }
-                            }
-                        }
-                        if (allTagList.Count > 0)
-                        {
-                            g.AllTags = System.Text.Json.JsonSerializer.Serialize(allTagList);
-                            updated++;
-                        }
-                    }
-                }
-                catch { }
-            }
-            db.SaveChanges();
-            app.Logger.LogInformation($"[DB] AllTags 回填完成: {updated}/{staleCount} 条");
-        }
-    }
+    // 一次性回填 AllTags：旧记录从 .meta.json 重读回填
+    BackfillAllTagsFromMetaFiles(app, db, dlDir);
 
     // 启用 WAL 模式（仅 SQLite）：允许并发读写，避免 "database is locked" 错误
     if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))
@@ -284,7 +238,17 @@ app.MapPost("/api/admin/backup", () =>
 });
 
 // 初始化标签翻译（后台异步）和屏蔽列表
-EhentaiService.InitBlockedTags();
+_ = Task.Run(() =>
+{
+    try
+    {
+        app.Services.GetRequiredService<EhentaiBlockedTagService>().Initialize();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "[Init] 屏蔽列表初始化失败");
+    }
+});
 _ = Task.Run(async () =>
 {
     try
@@ -294,12 +258,86 @@ _ = Task.Run(async () =>
     }
     catch (Exception ex)
     {
-        app.Logger.LogInformation($"[Init] 标签翻译加载失败（将使用原始标签）: {ex.Message}");
+        app.Logger.LogWarning(ex, "[Init] 标签翻译加载失败（将使用原始标签）");
     }
 });
 
 // 异步初始化 DownloadManager（加载未完成任务）
 var downloadManager = app.Services.GetRequiredService<DownloadManager>();
-_ = downloadManager.InitializeAsync();
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await downloadManager.InitializeAsync();
+        app.Logger.LogInformation("[Init] DownloadManager 初始化完成");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "[Init] DownloadManager 初始化失败");
+    }
+});
 
 app.Run();
+return; // ---- 以下为辅助方法 ----
+
+/// <summary>回填 AllTags：对迁移前旧记录的 AllTags 字段为空的，从 .meta.json 重读并写入 DB</summary>
+static void BackfillAllTagsFromMetaFiles(WebApplication app, MangaDbContext db, string? dlDir)
+{
+    if (string.IsNullOrEmpty(dlDir) || !Directory.Exists(dlDir)) return;
+
+    var staleCount = db.LocalGalleries.Count(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]");
+    if (staleCount == 0) return;
+
+    app.Logger.LogInformation("[DB] 检测到 {StaleCount} 条旧记录 AllTags 为空，开始回填...", staleCount);
+    var updated = 0;
+    var galleries = db.LocalGalleries
+        .Where(g => g.AllTags == null || g.AllTags == "" || g.AllTags == "[]")
+        .ToList();
+
+    foreach (var g in galleries)
+    {
+        try
+        {
+            var dirName = EhentaiFileHelper.GetGalleryLocalDir(g.Gid, g.Title ?? "");
+            var parentDir = System.IO.Path.GetDirectoryName(dirName);
+            if (parentDir == null || !Directory.Exists(parentDir)) continue;
+
+            var dir = Directory.GetDirectories(parentDir, $"{g.Gid}-*").FirstOrDefault();
+            if (dir == null) continue;
+
+            var metaFile = System.IO.Path.Combine(dir, ".meta.json");
+            if (!File.Exists(metaFile)) continue;
+
+            var metaJson = File.ReadAllText(metaFile);
+            using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("tags", out var tags) &&
+                tags.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var allTagList = new List<string>();
+                foreach (var nsProp in tags.EnumerateObject())
+                {
+                    if (nsProp.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var tagEl in nsProp.Value.EnumerateArray())
+                        {
+                            var tagVal = tagEl.GetString();
+                            if (!string.IsNullOrEmpty(tagVal))
+                                allTagList.Add($"{nsProp.Name.ToLower()}:{tagVal}");
+                        }
+                    }
+                }
+                if (allTagList.Count > 0)
+                {
+                    g.AllTags = System.Text.Json.JsonSerializer.Serialize(allTagList);
+                    updated++;
+                }
+            }
+        }
+        catch { /* individual record parse failed, skip */ }
+    }
+
+    db.SaveChanges();
+    app.Logger.LogInformation("[DB] AllTags 回填完成: {Updated}/{StaleCount}", updated, staleCount);
+}

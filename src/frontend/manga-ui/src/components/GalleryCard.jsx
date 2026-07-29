@@ -2,9 +2,7 @@ import { memo } from 'react'
 import { getLocalCoverUrl } from '../api'
 import { IconEye, IconBook } from './Icons'
 import { getCategoryColor, CATEGORY_COLORS_CARD as CATEGORY_COLORS } from '../constants/colors'
-import { formatSize } from '../utils/format'
-
-const formatCount = (n) => n > 9999 ? (n / 1000).toFixed(1) + 'k' : String(n)
+import { formatSize, formatCount } from '../utils/format'
 
 const GalleryCard = memo(({
   g, isSel, isHovered, dragGid, albumInfo, ribbonText,

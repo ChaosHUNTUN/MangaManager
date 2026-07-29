@@ -48,7 +48,7 @@ public class FilesystemController : ControllerBase
             foreach (var d in Directory.GetDirectories(path).OrderBy(d => Path.GetFileName(d)))
             {
                 try { items.Add(new { name = Path.GetFileName(d), path = d, isDir = true }); }
-                catch { }
+                catch { /* directory may be inaccessible */ }
             }
 
             return Ok(new ApiResponse<object>(true, items));

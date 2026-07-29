@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import PageImage from './PageImage'
-import { fetchEHGalleryPages, getEHImageProxyUrl, API_BASE } from '../api'
+import { fetchEHGalleryLocalPages, fetchEHGalleryPages, getEHImageProxyUrl, API_BASE } from '../api'
+import { useReaderSettings } from '../hooks/useReaderSettings'
 import { FIT_MODES, TRANSITIONS, READ_MODES } from '../constants/reader'
 
 /**
@@ -16,9 +17,6 @@ export default function EhentaiReader({ detail, onClose, onError }) {
   const [pages, setPages] = useState(null)
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [fitMode, setFitMode] = useState('fit-width')
-  const [transition, setTransition] = useState('fade')
-  const [readMode, setReadMode] = useState('paged')
   const [showUI, setShowUI] = useState(true)
   const [showHelp, setShowHelp] = useState(false)
   const scrollRef = useRef(null)
@@ -35,19 +33,9 @@ export default function EhentaiReader({ detail, onClose, onError }) {
     return () => { if (helpTimerRef.current) clearTimeout(helpTimerRef.current) }
   }, [showHelp])
 
-  // 从 localStorage 恢复阅读设置
-  useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('reader-settings') || '{}')
-      if (s.fitMode) setFitMode(s.fitMode)
-      if (s.transition) setTransition(s.transition)
-      if (s.readMode) setReadMode(s.readMode)
-    } catch { }
-  }, [])
-
-  const saveSetting = (k, v) => {
-    try { const s = JSON.parse(localStorage.getItem('reader-settings') || '{}'); s[k] = v; localStorage.setItem('reader-settings', JSON.stringify(s)) } catch { }
-  }
+  // 阅读器设置（统一使用 DB 持久化 + across 组件同步）
+  const { settings, updateSetting, flush } = useReaderSettings()
+  const { fitMode, transition, readMode } = settings
 
   // 加载页面
   useEffect(() => {
@@ -56,10 +44,9 @@ export default function EhentaiReader({ detail, onClose, onError }) {
     ;(async () => {
       try {
         // 先检查本地是否已下载
-        const localResp = await fetch(`${API_BASE}/api/ehentai/gallery/${detail.gid}/local?title=${encodeURIComponent(detail.title)}`)
-        const localData = await localResp.json()
-        if (localData.data?.downloaded && localData.data?.pages?.length > 0) {
-          setPages(localData.data.pages.map((url, i) => ({
+        const localData = await fetchEHGalleryLocalPages(detail.gid, detail.title)
+        if (localData?.downloaded && localData?.pages?.length > 0) {
+          setPages(localData.pages.map((url, i) => ({
             index: i + 1, imageUrl: url, local: true
           })))
         } else {
@@ -73,6 +60,8 @@ export default function EhentaiReader({ detail, onClose, onError }) {
   }, [detail?.gid])
 
   // 键盘快捷键
+  const readModeRef = useRef(readMode)
+  readModeRef.current = readMode
   const actionsRef = useRef({ goPrev: null, goNext: null, close: null })
   useEffect(() => {
     if (!pages) return
@@ -84,11 +73,11 @@ export default function EhentaiReader({ detail, onClose, onError }) {
         const modes = FIT_MODES.map(m => m.key)
         const idx = modes.indexOf(fitMode)
         const next = modes[(idx + 1) % modes.length]
-        setFitMode(next); saveSetting('fitMode', next)
+        updateSetting('fitMode', next)
         requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
       }
       else if (e.key === 'm' || e.key === 'M') {
-        setReadMode(p => { const n = p === 'paged' ? 'scroll' : 'paged'; saveSetting('readMode', n); return n })
+        updateSetting('readMode', readModeRef.current === 'paged' ? 'scroll' : 'paged')
       }
       else if (e.key === '?' || e.key === 'h' || e.key === 'H') {
         setShowHelp(s => !s)
@@ -167,11 +156,11 @@ export default function EhentaiReader({ detail, onClose, onError }) {
   }
 
   const p = pages[index]
-  const getImgUrl = (page) => {
+  const getImgUrl = useCallback((page) => {
     if (!page) return ''
     if (page.local) return page.imageUrl.startsWith('http') ? page.imageUrl : `${API_BASE}${page.imageUrl}`
     return getEHImageProxyUrl(page.imageUrl || '')
-  }
+  }, [])
   const imgUrl = p ? getImgUrl(p) : null
   const isLocal = p?.local
   const progressPct = ((index + 1) / pages.length * 100).toFixed(1)
@@ -179,14 +168,30 @@ export default function EhentaiReader({ detail, onClose, onError }) {
   const goNext = () => setIndex(i => Math.min(pages.length - 1, i + 1))
   actionsRef.current = { goPrev, goNext, close: onClose }
 
-  // 预加载
-  const preloadPages = []
-  for (let d = -3; d <= 3; d++) {
-    const idx = index + d
-    if (idx !== index && idx >= 0 && idx < pages.length) {
-      preloadPages.push({ idx, url: getImgUrl(pages[idx]) })
+  // 预加载（useMemo 避免每帧重算）
+  const preloadPages = useMemo(() => {
+    const list = []
+    for (let d = -3; d <= 3; d++) {
+      const idx = index + d
+      if (idx !== index && idx >= 0 && idx < pages.length) {
+        list.push({ idx, url: getImgUrl(pages[idx]) })
+      }
     }
-  }
+    return list
+  }, [index, pages, getImgUrl])
+
+  // 将 preload 链接动态插入 <head>（<body> 中的 <link rel="preload"> 无效）
+  const preloadLinksRef = useRef([])
+  useEffect(() => {
+    preloadLinksRef.current.forEach(link => link.remove())
+    preloadLinksRef.current = preloadPages.map(pp => {
+      const link = document.createElement('link')
+      link.rel = 'preload'; link.as = 'image'; link.href = pp.url
+      document.head.appendChild(link)
+      return link
+    })
+    return () => { preloadLinksRef.current.forEach(link => link.remove()); preloadLinksRef.current = [] }
+  }, [preloadPages])
 
   return (
     <div className="reader-root">
@@ -224,13 +229,13 @@ export default function EhentaiReader({ detail, onClose, onError }) {
             <span className="reader-page-indicator">{index + 1} / {pages.length}</span>
           </div>
           <div className="reader-controls-right">
-            <select className="reader-select" value={readMode} onChange={e => { setReadMode(e.target.value); saveSetting('readMode', e.target.value) }}>
+            <select className="reader-select" value={readMode} onChange={e => updateSetting('readMode', e.target.value)}>
               {READ_MODES.map(m => <option key={m.key} value={m.key}>{m.icon} {m.label}</option>)}
             </select>
-            <select className="reader-select" value={fitMode} onChange={e => { setFitMode(e.target.value); saveSetting('fitMode', e.target.value); requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))) }}>
+            <select className="reader-select" value={fitMode} onChange={e => { updateSetting('fitMode', e.target.value); requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))) }}>
               {FIT_MODES.map(m => <option key={m.key} value={m.key}>{m.icon} {m.label}</option>)}
             </select>
-            <select className="reader-select" value={transition} onChange={e => { setTransition(e.target.value); saveSetting('transition', e.target.value) }}>
+            <select className="reader-select" value={transition} onChange={e => updateSetting('transition', e.target.value)}>
               {TRANSITIONS.map(t => <option key={t.key} value={t.key}>{t.icon} {t.label}</option>)}
             </select>
             <button className="reader-btn" onClick={goNext} disabled={index >= pages.length - 1}>▶</button>
@@ -258,6 +263,7 @@ export default function EhentaiReader({ detail, onClose, onError }) {
       ) : (
         <>
           <div className="reader-hotzone reader-hotzone-left" onClick={goPrev} />
+          <div className="reader-hotzone reader-hotzone-center" onClick={() => setShowUI(s => !s)} />
           <div className="reader-hotzone reader-hotzone-right" onClick={goNext} />
           <div className="reader-image-area" onMouseMove={() => setShowUI(true)}>
             <div className="reader-transition-wrapper">
@@ -277,9 +283,6 @@ export default function EhentaiReader({ detail, onClose, onError }) {
           </div>
         </>
       )}
-
-      {/* 预加载 */}
-      {preloadPages.map(pp => <link key={pp.idx} rel="preload" as="image" href={pp.url} />)}
 
       {/* 快捷键帮助面板 */}
       {showHelp && (

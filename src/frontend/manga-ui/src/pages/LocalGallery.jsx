@@ -2,8 +2,11 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryGids, fetchLocalGalleryDetail, deleteLocalGallery, translateEHTags, suggestEHTags, redownloadLocalGallery, batchRedownloadLocalGalleries, fetchAlbumConfig, saveAlbumConfig, renameAlbum, importLocalGallery, batchImportGalleries, fetchGalleryMetaTags, updateGalleryMetaTags, browseDirectory } from '../api'
+import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryGids, browseDirectory } from '../api'
 import useGalleryDrag from '../hooks/useGalleryDrag'
+import useGallerySearch from '../hooks/useGallerySearch'
+import useGalleryOperations from '../hooks/useGalleryOperations'
+import useAlbumConfig from '../hooks/useAlbumConfig'
 import GalleryDetail from '../components/GalleryDetail'
 import AlbumSidebar from '../components/AlbumSidebar'
 import AlbumEditModal from '../components/AlbumEditModal'
@@ -32,25 +35,17 @@ export default function LocalGallery() {
   const [pageTotal, setPageTotal] = useState(0)
   const [pageTotalPages, setPageTotalPages] = useState(1)
   const [pageLoading, setPageLoading] = useState(true)
-  const [detail, setDetail] = useState(null)
-  const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false)
-  const [batchRedownloadConfirm, setBatchRedownloadConfirm] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [batchMode, setBatchMode] = useState(false)
-  const [selected, setSelected] = useState(new Set())
-  const [tagTranslations, setTagTranslations] = useState({})
-  const [nsTranslations, setNsTranslations] = useState({})
-  const [searchTagTransMap, setSearchTagTransMap] = useState({})
   const [toasts, setToasts] = useState([])
   const toastIdRef = useRef(0)
+  const toastTimersRef = useRef(new Set())
+  useEffect(() => () => { toastTimersRef.current.forEach(id => clearTimeout(id)); toastTimersRef.current.clear() }, [])
   const setToast = (msg, duration = 2000) => {
     if (!msg) return
     const id = ++toastIdRef.current
     setToasts(prev => [...prev.slice(-2), { id, msg, key: id }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration)
+    const tm = setTimeout(() => { toastTimersRef.current.delete(tm); setToasts(prev => prev.filter(t => t.id !== id)) }, duration)
+    toastTimersRef.current.add(tm)
   }
 
   // ── URL 参数 ──
@@ -80,41 +75,22 @@ export default function LocalGallery() {
   const setPage = useCallback((v) => updateParams({ p: v === 1 ? null : v }), [updateParams])
   const setViewMode = useCallback((v) => updateParams({ view: v === 'grid' ? null : v }), [updateParams])
 
-  // 搜索自动补全
-  const [searchSuggestions, setSearchSuggestions] = useState([])
-  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
-  const [cursorPos, setCursorPos] = useState(0)
+  // ── REMAINING COMPONENT STATE ──
   const searchInputRef = useRef(null)
-  const suggestTimerRef = useRef(null)
+  const [cursorPos, setCursorPos] = useState(0)
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
 
-  // 导入/批量导入
-  const [importModal, setImportModal] = useState(false)
-  const [importForm, setImportForm] = useState({ sourceDir: '', title: '', category: 'doujinshi', language: '', artists: '', groups: '', otherTags: '', copyFiles: true })
-  const [importing, setImporting] = useState(false)
-  const [batchImportModal, setBatchImportModal] = useState(false)
-  const [batchImportForm, setBatchImportForm] = useState({ parentDir: '', copyFiles: true })
-  const [batchImporting, setBatchImporting] = useState(false)
-  const [batchImportResult, setBatchImportResult] = useState(null)
-  const [importDirBrowser, setImportDirBrowser] = useState({ show: false, path: '', items: [], stack: [] })
+  // 专辑配置（Hook 封装）
+  const { albumConfig, albumConfigRef, albumsLoaded, saveAlbums,
+    albumSearch, setAlbumSearch, albumSort, setAlbumSort, albumModal, setAlbumModal,
+    groups, gidToAlbum, getAlbumName,
+    generateAlbumColor, convertGroupToAlbum,
+    handleCreateAlbum, handleAlbumUpdated, handleDeleteAlbum,
+  } = useAlbumConfig({ galleryMetas })
 
-  // 编辑标签
-  const [editTagsModal, setEditTagsModal] = useState(null)
-  const [editTagsForm, setEditTagsForm] = useState({ title: '', category: '', language: '', tags: {} })
-  const [editTagsSaving, setEditTagsSaving] = useState(false)
-
-  // 专辑配置
-  const [albumConfig, setAlbumConfig] = useState({})
-  const [albumsLoaded, setAlbumsLoaded] = useState(false)
-  const albumConfigRef = useRef(albumConfig)
-  useEffect(() => { albumConfigRef.current = albumConfig }, [albumConfig])
-
-  // 侧边栏/专辑
-  const [albumSearch, setAlbumSearch] = useState('')
-  const [albumSort, setAlbumSort] = useState('default')
   const [editingAlbumKey, setEditingAlbumKey] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
-  const [albumModal, setAlbumModal] = useState(null)
 
   // 拖拽状态
   const sensors = useSensors(
@@ -128,42 +104,7 @@ export default function LocalGallery() {
 
   const sidebarTimeoutRef = useRef(null)
 
-  // ── 专辑配置加载 ──
-  useEffect(() => {
-    (async () => {
-      const data = await fetchAlbumConfig()
-      if (data && Object.keys(data).length > 0) { setAlbumConfig(data) } else {
-        try {
-          const raw = JSON.parse(localStorage.getItem('local-albums') || '{}')
-          const cfg = {}
-          for (const [key, val] of Object.entries(raw)) {
-            if (Array.isArray(val)) cfg[key] = { name: key, gids: val }
-            else if (val && typeof val === 'object' && Array.isArray(val.gids)) cfg[key] = val
-          }
-          if (Object.keys(cfg).length > 0) setAlbumConfig(cfg)
-        } catch { }
-      }
-      setAlbumsLoaded(true)
-    })()
-  }, [])
-
-  const saveAlbums = useCallback(async (cfg) => {
-    setAlbumConfig(cfg)
-    try { localStorage.setItem('local-albums', JSON.stringify(cfg)) } catch { }
-    try { await saveAlbumConfig(cfg) } catch (e) { setToast('保存专辑失败: ' + e.message) }
-  }, [])
-
-  const getAlbumName = (key) => albumConfig[key]?.name || key
-
-  const gidToAlbum = useMemo(() => {
-    const map = {}
-    Object.entries(albumConfig).forEach(([key, val]) => {
-      if (val.gids && val.gids.length > 0) {
-        val.gids.forEach(gid => { map[gid] = { key, name: val.name || key, color: val.color || 'var(--accent)' } })
-      }
-    })
-    return map
-  }, [albumConfig])
+  // 专辑配置加载、保存、分组、自动匹配 → useAlbumConfig Hook
 
   // ── 元数据流 ──
   const loadMetas = useCallback(async () => {
@@ -173,8 +114,11 @@ export default function LocalGallery() {
   }, [])
   useEffect(() => { loadMetas() }, [loadMetas])
 
-  // ── 展示流 ──
+  // ── 展示流（带竞态防护） ──
+  const pagedAbortRef = useRef(null)
   const loadPaged = useCallback(async (targetPage) => {
+    if (pagedAbortRef.current) pagedAbortRef.current.abort()
+    const ctrl = new AbortController(); pagedAbortRef.current = ctrl
     setPageItems([]); setPageLoading(true)
     try {
       const p = targetPage ?? page
@@ -185,12 +129,14 @@ export default function LocalGallery() {
         const album = cfg[activeGroup.slice(6)]
         if (album) { albumGids = album.gids || []; albumOrder = sortBy === 'custom' ? (album.order || album.gids) : null }
       }
-      const result = await fetchLocalGalleriesPaged({ group: activeGroup, search, sort: sortBy, page: p, pageSize, albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids, albumOrder })
-      setPageItems(result.items || [])
-      setPageTotal(result.total || 0)
-      setPageTotalPages(result.totalPages || 1)
-    } catch (e) { setError(e.message) }
-    setPageLoading(false)
+      const result = await fetchLocalGalleriesPaged({ group: activeGroup, search, sort: sortBy, page: p, pageSize, albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids, albumOrder, signal: ctrl.signal })
+      if (!ctrl.signal.aborted) {
+        setPageItems(result.items || [])
+        setPageTotal(result.total || 0)
+        setPageTotalPages(result.totalPages || 1)
+      }
+    } catch (e) { if (e.name !== 'AbortError') setError(e.message) }
+    if (!ctrl.signal.aborted) setPageLoading(false)
   }, [activeGroup, search, sortBy, pageSize, page])
 
   const RANDOM_CACHE_KEY = 'local-random-cache'
@@ -201,14 +147,18 @@ export default function LocalGallery() {
         if (cached?.items?.length > 0) { setPageItems(cached.items); setPageTotal(cached.total || cached.items.length); setPageTotalPages(1); setPageLoading(false); return }
       } catch { }
     }
+    if (pagedAbortRef.current) pagedAbortRef.current.abort()
+    const ctrl = new AbortController(); pagedAbortRef.current = ctrl
     setPageItems([]); setPageLoading(true)
     try {
-      const result = await fetchLocalGalleriesRandom(20)
-      setPageItems(result.items || []); setPageTotal(result.total || 0); setPageTotalPages(result.totalPages || 1)
-      try { sessionStorage.setItem(RANDOM_CACHE_KEY, JSON.stringify({ items: result.items, total: result.total, timestamp: Date.now() })) } catch { }
-      updateParams({ group: null, q: null, sort: null, p: null, size: null, random: 'true' })
-    } catch (e) { setError(e.message) }
-    setPageLoading(false)
+      const result = await fetchLocalGalleriesRandom(20, ctrl.signal)
+      if (!ctrl.signal.aborted) {
+        setPageItems(result.items || []); setPageTotal(result.total || 0); setPageTotalPages(result.totalPages || 1)
+        try { sessionStorage.setItem(RANDOM_CACHE_KEY, JSON.stringify({ items: result.items, total: result.total, timestamp: Date.now() })) } catch { }
+        updateParams({ group: null, q: null, sort: null, p: null, size: null, random: 'true' })
+      }
+    } catch (e) { if (e.name !== 'AbortError') setError(e.message) }
+    if (!ctrl.signal.aborted) setPageLoading(false)
   }, [updateParams])
 
   useEffect(() => {
@@ -223,186 +173,37 @@ export default function LocalGallery() {
     return () => window.removeEventListener('local-gallery-auto-match', handler)
   }, [loadPaged])
 
-  // 搜索标签翻译
-  const translateTriggerRef = useRef(0)
-  // 翻译标签批处理：使用 gid 列表哈希作为触发键，内容变长度不变也能重新翻译
-  const metaHash = useMemo(() => galleryMetas.map(g => g.gid).sort().join(','), [galleryMetas])
-  useEffect(() => {
-    if (galleryMetas.length === 0) return
-    const tagSet = new Set()
-    galleryMetas.forEach(g => {
-      (g.artists || []).forEach(t => tagSet.add(`artist:${t}`))
-      ;(g.groups || []).forEach(t => tagSet.add(`group:${t}`))
-      if (g.language) tagSet.add(`language:${g.language}`)
-      if (g.category) tagSet.add(`category:${g.category}`)
-    })
-    if (tagSet.size === 0) return
-    const tagList = Array.from(tagSet)
-    const translateBatches = async () => {
-      const transMap = {}
-      for (let i = 0; i < tagList.length; i += 200) {
-        try { const r = await translateEHTags(tagList.slice(i, i + 200)); (r.data || []).forEach(item => { if (item.cn) transMap[item.key] = item.cn }) } catch { }
-      }
-      setSearchTagTransMap(transMap)
-    }
-    translateBatches()
-  }, [metaHash])
+  // 自动匹配 + 分组计算 → useAlbumConfig Hook
 
-  // 自动匹配
-  const autoMatchGuardRef = useRef(false)
-  useEffect(() => {
-    if (!albumsLoaded || galleryMetas.length === 0 || Object.keys(albumConfig).length === 0 || autoMatchGuardRef.current) return
-    autoMatchGuardRef.current = true
-    const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
-    let changed = false; const cfg = { ...albumConfig }
-    galleryMetas.forEach(g => {
-      if (albumGids.has(g.gid)) return
-      const simpleTags = [...(g.artists || []), ...(g.groups || [])]
-      const namespaceTags = g.allTags || []
-      const inferred = []; for (const t of simpleTags) { if (!t.includes(':')) inferred.push(`artist:${t}`, `group:${t}`) }
-      const allCandidates = [...new Set([...namespaceTags, ...simpleTags, ...inferred])]
-      for (const tag of allCandidates) {
-        if (cfg[tag]) { const gids = cfg[tag].gids || []; if (!gids.includes(g.gid)) { cfg[tag] = { ...cfg[tag], gids: [...gids, g.gid] }; if (cfg[tag].order) cfg[tag].order = [...cfg[tag].order, g.gid]; changed = true } break }
-      }
-      const anyTags = new Set([...namespaceTags, ...simpleTags, ...inferred])
-      for (const [k, v] of Object.entries(cfg)) {
-        if (v.keyTag && anyTags.has(v.keyTag)) { const gids = v.gids || []; if (!gids.includes(g.gid)) { cfg[k] = { ...v, gids: [...gids, g.gid] }; if (v.order) cfg[k].order = [...v.order, g.gid]; changed = true } break }
-      }
-    })
-    if (changed) saveAlbums(cfg)
-    setTimeout(() => { autoMatchGuardRef.current = false }, 1000)
-  }, [galleryMetas, albumConfig, albumsLoaded])
+  // ── 搜索标签池 & 自动补全（Hook 封装） ──
+  const { searchTagPool, searchTagTransMap, searchSuggestions, setSearchSuggestions, handleSearchInput, applySearchTag } = useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast })
 
-  // ── 分组计算 ──
-  const groups = useMemo(() => {
-    const map = new Map()
-    const allNames = new Set()
-    galleryMetas.forEach(g => { (g.artists || []).forEach(a => allNames.add(a)); (g.groups || []).forEach(gr => allNames.add(gr)) })
-    Object.entries(albumConfig).forEach(([key, val]) => {
-      const gids = val.gids || []; if (gids.length === 0 && !allNames.has(key)) return
-      map.set(`album:${key}`, { type: 'album', key: `album:${key}`, name: val.name || key, count: gids.length, editable: true, createdAt: val.createdAt || val.updatedAt, updatedAt: val.updatedAt })
-    })
-    const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
-    galleryMetas.forEach(g => {
-      if (albumGids.has(g.gid)) return
-      const a = g.artists || []; const gr = g.groups || []
-      if (a.length === 1 && gr.length === 0) { const k = `artist:${a[0]}`; if (!map.has(k)) map.set(k, { type: 'artist', name: a[0], count: 0 }); map.get(k).count++ }
-      else if (gr.length === 1 && a.length === 0) { const k = `group:${gr[0]}`; if (!map.has(k)) map.set(k, { type: 'group', name: gr[0], count: 0 }); map.get(k).count++ }
-      else if (a.length === 1 && gr.length === 1) { const k = `artist:${a[0]}`; if (!map.has(k)) map.set(k, { type: 'artist', name: a[0], count: 0 }); map.get(k).count++ }
-      else if (a.length + gr.length > 1) { if (!map.has('multi')) map.set('multi', { type: 'multi', name: '多作者', count: 0 }); map.get('multi').count++ }
-      else { if (!map.has('unknown')) map.set('unknown', { type: 'unknown', name: '未分类', count: 0 }); map.get('unknown').count++ }
-    })
-    const lower = albumSearch.trim().toLowerCase()
-    const filtered = Array.from(map.entries()).filter(([, v]) => v.type === 'album' || v.count > 0).filter(([, v]) => !lower || (v.name || '').toLowerCase().includes(lower))
-    const sort = (items) => {
-      const albums = items.filter(([, v]) => v.type === 'album'); const auto = items.filter(([, v]) => v.type !== 'album')
-      albums.sort((a, b) => {
-        switch (albumSort) {
-          case 'name-asc': return (a[1].name || '').localeCompare(b[1].name || '')
-          case 'name-desc': return (b[1].name || '').localeCompare(a[1].name || '')
-          case 'count-asc': return (a[1].count || 0) - (b[1].count || 0)
-          case 'count-desc': return (b[1].count || 0) - (a[1].count || 0)
-          case 'time-asc': return (a[1].createdAt || a[1].updatedAt || '').localeCompare(b[1].createdAt || b[1].updatedAt || '')
-          case 'time-desc': return (b[1].createdAt || b[1].updatedAt || '').localeCompare(a[1].createdAt || a[1].updatedAt || '')
-          default: return (a[1].createdAt || a[1].updatedAt || '').localeCompare(b[1].createdAt || b[1].updatedAt || '')
-        }
-      })
-      auto.sort((a, b) => b[1].count - a[1].count)
-      return [...albums, ...auto]
-    }
-    return sort(filtered).map(([key, val]) => ({ key, ...val }))
-  }, [galleryMetas, albumConfig, albumSearch, albumSort])
+  const totalPages = pageTotalPages; const safePage = Math.min(page, totalPages)
+  const paged = pageItems; const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
 
-  // ── 搜索标签池 ──
-  const searchTagPoolRef = useRef([])
-  const searchTagPool = useMemo(() => {
-    if (searchTagPoolRef.current.length > 0 && galleryMetas.length === searchTagPoolRef.current._count) return searchTagPoolRef.current
-    const pool = []; const seen = new Set()
-    const add = (p, l) => { const k = `${p}:${l}`; if (!seen.has(k)) { seen.add(k); pool.push({ key: k, label: l, prefix: p, syntax: `${p}:${l}` }) } }
-    galleryMetas.forEach(g => { (g.artists || []).forEach(t => add('artist', t)); (g.groups || []).forEach(t => add('group', t)); if (g.category) add('category', g.category); if (g.language) add('language', g.language) })
-    Object.entries(albumConfig).forEach(([, val]) => { const n = val.name || ''; if (n && !seen.has(n)) { seen.add(n); pool.push({ key: n, label: n, prefix: 'album', syntax: n }) } })
-    pool._count = galleryMetas.length
-    searchTagPoolRef.current = pool.sort((a, b) => a.label.localeCompare(b.label))
-    return searchTagPoolRef.current
-  }, [galleryMetas.length, albumConfig])
+  // ── 增删改操作（Hook 封装） ──
+  const ops = useGalleryOperations({ galleryMetas, albumConfig, paged, pageTotal, activeGroup, search, sortBy, randomMode, loadMetas, loadPaged, setError, setToast })
+  const { deleting, deleteConfirm, setDeleteConfirm, handleDelete,
+    batchMode, setBatchMode, selected, setSelected,
+    batchDeleteConfirm, setBatchDeleteConfirm, handleBatchDelete,
+    batchRedownloadConfirm, setBatchRedownloadConfirm, handleBatchRedownload,
+    detail, detailLoading, setDetail, tagTranslations, nsTranslations, handleOpenDetail,
+    handleOpenReader,
+    importModal, setImportModal, importForm, setImportForm, importing, importDirBrowser, setImportDirBrowser, handleBrowseImport, handleImport,
+    batchImportModal, setBatchImportModal, batchImportForm, setBatchImportForm, batchImporting, batchImportResult, setBatchImportResult, handleBatchImport,
+    editTagsModal, setEditTagsModal, editTagsForm, setEditTagsForm, editTagsSaving, loadEditTags, saveEditTags } = ops
 
-  const handleSearchInput = (e) => {
-    if (e.nativeEvent.isComposing) return
-    const val = e.target.value; setSearch(val)
-    const pos = e.target.selectionStart || 0; setCursorPos(pos)
-    const lastSpace = val.lastIndexOf(' ', pos - 1)
-    const word = val.substring(lastSpace + 1, pos).trim().toLowerCase()
-    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
-    if (word.length >= 1) {
-      suggestTimerRef.current = setTimeout(async () => {
-        const local = searchTagPool.filter(t => t.label.toLowerCase().includes(word)).slice(0, 8)
-        if (local.length >= 3) { setSearchSuggestions(local); setShowSearchSuggestions(true); return }
-        try {
-          const eh = await suggestEHTags(word, 10); const merged = [...local]; const seenL = new Set(local.map(t => t.syntax.toLowerCase()))
-          for (const r of eh) {
-            const s = r.ehSyntax || ''; if (seenL.has(s.toLowerCase())) continue
-            const pre = s.split(':')[0]?.toLowerCase(); if (!['artist', 'group', 'language', 'parody', 'category', 'female', 'male', 'misc'].includes(pre)) continue
-            seenL.add(s.toLowerCase()); merged.push({ key: s, label: `${r.cn || r.tag} (${s})`, prefix: pre, syntax: s })
-          }
-          setSearchSuggestions(merged.slice(0, 8)); setShowSearchSuggestions(merged.length > 0)
-        } catch { setSearchSuggestions(local); setShowSearchSuggestions(local.length > 0) }
-      }, 200)
-    } else { setShowSearchSuggestions(false) }
-  }
-
-  const applySearchTag = (tag) => {
-    const val = search; const pos = cursorPos
-    const ls = val.lastIndexOf(' ', pos - 1)
-    const nv = (val.substring(0, ls + 1) + tag.syntax + ' ' + val.substring(pos)).replace(/\s+/g, ' ').trim()
-    updateParams({ q: nv || null, p: null }); setShowSearchSuggestions(false); searchInputRef.current?.focus()
-  }
-
-  const totalPages = pageTotalPages; const safePage = Math.min(page, totalPages); const paged = pageItems
-  const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
-
-  // ── 事件回调（useCallback 稳定引用） ──
+  // ── 卡片交互（组件的轻量逻辑） ──
   const handleCardClick = useCallback((g) => {
     if (batchMode) { setSelected(prev => { const s = new Set(prev); s.has(g.gid) ? s.delete(g.gid) : s.add(g.gid); return s }) }
     else { setHoveredGid(prev => prev === g.gid ? null : g.gid) }
   }, [batchMode])
 
-  const handleOpenDetail = useCallback(async (gid) => {
-    setHoveredGid(null); setDetailLoading(true)
-    try { const d = await fetchLocalGalleryDetail(gid); setDetail(d); if (d?.tagGroups?.length) { const all = []; d.tagGroups.forEach(g => { all.push(`n:${g.namespace}`); g.tags.forEach(t => all.push(`${g.namespace}:${t}`)) }); translateEHTags(all).then(r => { const tM = {}, nM = {}; (r.data || []).forEach(item => { if (item.key?.startsWith('n:')) nM[item.key.substring(2)] = item.cn; else if (item.cn) tM[item.key] = item.cn }); setTagTranslations(tM); setNsTranslations(nM) }).catch(() => {}) } } catch (e) { setError(e.message) }
-    setDetailLoading(false)
-  }, [])
-
-  const handleOpenReader = useCallback(async (gid) => {
-    setHoveredGid(null)
-    const isRandom = randomMode
-    const allGids = Object.values(albumConfig).flatMap(v => v.gids || [])
-    let ag = null, ao = null
-    if (activeGroup.startsWith('album:')) { const al = albumConfig[activeGroup.slice(6)]; if (al) { ag = al.gids || []; ao = sortBy === 'custom' ? (al.order || al.gids) : null } }
-    // 随机模式下只传当前页 gids，不加载全量（避免覆盖随机结果）
-    sessionStorage.setItem('reader-local-context', JSON.stringify({
-      group: isRandom ? undefined : activeGroup,
-      search: isRandom ? undefined : search,
-      sort: isRandom ? undefined : sortBy,
-      gids: paged.map(g2 => g2.gid),
-      total: isRandom ? paged.length : pageTotal
-    }))
-    sessionStorage.setItem('reader-local-return-url', window.location.search)
-    if (isRandom) sessionStorage.removeItem('reader-local-full-gids')
-    navigate(`/reader-local/${gid}`)
-    if (!isRandom) {
-      try { const fg = await fetchLocalGalleryGids({ group: activeGroup === 'all' ? null : activeGroup, search: search || null, sort: sortBy || null, albumGids: activeGroup.startsWith('album:') ? ag : allGids.length > 0 ? allGids : null, albumOrder: ao }); if (fg?.length) sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fg)) } catch { }
-    }
-  }, [activeGroup, search, sortBy, pageTotal, paged, albumConfig, navigate, randomMode])
-
-  const handleDelete = async (gid) => { setDeleting(true); try { await deleteLocalGallery(gid); setDeleteConfirm(null); setDetail(null); loadMetas(); loadPaged() } catch (e) { setError(e.message) } setDeleting(false) }
-  const handleBatchDelete = async () => { setDeleting(true); try { for (const gid of selected) await deleteLocalGallery(gid); setSelected(new Set()); setBatchMode(false); setBatchDeleteConfirm(false); loadMetas(); loadPaged() } catch (e) { setError(e.message) } setDeleting(false) }
-  const handleBatchRedownload = async () => { setDeleting(true); try { const r = await batchRedownloadLocalGalleries(Array.from(selected)); setBatchRedownloadConfirm(false); setSelected(new Set()); setBatchMode(false); loadMetas(); loadPaged(); setToast(r ? `批量重新下载: ${r.success} 成功${r.skipped > 0 ? `, ${r.skipped} 跳过` : ''}${r.failed > 0 ? `, ${r.failed} 失败` : ''}` : '批量重新下载任务已启动') } catch (e) { setToast('批量重新下载失败: ' + e.message) } setDeleting(false) }
-
   const ALBUM_PALETTE = ['#c06060', '#c08050', '#b0a050', '#60a060', '#70a050', '#5070a0', '#8050a0', '#c06080', '#907050', '#607080', '#50a0a0', '#70a0a0']
 
   const doAlbumDrop = useCallback((gid, albumKey) => {
     const cfg = { ...albumConfig }
-    Object.keys(cfg).forEach(k => { if (cfg[k]) cfg[k] = { ...cfg[k], gids: cfg[k].gids.filter(id => id !== gid) } })
+    Object.keys(cfg).forEach(k => { if (cfg[k]) { cfg[k] = { ...cfg[k], gids: cfg[k].gids.filter(id => id !== gid), order: cfg[k].order ? cfg[k].order.filter(id => id !== gid) : undefined } } })
     if (!cfg[albumKey]) {
       const used = new Set(Object.values(cfg).map(v => v.color).filter(Boolean))
       let color = null; for (const c of ALBUM_PALETTE) { if (!used.has(c)) { color = c; break } }
@@ -466,47 +267,18 @@ export default function LocalGallery() {
           style={{ borderColor: isActive ? 'var(--accent-border)' : 'var(--border-input)', color: isActive ? 'var(--accent)' : 'var(--text-secondary)', background: isActive ? 'var(--accent-bg)' : 'transparent' }}>
           {icon} {grp.name} ({grp.count})
         </button>
-        {!grp.editable && <button className="btn-sm" onClick={() => convertGroupToAlbum(grp)} style={{ padding: '3px 5px', borderColor: 'var(--accent-border)', color: 'var(--accent)', marginLeft: 1, fontSize: 'var(--text-3xs)' }} title="转为专辑">+</button>}
       </span>
     )
   }
 
-  const convertGroupToAlbum = (grp) => {
-    const ag = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
-    const gids = galleryMetas.filter(g => {
-      if (ag.has(g.gid)) return false
-      const a = g.artists || []; const gr = g.groups || []
-      if (grp.key === 'multi') return a.length + gr.length > 1
-      if (grp.key === 'unknown') return a.length === 0 && gr.length === 0
-      if (grp.key.startsWith('artist:')) { const n = grp.key.slice(7); return (a.length === 1 && a[0] === n) }
-      if (grp.key.startsWith('group:')) { const n = grp.key.slice(6); return (gr.length === 1 && gr[0] === n && a.length === 0) }
-      return false
-    }).map(g => g.gid)
-    if (gids.length === 0) return
-    const cfg = { ...albumConfig }
-    const eg = [...(cfg[grp.key]?.gids || []), ...(cfg[grp.name]?.gids || [])]
-    const color = cfg[grp.key]?.color || cfg[grp.name]?.color || generateAlbumColor()
-    cfg[grp.key] = { name: grp.name, color, gids: [...eg, ...gids] }; delete cfg[grp.name]
-    saveAlbums(cfg); setToast(`已转换 "${grp.name}" (${gids.length} 部) 为专辑`)
+  // 包装 Hook 函数 + 组件特有逻辑（toast/URL 参数）
+  const handleConvertGroupToAlbum = (grp) => {
+    const result = convertGroupToAlbum(grp)
+    if (result) setToast(`已转换 "${result.name}" (${result.count} 部) 为专辑`)
   }
-
-  const generateAlbumColor = useCallback(() => {
-    const used = new Set(Object.values(albumConfig).map(v => v.color).filter(Boolean))
-    for (const c of ALBUM_PALETTE) if (!used.has(c)) return c
-    return '#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0')
-  }, [albumConfig])
-
-  const handleCreateAlbum = (name) => {
-    const cfg = { ...albumConfig }; cfg[name] = { name, color: generateAlbumColor(), gids: cfg[name]?.gids || [] }
-    saveAlbums(cfg); updateParams({ group: `album:${name}`, p: null, sort: 'custom' })
+  const handleCreateAlbumWithNav = (name) => {
+    handleCreateAlbum(name); updateParams({ group: `album:${name}`, p: null, sort: 'custom' })
   }
-
-  const handleAlbumUpdated = useCallback((key, { name, color }) => {
-    setAlbumConfig(prev => { if (!prev[key]) return prev; return { ...prev, [key]: { ...prev[key], name: name ?? prev[key].name, color: color ?? prev[key].color } } })
-    setToast('专辑已更新')
-  }, [])
-
-  const handleDeleteAlbum = (key) => { const cfg = { ...albumConfig }; delete cfg[key]; saveAlbums(cfg) }
   const handleSelectGroup = (key) => { updateParams({ group: key === 'all' ? null : key, p: null, sort: key.startsWith('album:') ? 'custom' : null }) }
 
   // ═══════════════════════════════════════════
@@ -519,10 +291,11 @@ export default function LocalGallery() {
         sidebarOpen={sidebarOpen} groups={groups} activeGroup={activeGroup}
         albumConfig={albumConfig} dragGid={dragGid}
         albumSearch={albumSearch} albumSort={albumSort}
-        onSelectGroup={handleSelectGroup} onCreateAlbum={handleCreateAlbum}
+        onSelectGroup={handleSelectGroup} onCreateAlbum={handleCreateAlbumWithNav}
         onEditAlbum={setEditingAlbumKey} onDeleteAlbum={handleDeleteAlbum}
-        onConvertToAlbum={convertGroupToAlbum}
+
         onAlbumSearchChange={setAlbumSearch} onAlbumSortChange={setAlbumSort}
+        onConvertToAlbum={handleConvertGroupToAlbum}
         onMouseEnter={sidebarEnter} onMouseLeave={sidebarLeave}
         onDragOver={sidebarDragOver} pinned={sidebarPinned}
         onTogglePin={() => setSidebarPinned(p => !p)} onClose={() => setSidebarOpen(false)}
@@ -591,6 +364,17 @@ export default function LocalGallery() {
             <button className="btn-sm" onClick={() => updateParams({ group: null, p: null })}
               style={{ borderColor: activeGroup === 'all' ? 'var(--accent-border)' : 'var(--border-input)', color: activeGroup === 'all' ? 'var(--accent)' : 'var(--text-secondary)', background: activeGroup === 'all' ? 'var(--accent-bg)' : 'transparent' }}>全部</button>
             {groups.filter(g => g.type !== 'album').slice(0, 8).map(grp => renderGroupTag(grp))}
+            {(() => {
+              const activeAuto = groups.find(g => g.key === activeGroup && g.type !== 'album')
+              if (!activeAuto || activeAuto.type === 'multi' || activeAuto.type === 'unknown') return null
+              return (
+                <button className="btn-sm" onClick={() => handleConvertGroupToAlbum(activeAuto)}
+                  title="转为专辑"
+                  style={{ color: 'var(--accent-teal)', borderColor: 'var(--accent-teal-bg)', whiteSpace: 'nowrap' }}>
+                  📁 转为专辑
+                </button>
+              )
+            })()}
           </div>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>

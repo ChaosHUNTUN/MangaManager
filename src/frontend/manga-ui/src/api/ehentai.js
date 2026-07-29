@@ -23,7 +23,7 @@ export async function validateEHentaiCookie() {
 }
 
 // === 画廊搜索 / 详情 ===
-export async function fetchEHGalleries(search, page = 0, exhentai = false, nextCursor = null, filters = {}) {
+export async function fetchEHGalleries(search, page = 0, exhentai = false, nextCursor = null, filters = {}, signal) {
   const params = new URLSearchParams()
   if (search) params.set('search', search)
   params.set('page', String(page))
@@ -35,13 +35,18 @@ export async function fetchEHGalleries(search, page = 0, exhentai = false, nextC
   if (filters.pageTo) params.set('pageTo', String(filters.pageTo))
   if (filters.advSearch) params.set('advSearch', String(filters.advSearch))
   if (filters.popular) params.set('popular', 'true')
-  const json = await request(`/api/ehentai/galleries?${params.toString()}`)
+  const json = await request(`/api/ehentai/galleries?${params.toString()}`, { signal })
   return json.data
 }
 
 export async function fetchEHGalleryDetail(gid, token) {
   const json = await request(`/api/ehentai/gallery/${gid}/${token}`)
   return json.data
+}
+
+export async function fetchEHGalleryLocalPages(gid, title) {
+  const json = await request(`/api/ehentai/gallery/${gid}/local?title=${encodeURIComponent(title)}`)
+  return json.data || null
 }
 
 export async function fetchEHGalleryPages(gid, token) {

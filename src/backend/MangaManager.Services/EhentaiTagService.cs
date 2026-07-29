@@ -84,7 +84,7 @@ public static class EhentaiTagService
             var idx = line.IndexOf('\r');
             if (idx <= 0 || idx >= line.Length - 1) continue;
             var key = line[..idx]; var b64 = line[(idx + 1)..];
-            try { result[key] = Encoding.UTF8.GetString(Convert.FromBase64String(b64)); } catch { }
+            try { result[key] = Encoding.UTF8.GetString(Convert.FromBase64String(b64)); } catch { /* invalid base64 in tag file, skip */ }
         }
         return result;
     }
