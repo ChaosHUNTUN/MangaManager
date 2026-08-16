@@ -15,7 +15,7 @@ public class LocalGalleryService
     private readonly EhentaiService _eh;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<LocalGalleryService> _logger;
-    private static readonly string BaseDir = EhentaiFileHelper.DefaultDownloadDir;
+    private static string BaseDir => EhentaiFileHelper.DefaultDownloadDir;
 
     /// <summary>旧版 Manga ID → 本地目录路径的映射（负数 gid 的防腐层）</summary>
     private static readonly ConcurrentDictionary<int, string> _legacyDirs = new();

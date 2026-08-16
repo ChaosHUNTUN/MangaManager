@@ -273,15 +273,6 @@
 
         <!-- ====== 滚动条深色主题 ====== -->
         <Style TargetType="ScrollBar">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Width" Value="6"/>
-            <Style.Triggers>
-                <Trigger Property="Orientation" Value="Horizontal">
-                    <Setter Property="Height" Value="6"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-        <Style TargetType="ScrollBar" x:Key="{x:Type ScrollBar}">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollBar">
@@ -457,7 +448,7 @@
                                                     <TextBlock x:Name="TxtApiStatus" Text="检查中..." FontSize="12"
                                                                Foreground="{StaticResource TextSecondary}"/>
                                                 </StackPanel>
-                                                <TextBlock Text="localhost:5000" FontSize="10"
+                                                <TextBlock x:Name="TxtApiEndpoint" Text="localhost:5000" FontSize="10"
                                                            Foreground="{StaticResource TextMuted}"
                                                            HorizontalAlignment="Right"/>
                                             </Grid>

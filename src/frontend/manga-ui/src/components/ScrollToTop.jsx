@@ -34,25 +34,25 @@ export default function ScrollToTop({ containerRef, threshold = 400 }) {
         position: 'fixed', bottom: 24, right: 24,
         width: 36, height: 36,
         borderRadius: 'var(--radius-full)',
-        background: 'rgba(30, 30, 48, 0.92)',
+        background: 'var(--glass-bg)',
         border: '1.5px solid var(--accent-teal)',
         color: 'var(--accent-teal)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer', opacity: 0.85,
         backdropFilter: 'blur(8px)',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 var(--glass-highlight)',
         transition: 'all var(--duration-fast) var(--ease-out)',
         zIndex: 100, outline: 'none',
       }}
       onMouseEnter={e => {
         e.currentTarget.style.opacity = '1'
         e.currentTarget.style.transform = 'scale(1.08)'
-        e.currentTarget.style.background = 'rgba(40, 40, 60, 0.95)'
+        e.currentTarget.style.background = 'var(--glass-bg)'
       }}
       onMouseLeave={e => {
         e.currentTarget.style.opacity = '0.85'
         e.currentTarget.style.transform = 'scale(1)'
-        e.currentTarget.style.background = 'rgba(30, 30, 48, 0.92)'
+        e.currentTarget.style.background = 'var(--glass-bg)'
       }}>
       <IconArrowUp size={16} />
     </button>

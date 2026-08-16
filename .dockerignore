@@ -1,0 +1,34 @@
+# .NET build artifacts
+**/bin/
+**/obj/
+
+# Node
+**/node_modules/
+**/dist/
+
+# IDE
+.idea/
+.vs/
+.vscode/
+
+# Git
+.git/
+.gitignore
+
+# Data (mounted as volumes)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.swp

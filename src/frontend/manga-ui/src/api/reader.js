@@ -23,7 +23,10 @@ export async function fetchReadingProgressAbortable(gid, signal) {
   try {
     const json = await request(`/api/readingprogress/${gid}`, { signal })
     return json.data?.pageIndex ?? 0
-  } catch { return 0 }
+  } catch (e) {
+    if (signal?.aborted || e?.name === 'AbortError') throw e
+    return 0
+  }
 }
 
 export async function saveReadingProgress(items) {

@@ -18,22 +18,6 @@
           "Microsoft.WindowsDesktop.App"
         ]
       },
-      "Microsoft.Xaml.Behaviors.Wpf/1.1.142": {
-        "type": "package",
-        "compile": {
-          "lib/net8.0-windows7.0/Microsoft.Xaml.Behaviors.dll": {
-            "related": ".pdb;.xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0-windows7.0/Microsoft.Xaml.Behaviors.dll": {
-            "related": ".pdb;.xml"
-          }
-        },
-        "frameworkReferences": [
-          "Microsoft.WindowsDesktop.App.WPF"
-        ]
-      },
       "System.IO.Pipelines/10.0.8": {
         "type": "package",
         "compile": {
@@ -137,28 +121,6 @@
         "lib/net6.0-windows7.0/Hardcodet.NotifyIcon.Wpf.xml",
         "lib/net8.0-windows7.0/Hardcodet.NotifyIcon.Wpf.dll",
         "lib/net8.0-windows7.0/Hardcodet.NotifyIcon.Wpf.xml"
-      ]
-    },
-    "Microsoft.Xaml.Behaviors.Wpf/1.1.142": {
-      "sha512": "c47wA/8GHiQ9w+O6+mdqrZhZrxHogx2/fSZyRKL9tz0k+ypoTiwOx6fID0X3jr5LnCazJbCk7KiAcL0zVnNgNA==",
-      "type": "package",
-      "path": "microsoft.xaml.behaviors.wpf/1.1.142",
-      "hasTools": true,
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "lib/net462/Design/Microsoft.Xaml.Behaviors.Design.dll",
-        "lib/net462/Design/Microsoft.Xaml.Behaviors.DesignTools.dll",
-        "lib/net462/Microsoft.Xaml.Behaviors.dll",
-        "lib/net462/Microsoft.Xaml.Behaviors.pdb",
-        "lib/net462/Microsoft.Xaml.Behaviors.xml",
-        "lib/net8.0-windows7.0/Design/Microsoft.Xaml.Behaviors.DesignTools.dll",
-        "lib/net8.0-windows7.0/Microsoft.Xaml.Behaviors.dll",
-        "lib/net8.0-windows7.0/Microsoft.Xaml.Behaviors.pdb",
-        "lib/net8.0-windows7.0/Microsoft.Xaml.Behaviors.xml",
-        "microsoft.xaml.behaviors.wpf.1.1.142.nupkg.sha512",
-        "microsoft.xaml.behaviors.wpf.nuspec",
-        "tools/Install.ps1"
       ]
     },
     "System.IO.Pipelines/10.0.8": {
@@ -332,7 +294,6 @@
   "projectFileDependencyGroups": {
     "net9.0-windows7.0": [
       "Hardcodet.NotifyIcon.Wpf >= 2.0.1",
-      "Microsoft.Xaml.Behaviors.Wpf >= 1.1.142",
       "System.Net.Http.Json >= 10.0.8"
     ]
   },
@@ -343,11 +304,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+      "projectUniqueName": "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
       "projectName": "MangaManager.Console",
-      "projectPath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+      "projectPath": "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
       "packagesPath": "C:\\Users\\27639\\.nuget\\packages\\",
-      "outputPath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\obj\\",
+      "outputPath": "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "D:\\Coder\\Share\\NuGetPackages"
@@ -389,10 +350,6 @@
           "Hardcodet.NotifyIcon.Wpf": {
             "target": "Package",
             "version": "[2.0.1, )"
-          },
-          "Microsoft.Xaml.Behaviors.Wpf": {
-            "target": "Package",
-            "version": "[1.1.142, )"
           },
           "System.Net.Http.Json": {
             "target": "Package",

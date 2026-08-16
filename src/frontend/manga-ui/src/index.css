@@ -80,7 +80,7 @@ input[type="text"]:focus, input[type="search"]:focus, select:focus {
 .modal-overlay {
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }

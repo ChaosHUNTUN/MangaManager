@@ -94,7 +94,7 @@
   font-size: 0.7rem; color: transparent;
   transition: all var(--duration-instant) var(--ease-out);
 }
-.card.selected .card-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+.card.selected .card-check { background: var(--accent); border-color: var(--accent); color: var(--canvas); }
 
 .card-cover {
   width: 100%; height: 260px; object-fit: cover;
@@ -172,7 +172,7 @@
 /* ── Buttons ── */
 .btn-primary {
   display: inline-flex; align-items: center; gap: var(--space-2);
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--canvas);
   border: none; padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-md); font-size: var(--text-sm);
   font-weight: var(--weight-semibold); cursor: pointer;
@@ -185,7 +185,7 @@
 .btn-green {
   background: var(--success);
   display: inline-flex; align-items: center; gap: var(--space-2);
-  color: #fff; border: none;
+  color: var(--canvas); border: none;
   padding: var(--space-2) var(--space-6);
   border-radius: var(--radius-md); font-size: var(--text-sm);
   font-weight: var(--weight-semibold); cursor: pointer;
@@ -215,13 +215,13 @@
 .btn-sm.active { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
 
 .btn-danger {
-  background: rgba(176, 96, 96, 0.15); color: var(--error);
-  border: 1px solid rgba(176, 96, 96, 0.3);
+  background: var(--error-bg); color: var(--error);
+  border: 1px solid var(--error-border);
   padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm);
   cursor: pointer; font-size: var(--text-xs);
   transition: background var(--duration-instant);
 }
-.btn-danger:hover { background: rgba(176, 96, 96, 0.25); }
+.btn-danger:hover { background: var(--error-bg-hover); }
 
 /* ── Icon-in-Button 统一样式 ── */
 /* 任何 button 内嵌的 svg（Lucide / Ant Design Icons）自动匹配按钮字号 */
@@ -315,8 +315,8 @@ button > svg {
 
 /* ── Status Message ── */
 .status-msg { margin-top: var(--space-3); padding: var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); }
-.status-msg.success { background: rgba(107, 139, 107, 0.15); color: var(--success); }
-.status-msg.error { background: rgba(176, 96, 96, 0.15); color: var(--error); }
+.status-msg.success { background: var(--success-bg); color: var(--success); }
+.status-msg.error { background: var(--error-bg); color: var(--error); }
 
 /* ── States ── */
 .loading { text-align: center; padding: 60px 20px; color: var(--text-muted); }

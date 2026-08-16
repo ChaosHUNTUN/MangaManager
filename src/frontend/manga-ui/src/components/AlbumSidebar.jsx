@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { FolderOpen } from 'lucide-react'
 import ScrollToTop from './ScrollToTop'
 
 const MIN_CORE_COUNT = 3
@@ -268,7 +269,7 @@ export default function AlbumSidebar({
                       padding: '1px 5px', fontSize: 'var(--text-3xs)',
                       borderColor: 'var(--border-input)', color: 'var(--text-muted)',
                       background: 'transparent', cursor: 'pointer', marginLeft: 4
-                    }}>📁</button>
+                    }}><FolderOpen size={13} /></button>
                 )}
               </div>
             </div>

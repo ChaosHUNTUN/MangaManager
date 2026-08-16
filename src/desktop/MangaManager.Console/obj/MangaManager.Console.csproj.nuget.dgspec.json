@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj": {}
+    "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj": {}
   },
   "projects": {
-    "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj": {
+    "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+        "projectUniqueName": "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
         "projectName": "MangaManager.Console",
-        "projectPath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
+        "projectPath": "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\MangaManager.Console.csproj",
         "packagesPath": "C:\\Users\\27639\\.nuget\\packages\\",
-        "outputPath": "D:\\MangaManager\\src\\desktop\\MangaManager.Console\\obj\\",
+        "outputPath": "d:\\MangaManager\\src\\desktop\\MangaManager.Console\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "D:\\Coder\\Share\\NuGetPackages"
@@ -53,10 +53,6 @@
             "Hardcodet.NotifyIcon.Wpf": {
               "target": "Package",
               "version": "[2.0.1, )"
-            },
-            "Microsoft.Xaml.Behaviors.Wpf": {
-              "target": "Package",
-              "version": "[1.1.142, )"
             },
             "System.Net.Http.Json": {
               "target": "Package",

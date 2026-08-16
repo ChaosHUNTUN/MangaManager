@@ -16,7 +16,9 @@
 .r-img-wrap { position: relative; width: 100%; height: 100%; background: var(--surface); }
 .r-img {
   display: block; width: 100%; height: 100%;
-  object-fit: scale-down;       /* 等比缩小, 绝不拉伸 */
+  width: 100%;
+  height: 100%;
+  object-fit: contain;          /* 等比缩放, 不裁切, 短边适应留空 */
   transition: opacity 0.25s;
 }
 .r-img-spinner {
@@ -76,6 +78,30 @@
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 6px 14px; flex-wrap: wrap;
 }
+/* ── 阅读进度条 ── */
+.r-progress-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 14px 0;
+}
+.r-progress-slider {
+  flex: 1; height: 4px; accent-color: var(--accent); cursor: pointer; min-width: 0;
+}
+.r-progress-slider::-webkit-slider-thumb {
+  appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab;
+}
+.r-progress-slider::-webkit-slider-thumb:active { cursor: grabbing; }
+.r-progress-slider::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4); cursor: grab;
+}
+.r-progress-label {
+  font-size: var(--text-2xs); color: var(--text-muted);
+  font-family: var(--font-mono); min-width: 72px; text-align: right;
+  white-space: nowrap; flex-shrink: 0;
+}
 
 /* ── 按钮组 ── */
 .r-btn-group {
@@ -87,8 +113,9 @@
 .r-btn {
   display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; cursor: pointer; transition: all 0.15s;
-  background: transparent; color: var(--text-muted); border: none;
+  background: transparent; color: var(--text-muted);
   border-radius: var(--radius-sm); padding: 0;
+  border: 1px solid transparent;   /* 预留空间 */
 }
 .r-btn:hover { color: var(--text-primary); background: var(--hover-bg); }
 .r-btn.active { color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-border); }
@@ -120,6 +147,12 @@
   padding: 0 6px;
 }
 .r-pad-slider { width: 44px; accent-color: var(--accent); height: 4px; cursor: pointer; }
+
+/* ── Slideshow 速度 ── */
+.r-speed-ctrl {
+  display: flex; gap: 1px; border: 1px solid var(--divider);
+  border-radius: var(--radius-sm); overflow: hidden;
+}
 .r-pad-input {
   width: 30px; text-align: center; background: transparent;
   border: 1px solid var(--divider); border-radius: var(--radius-xs);
@@ -129,8 +162,27 @@
 
 /* ── 阅读区 Viewport ── */
 .r-viewport {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  min-height: 0; position: relative;
+  flex: 1; position: relative;
+  min-height: 0; overflow: hidden;
+}
+
+/* ── 画廊 (Gallery) — 翻页用 ── */
+.r-gallery {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* ── 滚动画廊 — 纯 scroller ── */
+.r-scroller-gallery {
+  box-sizing: border-box;
+}
+
+/* ── 画框 (Frame) — 每个图片的容器 ── */
+.r-frame {
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .r-viewport.scroll {
   display: flex; overflow: auto;
@@ -144,25 +196,6 @@
 }
 .r-flip-area.prev { left: 0; cursor: w-resize; }
 .r-flip-area.next { right: 0; cursor: e-resize; }
-
-/* ── 双页中缝 ── */
-.r-gutter {
-  width: 4px; flex-shrink: 0;
-  background: linear-gradient(to left, rgba(128,128,128,0.08), rgba(128,128,128,0.2), rgba(128,128,128,0.08));
-  position: relative;
-}
-.r-gutter-inner {
-  position: absolute; inset: 0;
-  background: linear-gradient(to right, transparent 40%, rgba(0,0,0,0.25) 50%, transparent 60%);
-}
-.r-page-shadow-right {
-  position: absolute; right: 0; top: 0; bottom: 0; width: 8px;
-  background: linear-gradient(to right, rgba(0,0,0,0.2), transparent);
-}
-.r-page-shadow-left {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
-  background: linear-gradient(to left, rgba(0,0,0,0.2), transparent);
-}
 
 /* ── Slideshow 指示器 ── */
 .r-sso-indicator {

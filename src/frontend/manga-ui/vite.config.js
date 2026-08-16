@@ -49,7 +49,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5208',
         changeOrigin: false,
         bypass: (req) => {
           // Don't proxy our local image API

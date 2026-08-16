@@ -146,6 +146,7 @@ export default function ReaderShowcase() {
         setBgCycled={setBgCycled} setPadding={setPadding} setFitCycled={setFitCycled}
         zoomIn={zoomIn} zoomOut={zoomOut} zoomReset={zoomReset}
         toggleSlideshow={toggleSlideshow} setSlideshowInterval={setSlideshowInterval}
+        scrollSpeed={scrollSpeed} setScrollSpeed={setScrollSpeed}
         goForward={goForward} goBack={goBack}
         images={images} pageStep={pageStep} setCurrentPage={setCurrentPage}
       />
@@ -153,17 +154,15 @@ export default function ReaderShowcase() {
       {/* View */}
       {flow === 'paginated' ? (
         <PaginatedView
-          images={images} currentPage={currentPage} pageStep={pageStep}
-          totalPages={totalPages} layout={layout} direction={direction}
-          flow={flow} fit={fit} zoom={zoom} padding={padding}
-          isCoverAlone={isCoverAlone} flipDirRef={flipDirRef}
-          viewport={viewport}
+          images={images} currentPage={currentPage}
+          totalPages={totalPages}
+          flipDirRef={flipDirRef} viewport={viewport} padding={padding}
           goForward={goForward} goBack={goBack}
           setUiVisible={setUiVisible} uiVisible={uiVisible}
         />
       ) : (
         <ContinuousView
-          images={images} direction={direction} fit={fit} zoom={zoom}
+          images={images} direction={direction} zoom={zoom}
           padding={padding} viewport={viewport}
           scrollerRef={scrollerRef}
           uiVisible={uiVisible} setUiVisible={setUiVisible}

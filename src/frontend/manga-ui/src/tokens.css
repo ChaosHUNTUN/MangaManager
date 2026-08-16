@@ -39,8 +39,20 @@
   --grid-line: rgba(255, 255, 255, 0.03);
 
   --error: #b06060;
+  --error-bg: rgba(176, 96, 96, 0.15);
+  --error-border: rgba(176, 96, 96, 0.30);
+  --error-bg-hover: rgba(176, 96, 96, 0.25);
   --success: #6b8b6b;
+  --success-bg: rgba(107, 139, 107, 0.15);
+  --success-border: rgba(107, 139, 107, 0.25);
   --warning: #a08050;
+  --warning-bg: rgba(160, 128, 80, 0.15);
+  --warning-border: rgba(160, 128, 80, 0.25);
+
+  --overlay-bg: color-mix(in srgb, var(--canvas) 55%, transparent);
+  --surface-input: #0f0f1a;
+  --surface-elevated: #1a1a3a;
+  --border-section: #1a1a3a;
 
   /* ── 字体家族 ── */
   --font-sans: 'Inter', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -175,8 +187,20 @@
   --grid-line: rgba(0, 0, 0, 0.03);
 
   --error: #b05050;
+  --error-bg: rgba(176, 80, 80, 0.08);
+  --error-border: rgba(176, 80, 80, 0.20);
+  --error-bg-hover: rgba(176, 80, 80, 0.14);
   --success: #5d8a5d;
+  --success-bg: rgba(93, 138, 93, 0.08);
+  --success-border: rgba(93, 138, 93, 0.18);
   --warning: #8a7040;
+  --warning-bg: rgba(138, 112, 64, 0.08);
+  --warning-border: rgba(138, 112, 64, 0.18);
+
+  --overlay-bg: color-mix(in srgb, var(--canvas) 55%, transparent);
+  --surface-input: #ffffff;
+  --surface-elevated: #f0eef6;
+  --border-section: rgba(0, 0, 0, 0.06);
 
   --hover-brighten: brightness(0.97);
   --hover-bg: rgba(0, 0, 0, 0.04);

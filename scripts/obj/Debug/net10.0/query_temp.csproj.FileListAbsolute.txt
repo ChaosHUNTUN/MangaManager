@@ -1,0 +1,5 @@
+D:\MangaManager\scripts\obj\Debug\net10.0\query_temp.GeneratedMSBuildEditorConfig.editorconfig
+D:\MangaManager\scripts\obj\Debug\net10.0\query_temp.AssemblyInfoInputs.cache
+D:\MangaManager\scripts\obj\Debug\net10.0\query_temp.AssemblyInfo.cs
+D:\MangaManager\scripts\obj\Debug\net10.0\query_temp.csproj.CoreCompileInputs.cache
+D:\MangaManager\scripts\obj\Debug\net10.0\query_temp.sourcelink.json

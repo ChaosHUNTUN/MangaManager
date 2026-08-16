@@ -2,7 +2,11 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LazyImage } from './PageCanvas';
 
-const IMAGE_URL = (name) => `/local-images/${encodeURIComponent(name)}`;
+const IMAGE_URL = (name) => {
+  if (!name) return name;
+  if (name.startsWith('http') || name.startsWith('/api')) return name;
+  return `/local-images/${encodeURIComponent(name)}`;
+};
 
 export default function ThumbnailStrip({
   open, images, currentPage, pageStep, isCoverAlone, onJump,

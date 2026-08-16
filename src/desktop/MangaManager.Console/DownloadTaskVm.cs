@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Media;
 
@@ -36,6 +37,7 @@ public class DownloadTaskVm : INotifyPropertyChanged
     private decimal _speed;
     private long _speedBps;
     private string? _errorMsg;
+    private string _apiSpeedText = "";  // API 返回的格式化速度字符串 ("23 KB/s")
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -68,6 +70,14 @@ public class DownloadTaskVm : INotifyPropertyChanged
     public decimal Speed { get => _speed; set => Set(ref _speed, value); }
     public long SpeedBps { get => _speedBps; set => Set(ref _speedBps, value); }
     public string? ErrorMsg { get => _errorMsg; set => Set(ref _errorMsg, value); }
+
+    /// <summary>绑定 API 返回的 speedText 字段 (json 名 "speedText")</summary>
+    [JsonPropertyName("speedText")]
+    public string ApiSpeedText
+    {
+        get => _apiSpeedText;
+        set { if (Set(ref _apiSpeedText, value)) { OnPropertyChanged(nameof(SpeedText)); OnPropertyChanged(nameof(SubText)); } }
+    }
 
     // ========== 计算属性 ==========
     public string StatusText => Status switch
@@ -131,14 +141,15 @@ public class DownloadTaskVm : INotifyPropertyChanged
     public Visibility RemoveVisible =>
         Status is "pending" or "paused" or "failed" or "completed" ? Visibility.Visible : Visibility.Collapsed;
 
-    public string SpeedText => $"{Speed:F2} MB/s";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SpeedText => string.IsNullOrEmpty(_apiSpeedText) ? "0 B/s" : _apiSpeedText;
 
     public string SubText
     {
         get
         {
             if (Status == "failed") return ErrorMsg ?? StatusText;
-            if (Status == "downloading") return $"{DownloadedPages}/{TotalPages} — {Speed:F1} MB/s";
+            if (Status == "downloading") return $"{DownloadedPages}/{TotalPages} — {SpeedText}";
             if (Status == "completed") return $"{DownloadedPages}/{TotalPages} — 已完成";
             if (Status == "paused") return $"{DownloadedPages}/{TotalPages} — 已暂停";
             return $"{DownloadedPages}/{TotalPages} — {StatusText}";

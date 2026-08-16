@@ -28,7 +28,7 @@ public partial class MainWindow : Window
     private volatile bool _refreshingTasks;    // 防 RefreshDownloadTasks 重入
     private DateTime _lastScrollTime;          // ScrollToEnd 节流
     private const int MaxLogLines = 2000;      // 日志最大行数
-    private readonly string _apiUrl = "http://localhost:5000";
+    private readonly string _apiUrl = "http://127.0.0.1:5208";
     private readonly string _apiProject;
     private readonly string _uiDir;
 
@@ -110,6 +110,10 @@ public partial class MainWindow : Window
 
         await RefreshServiceStatus();
         await RefreshDownloadTasks();
+
+        // 同步 API 端点显示文本
+        var apiUri = new Uri(_apiUrl);
+        TxtApiEndpoint.Text = $"{apiUri.Host}:{apiUri.Port}";
     }
 
     private void Window_Drag(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -143,7 +147,7 @@ public partial class MainWindow : Window
     private async Task RefreshServiceStatus()
     {
         if (_timersPaused) return;
-        bool apiRunning = await Task.Run(() => IsPortOpen(5000, "/health"));
+        bool apiRunning = await Task.Run(() => IsPortOpen(5208, "/health"));
         bool uiRunning = await Task.Run(() => IsPortOpen(5173, "/"));
 
         UpdateServiceUI(apiRunning, TxtApiStatus, BtnApiStart, BtnApiStop, ApiStatusDot);
@@ -273,15 +277,15 @@ public partial class MainWindow : Window
         {
             _timersPaused = true;
             Log("正在启动 API 后端...");
-            await Task.Run(() => KillPort(5000));
+            await Task.Run(() => KillPort(5208));
             await Task.Delay(500);
-            _apiProcess = StartProcess("dotnet", $"run --project \"{_apiProject}\" --urls http://0.0.0.0:5000");
+            _apiProcess = StartProcess("dotnet", $"run --project \"{_apiProject}\" --urls http://0.0.0.0:5208");
 
             // 等待 API 就绪后恢复轮询
             for (int i = 0; i < 20; i++)
             {
                 await Task.Delay(500);
-                if (await IsPortOpen(5000, "/health")) break;
+                if (await IsPortOpen(5208, "/health")) break;
             }
             _timersPaused = false;
             await RefreshServiceStatus();
@@ -317,7 +321,7 @@ public partial class MainWindow : Window
             _apiProcess = null;
 
             // 在后台线程清理端口
-            await Task.Run(() => KillPort(5000));
+            await Task.Run(() => KillPort(5208));
 
             Log("API 后端已停止");
         }
@@ -502,9 +506,9 @@ public partial class MainWindow : Window
             // 空状态
             TxtNoTasks.Visibility = _tasks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
-        catch
+        catch (Exception ex)
         {
-            // API 不可用，静默处理
+            Dispatcher.BeginInvoke(() => Log($"[下载监控] API 请求失败: {ex.Message}"));
         }
     }
 

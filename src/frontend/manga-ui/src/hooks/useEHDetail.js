@@ -30,7 +30,7 @@ export default function useEHDetail({ showToast, localGids, setLocalGids, setDow
         else if (item.cn) tMap[item.key] = item.cn
       })
       setTagTranslations(tMap); setNsTranslations(nsMap)
-    } catch { }
+    } catch (e) { console.error('[useEHDetail] translateDetailTags failed:', e) }
   }
 
   const handleBlockTag = async (namespace, tag) => {
@@ -44,10 +44,11 @@ export default function useEHDetail({ showToast, localGids, setLocalGids, setDow
   }
 
   const openDetail = async (gid, token) => {
-    setDetailLoading(true)
+    setDetailLoading(true); setTagTranslations({}); setNsTranslations({})
     try {
       const d = await fetchEHGalleryDetail(gid, token); setDetail(d)
-      translateDetailTags(d); loadBlockedTags()
+      await translateDetailTags(d)
+      loadBlockedTags()
     } catch (e) { setError(e.message) }
     setDetailLoading(false)
   }
@@ -55,8 +56,9 @@ export default function useEHDetail({ showToast, localGids, setLocalGids, setDow
   const openReader = (d) => { setDetail(null); setReaderDetail(d) }
 
   // 接收已获取的详情数据（供 init Hook 使用，无需重复 fetch）
-  const openDetailViaApi = (d) => {
-    setDetail(d); translateDetailTags(d); loadBlockedTags()
+  const openDetailViaApi = async (d) => {
+    setDetail(d); setTagTranslations({}); setNsTranslations({})
+    await translateDetailTags(d); loadBlockedTags()
   }
 
   const handleDownload = async (d) => {

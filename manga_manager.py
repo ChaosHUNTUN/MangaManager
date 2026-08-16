@@ -35,7 +35,7 @@ from tkinter import ttk, scrolledtext, messagebox
 ROOT = os.path.dirname(os.path.abspath(__file__))
 API_DIR = os.path.join(ROOT, "src", "backend", "MangaManager.Api")
 UI_DIR = os.path.join(ROOT, "src", "frontend", "manga-ui")
-API_PORT = 5000
+API_PORT = 5208
 UI_PORT = 5173
 REFRESH_INTERVAL = 2000  # 毫秒
 
@@ -177,8 +177,8 @@ class ServiceManager:
             os.path.expandvars(r"%APPDATA%\npm"),
         ])
 
-        self.api = Service("API 后端", 5000, API_DIR,
-                           [dotnet, "run", "--no-build", "--urls", "http://0.0.0.0:5000"],
+        self.api = Service("API 后端", 5208, API_DIR,
+                           [dotnet, "run", "--no-build", "--urls", "http://0.0.0.0:5208"],
                            "ASP.NET Core Web API")
         self.ui = Service("UI 前端", 5173, UI_DIR,
                           [npx, "vite", "--host", "0.0.0.0", "--port", "5173"],
@@ -208,7 +208,7 @@ class ServiceManager:
             return
         self.log("[API] 启动中...")
         if self.api.start():
-            self.log("[API] ✓ 启动成功 (端口 5000)")
+            self.log("[API] ✓ 启动成功 (端口 5208)")
         else:
             self.log("[API] ✗ 启动失败/超时")
 
@@ -338,7 +338,7 @@ class Dashboard:
         self.status_frame = ttk.Frame(self.root)
         self.status_frame.pack(fill="x", padx=14, pady=10)
 
-        self.api_card = self._make_service_card(self.status_frame, "API 后端", "端口 5000")
+        self.api_card = self._make_service_card(self.status_frame, "API 后端", "端口 5208")
         self.ui_card = self._make_service_card(self.status_frame, "UI 前端", "端口 5173")
 
         # -- 控制按钮 --

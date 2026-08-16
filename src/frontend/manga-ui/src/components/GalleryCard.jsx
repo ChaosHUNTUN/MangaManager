@@ -1,16 +1,32 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
+import { motion } from 'framer-motion'
+import { BookOpen, Eye, FileText, Check } from 'lucide-react'
 import { getLocalCoverUrl } from '../api'
-import { IconEye, IconBook } from './Icons'
 import { getCategoryColor, CATEGORY_COLORS_CARD as CATEGORY_COLORS } from '../constants/colors'
 import { formatSize, formatCount } from '../utils/format'
 
+/**
+ * GalleryCard — 画廊卡片 (视觉测试平台 CardsShowcase 验证模式)
+ *
+ * 改进点:
+ *  - framer-motion 卡片悬浮/点击微动效
+ *  - 封面加载 spinner
+ *  - 悬停操作按钮 (whileHover 替代手动 onMouseEnter/Leave)
+ *  - 专辑归属 badge (动态颜色)
+ */
 const GalleryCard = memo(({
   g, isSel, isHovered, dragGid, albumInfo, ribbonText,
   batchMode, onCardClick, onDragMouseDown, onOpenDetail, onOpenReader
 }) => {
-  const showOverlay = isHovered
+  const [coverLoaded, setCoverLoaded] = useState(false)
+  const [coverError, setCoverError] = useState(false)
+  const showOverlay = isHovered && !batchMode
+
   return (
-    <div className="gallery-card"
+    <motion.div
+      className="gallery-card"
+      whileHover={!batchMode ? { y: -1, scale: 1.005 } : {}}
+      whileTap={!batchMode ? { scale: 0.995 } : {}}
       onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
       onClick={onCardClick}
       style={{
@@ -19,129 +35,136 @@ const GalleryCard = memo(({
         overflow: 'hidden',
         cursor: batchMode ? 'default' : 'pointer',
         border: `1px solid ${isSel ? 'var(--error)' : showOverlay ? 'var(--border-active)' : 'var(--border-card)'}`,
-        transition: 'border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out)',
         position: 'relative',
         opacity: dragGid === g.gid ? 0.5 : 1,
-        transform: showOverlay ? 'translateY(-1px)' : 'none',
       }}>
       {/* 批量模式选中标记 */}
       {batchMode && (
         <div style={{
           position: 'absolute', top: 6, left: 6, zIndex: 10,
-          width: 20, height: 20,
-          borderRadius: 'var(--radius-xs)',
-          background: isSel ? 'var(--error)' : 'rgba(0,0,0,0.55)',
-          border: `1px solid ${isSel ? 'var(--error)' : 'rgba(255,255,255,0.12)'}`,
+          width: 20, height: 20, borderRadius: 'var(--radius-xs)',
+          background: isSel ? 'var(--error)' : 'var(--overlay-bg)',
+          border: `1px solid ${isSel ? 'var(--error)' : 'var(--divider)'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-bold)',
+          color: 'var(--canvas)', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-bold)',
         }}>
-          {isSel ? '✓' : ''}
+          {isSel ? <Check size={10} /> : ''}
         </div>
       )}
 
-      {/* 专辑顶部色条（辅助标识，配合下方 badge） */}
+      {/* 专辑色条 */}
       {albumInfo && !batchMode && (
         <div title={albumInfo.name} style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 9,
-          height: 2,
-          background: albumInfo.color,
-          opacity: 0.5,
-          pointerEvents: 'none',
+          height: 2, background: albumInfo.color,
+          opacity: 0.5, pointerEvents: 'none',
         }} />
       )}
 
-      {/* 封面区域 — 点击卡片切换 hover（显示操作按钮） */}
+      {/* 封面区 */}
       <div style={{
         position: 'relative', width: '100%', paddingBottom: '138%',
         background: 'var(--surface-high)',
       }}>
+        {/* 加载态 / 错误态 */}
+        {!coverLoaded && !coverError && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
+            <BookOpen size={28} />
+          </div>
+        )}
+        {coverError && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-dim)', fontSize: 'var(--text-sm)' }}>
+            <FileText size={28} />
+          </div>
+        )}
         <img src={getLocalCoverUrl(g.gid)} alt={g.title}
           draggable={false}
           style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'cover',
             cursor: batchMode ? 'default' : 'pointer',
-            opacity: 0, transition: 'opacity var(--duration-normal) var(--ease-out)',
+            opacity: coverLoaded ? 1 : 0,
+            transition: 'opacity var(--duration-normal) var(--ease-out)',
           }}
           loading="lazy"
-          onLoad={e => { e.target.style.opacity = '1' }}
-          onError={e => { e.target.style.display = 'none' }} />
+          onLoad={() => setCoverLoaded(true)}
+          onError={() => setCoverError(true)} />
 
-        {/* 悬停操作层 — 底部渐变 + 按钮组 */}
-        {!batchMode && showOverlay && (
+        {/* 悬停操作层 */}
+        {showOverlay && !coverError && (
           <div onMouseDown={e => e.stopPropagation()} style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            gap: 'var(--space-2)', padding: 'var(--space-2)',
-            background: 'linear-gradient(transparent 60%, rgba(0,0,0,0.5))',
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end',
+            justifyContent: 'center', gap: 'var(--space-2)',
+            padding: 'var(--space-2)',
+            background: 'linear-gradient(transparent 60%, var(--overlay-bg))',
             zIndex: 5,
           }}>
-            <button onClick={e => { e.stopPropagation(); onOpenDetail(g.gid) }}
+            <motion.button
+              whileHover={{ background: 'var(--accent-bg-hover)' }}
+              onClick={e => { e.stopPropagation(); onOpenDetail(g.gid) }}
               style={{
                 padding: '4px 10px', borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                background: 'rgba(0,0,0,0.6)',
-                color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)',
-                cursor: 'pointer', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: 3,
-                transition: 'background var(--duration-instant) var(--ease-out)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,122,160,0.35)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}>
-              <IconEye size={12} /> 详情
-            </button>
-            <button onClick={e => { e.stopPropagation(); onOpenReader(g.gid) }}
+                border: '1px solid var(--divider)',
+                background: 'var(--overlay-bg)',
+                color: 'var(--canvas)', fontSize: 'var(--text-2xs)',
+                fontWeight: 'var(--weight-semibold)', cursor: 'pointer',
+                backdropFilter: 'blur(6px)', display: 'flex',
+                alignItems: 'center', gap: 4,
+              }}>
+              <Eye size={12} /> 详情
+            </motion.button>
+            <motion.button
+              whileHover={{ background: 'var(--accent-teal-bg-hover)' }}
+              onClick={e => { e.stopPropagation(); onOpenReader(g.gid) }}
               style={{
                 padding: '4px 10px', borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                background: 'rgba(0,0,0,0.6)',
-                color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)',
-                cursor: 'pointer', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: 3,
-                transition: 'background var(--duration-instant) var(--ease-out)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(90,138,138,0.35)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.6)' }}>
-              <IconBook size={12} /> 阅读
-            </button>
+                border: '1px solid var(--divider)',
+                background: 'var(--overlay-bg)',
+                color: 'var(--canvas)', fontSize: 'var(--text-2xs)',
+                fontWeight: 'var(--weight-semibold)', cursor: 'pointer',
+                backdropFilter: 'blur(6px)', display: 'flex',
+                alignItems: 'center', gap: 4,
+              }}>
+              <BookOpen size={12} /> 阅读
+            </motion.button>
           </div>
         )}
       </div>
 
-      {/* 信息区 — 紧凑排版 */}
+      {/* 信息区 */}
       <div style={{ padding: '6px 8px 8px' }}>
-        {/* 专辑标签（彩色 badge，一眼识别归属） */}
+        {/* 专辑标签 (动态颜色, 需内联) */}
         {albumInfo && !batchMode && (
           <div title={albumInfo.name} style={{
-            display: 'inline-block',
-            padding: '2px 7px', marginBottom: 3,
+            display: 'inline-block', padding: '2px 7px', marginBottom: 3,
             borderRadius: 'var(--radius-xs)',
-            background: albumInfo.color + '35',
+            background: `${albumInfo.color}35`,
             color: albumInfo.color,
             border: `1px solid ${albumInfo.color}80`,
-            textShadow: `0 0 1px ${albumInfo.color}50`,
-            fontSize: 'var(--text-3xs)',
-            fontWeight: 'var(--weight-bold)',
-            maxWidth: '100%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            fontSize: 'var(--text-3xs)', fontWeight: 'var(--weight-bold)',
+            maxWidth: '100%', overflow: 'hidden',
+            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {albumInfo.name}
           </div>
         )}
-        {/* 标题行 + 拖拽手柄 */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-1)' }}>
-          <div
-            title={g.title}
-            style={{
-              fontSize: 'var(--text-xs)', lineHeight: 1.4, overflow: 'hidden',
-              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-              color: 'var(--text-primary)', fontWeight: 'var(--weight-medium)',
-              userSelect: 'none',
-            }}>
-            {g.title}
-          </div>
+
+        {/* 标题 */}
+        <div
+          title={g.title}
+          style={{
+            fontSize: 'var(--text-xs)', lineHeight: 1.4, overflow: 'hidden',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            color: 'var(--text-primary)', fontWeight: 'var(--weight-medium)',
+            userSelect: 'none',
+          }}>
+          {g.title}
         </div>
 
-        {/* 元数据行 */}
+        {/* 元数据 */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginTop: 'var(--space-1)',
@@ -151,16 +174,17 @@ const GalleryCard = memo(({
             {formatCount(g.fileCount)}P · {formatSize(g.totalSize)}
           </span>
           {g.rating > 0 && (
-            <span style={{ color: 'var(--warning)', fontSize: 'var(--text-2xs)' }}>★ {g.rating.toFixed(1)}</span>
+            <span style={{ color: 'var(--warning)', fontSize: 'var(--text-2xs)' }}>
+              ★ {g.rating.toFixed(1)}
+            </span>
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 })
 
 GalleryCard.displayName = 'GalleryCard'
 
 export { GalleryCard, getCategoryColor, formatSize, CATEGORY_COLORS }
-// 向后兼容导出 — 新代码请直接从 '../constants/colors' 和 '../utils/format' 导入
 export default GalleryCard

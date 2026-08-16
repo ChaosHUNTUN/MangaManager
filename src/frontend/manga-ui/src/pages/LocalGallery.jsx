@@ -15,6 +15,7 @@ import GalleryRow from '../components/GalleryRow'
 import SortableGalleryCard from '../components/SortableGalleryCard'
 import ScrollToTop from '../components/ScrollToTop'
 import { IconGlobe, IconImport, IconBatch, IconRandom, IconTrash, IconRedownload, IconGrid, IconList, IconChevronLeft, IconChevronRight, IconSearch, IconFolder, IconEdit, IconEye, IconBook, IconClose, IconAlbum, IconDownload, IconGripDots } from '../components/Icons'
+import { User, Users, FolderOpen, Save, Hash, CheckCircle, XCircle, Rocket } from 'lucide-react'
 import { CATEGORY_COLORS } from '../components/GalleryCard'
 
 const PAGE_OPTIONS = [20, 40, 60]
@@ -260,7 +261,7 @@ export default function LocalGallery() {
 
   const renderGroupTag = (grp) => {
     const isActive = activeGroup === grp.key
-    const icon = grp.type === 'artist' ? '👤' : grp.type === 'group' ? '👥' : grp.type === 'multi' ? '👥👤' : '📦'
+    const icon = grp.type === 'artist' ? <User size={13} /> : grp.type === 'group' ? <Users size={13} /> : grp.type === 'multi' ? <Users size={13} /> : <FolderOpen size={13} />
     return (
       <span key={grp.key} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
         <button className="btn-sm" onClick={() => updateParams({ group: grp.key === 'all' ? null : grp.key, p: null })}
@@ -371,7 +372,7 @@ export default function LocalGallery() {
                 <button className="btn-sm" onClick={() => handleConvertGroupToAlbum(activeAuto)}
                   title="转为专辑"
                   style={{ color: 'var(--accent-teal)', borderColor: 'var(--accent-teal-bg)', whiteSpace: 'nowrap' }}>
-                  📁 转为专辑
+                  <FolderOpen size={13} /> 转为专辑
                 </button>
               )
             })()}
@@ -379,10 +380,10 @@ export default function LocalGallery() {
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
             <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })} style={{ height: 28, fontSize: 'var(--text-xs)' }}>
-              {activeGroup.startsWith('album:') && <option value="custom">🔢 自定义顺序</option>}
+              {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}
               {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
-            {isAlbumSortMode && <button className="btn-sm" onClick={() => { const ak = activeGroup.slice(6); const o = paged.map(g => g.gid); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], order: o }; saveAlbums(cfg); setToast('顺序已保存') }}>💾</button>}
+            {isAlbumSortMode && <button className="btn-sm" onClick={() => { const ak = activeGroup.slice(6); const o = paged.map(g => g.gid); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], order: o }; saveAlbums(cfg); setToast('顺序已保存') }}><Save size={13} /></button>}
             <div style={{ display: 'flex', gap: 0 }}>
               <button className="btn-sm" onClick={() => setViewMode('grid')} style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
               <button className="btn-sm" onClick={() => setViewMode('list')} style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
@@ -491,10 +492,10 @@ export default function LocalGallery() {
 
       {albumModal && (() => {
         const matched = albumModal.matchedAlbums || []; const gTags = albumModal.tags || []; const kt = gTags.filter(t => t.ns === 'artist' || t.ns === 'group')
-        return <div className="modal-overlay" onClick={() => setAlbumModal(null)}><div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}><h3>📁 添加到专辑</h3><p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumModal.title}</p>
-          {matched.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--warning)' }}>🔗 匹配的专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{matched.map(({ key, name, count }) => <button key={key} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; if (!cfg[key]) cfg[key] = { name: key, gids: [] }; cfg[key].gids = [...cfg[key].gids.filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${name}"`) }} style={{ borderColor: 'var(--accent-border)', color: 'var(--warning)' }}>📁 {name} ({count})</button>)}</div></div>}
-          {Object.keys(albumConfig).length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>选择已有专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{Object.entries(albumConfig).map(([key, val]) => { const isM = matched.some(m => m.key === key); return <button key={key} className="btn-sm" disabled={isM} onClick={() => { const cfg = { ...albumConfig }; cfg[key].gids = [...(cfg[key].gids || []).filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${val.name || key}"`) }} style={isM ? { opacity: 0.4 } : {}}>📁 {val.name || key} ({(val.gids || []).length})</button> })}</div></div>}
-          {kt.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>🏷 用关键标签创建专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{kt.map((t, i) => <button key={i} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; cfg[t.tag] = { name: t.tag, gids: [...(cfg[t.tag]?.gids || []), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已创建专辑 "${t.tag}"`) }}>{t.ns === 'artist' ? '👤' : '👥'} {t.tag}</button>)}</div></div>}
+        return <div className="modal-overlay" onClick={() => setAlbumModal(null)}><div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}><h3><FolderOpen size={14} /> 添加到专辑</h3><p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumModal.title}</p>
+          {matched.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--warning)' }}>匹配的专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{matched.map(({ key, name, count }) => <button key={key} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; if (!cfg[key]) cfg[key] = { name: key, gids: [] }; cfg[key].gids = [...cfg[key].gids.filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${name}"`) }} style={{ borderColor: 'var(--accent-border)', color: 'var(--warning)' }}><FolderOpen size={12} /> {name} ({count})</button>)}</div></div>}
+          {Object.keys(albumConfig).length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>选择已有专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{Object.entries(albumConfig).map(([key, val]) => { const isM = matched.some(m => m.key === key); return <button key={key} className="btn-sm" disabled={isM} onClick={() => { const cfg = { ...albumConfig }; cfg[key].gids = [...(cfg[key].gids || []).filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${val.name || key}"`) }} style={isM ? { opacity: 0.4 } : {}}><FolderOpen size={12} /> {val.name || key} ({(val.gids || []).length})</button> })}</div></div>}
+          {kt.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>用关键标签创建专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{kt.map((t, i) => <button key={i} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; cfg[t.tag] = { name: t.tag, gids: [...(cfg[t.tag]?.gids || []), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已创建专辑 "${t.tag}"`) }}>{t.ns === 'artist' ? <User size={12} /> : <Users size={12} />} {t.tag}</button>)}</div></div>}
           <div style={{ marginTop: 'var(--space-4)', textAlign: 'right' }}><button className="btn-sm" onClick={() => setAlbumModal(null)}>取消</button></div>
         </div></div>
       })()}
@@ -504,7 +505,7 @@ export default function LocalGallery() {
       {/* 编辑标签 */}
       {editTagsModal && (
         <div className="modal-overlay" onClick={() => setEditTagsModal(null)}><div className="modal" onClick={e => e.stopPropagation()}>
-          <h3>🏷 编辑标签</h3><p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>GID: {editTagsModal.gid} — {editTagsModal.title}</p>
+          <h3>编辑标签</h3><p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>GID: {editTagsModal.gid} — {editTagsModal.title}</p>
           <div style={{ marginTop: 'var(--space-3)' }}><input type="text" value={editTagsForm.title} onChange={e => setEditTagsForm(f => ({ ...f, title: e.target.value }))} style={{ width: '100%' }} placeholder="标题" /></div>
           <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
             <select value={editTagsForm.category} onChange={e => setEditTagsForm(f => ({ ...f, category: e.target.value }))} style={{ flex: 1 }}>
@@ -523,7 +524,7 @@ export default function LocalGallery() {
           </div>
           <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
             <button className="btn-sm" onClick={() => setEditTagsModal(null)}>取消</button>
-            <button className="btn-sm" onClick={async () => { setEditTagsSaving(true); try { const ct = {}; Object.entries(editTagsForm.tags).forEach(([k, v]) => { if (v && v.length > 0) ct[k] = v }); await updateGalleryMetaTags(editTagsModal.gid, { tags: ct, title: editTagsForm.title, category: editTagsForm.category, language: editTagsForm.language || null }); setEditTagsModal(null); loadMetas(); loadPaged(); setToast('标签已更新') } catch (e) { setToast('更新失败: ' + e.message) }; setEditTagsSaving(false) }} disabled={editTagsSaving} style={{ color: 'var(--warning)' }}>💾 保存</button>
+            <button className="btn-sm" onClick={async () => { setEditTagsSaving(true); try { const ct = {}; Object.entries(editTagsForm.tags).forEach(([k, v]) => { if (v && v.length > 0) ct[k] = v }); await updateGalleryMetaTags(editTagsModal.gid, { tags: ct, title: editTagsForm.title, category: editTagsForm.category, language: editTagsForm.language || null }); setEditTagsModal(null); loadMetas(); loadPaged(); setToast('标签已更新') } catch (e) { setToast('更新失败: ' + e.message) }; setEditTagsSaving(false) }} disabled={editTagsSaving} style={{ color: 'var(--warning)' }}><Save size={13} /> 保存</button>
           </div>
         </div></div>
       )}
@@ -531,9 +532,9 @@ export default function LocalGallery() {
       {/* 导入外部作品 */}
       {importModal && (
         <div className="modal-overlay" onClick={() => setImportModal(false)}><div className="modal" onClick={e => e.stopPropagation()}>
-          <h3>📥 导入外部作品</h3>
+          <h3>导入外部作品</h3>
           <div style={{ marginTop: 'var(--space-3)' }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}><input type="text" value={importForm.sourceDir} onChange={e => setImportForm(f => ({ ...f, sourceDir: e.target.value }))} style={{ flex: 1 }} placeholder="源文件夹路径" /><button className="btn-sm" onClick={async () => { try { const d = await browseDirectory(importForm.sourceDir || ''); setImportDirBrowser({ show: true, path: importForm.sourceDir || '', items: d, stack: [importForm.sourceDir || ''] }) } catch (e) { setToast('无法浏览: ' + e.message) } }}>📁 浏览</button></div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}><input type="text" value={importForm.sourceDir} onChange={e => setImportForm(f => ({ ...f, sourceDir: e.target.value }))} style={{ flex: 1 }} placeholder="源文件夹路径" /><button className="btn-sm" onClick={async () => { try { const d = await browseDirectory(importForm.sourceDir || ''); setImportDirBrowser({ show: true, path: importForm.sourceDir || '', items: d, stack: [importForm.sourceDir || ''] }) } catch (e) { setToast('无法浏览: ' + e.message) } }}><FolderOpen size={12} /> 浏览</button></div>
           </div>
           {importDirBrowser.show && (
             <div style={{ marginTop: 'var(--space-2)', maxHeight: 180, overflowY: 'auto', background: 'var(--surface-card)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', padding: 'var(--space-1)' }}>
@@ -542,7 +543,7 @@ export default function LocalGallery() {
                 <div key={i} style={{ padding: '3px 8px', cursor: d.isDir ? 'pointer' : 'default', fontSize: 'var(--text-xs)', color: d.isDir ? 'var(--accent-teal)' : 'var(--text-muted)', borderRadius: 'var(--radius-xs)', display: 'flex', alignItems: 'center', gap: 6 }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover-bg)' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                   onClick={async () => { if (d.isDir) { const data = await browseDirectory(d.path); setImportDirBrowser(p => ({ ...p, path: d.path, items: data, stack: [...p.stack, d.path] })) } }}>
-                  {d.isDir ? '📁' : '📄'} {d.name}
+                  {d.isDir ? <FolderOpen size={12} /> : <span style={{ fontSize:'var(--text-2xs)' }}>📄</span>} {d.name}
                   <button className="btn-sm" onClick={() => { const dir = d.isDir ? d.path : importDirBrowser.path; const dn = d.isDir ? d.name : (importDirBrowser.path.split(/[\\/]/).filter(Boolean).pop() || ''); setImportForm(f => ({ ...f, sourceDir: dir, title: f.title || dn })); setImportDirBrowser({ show: false, path: '', items: [], stack: [] }) }} style={{ marginLeft: 'auto', fontSize: 'var(--text-3xs)', padding: '1px 4px' }}>选此</button>
                 </div>
               ))}
@@ -587,13 +588,13 @@ export default function LocalGallery() {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', cursor: 'pointer' }}><input type="checkbox" checked={batchImportForm.copyFiles} onChange={e => setBatchImportForm(f => ({ ...f, copyFiles: e.target.checked }))} />复制文件到画廊目录</label>
           {batchImportResult && (
             <div style={{ marginTop: 'var(--space-3)', maxHeight: 180, overflowY: 'auto', fontSize: 'var(--text-xs)' }}>
-              <div style={{ color: 'var(--success)' }}>✅ 成功 {batchImportResult.success} / ❌ 失败 {batchImportResult.failed}</div>
-              {batchImportResult.results.map((r, i) => <div key={i} style={{ color: r.success ? 'var(--success)' : 'var(--error)' }}>{r.success ? `✅ ${r.title} (${r.fileCount}页)` : `❌ ${r.folder}: ${r.error}`}</div>)}
+              <div style={{ color: 'var(--success)' }}><CheckCircle size={12} /> 成功 {batchImportResult.success} / <XCircle size={12} style={{color:'var(--error)'}} /> 失败 {batchImportResult.failed}</div>
+              {batchImportResult.results.map((r, i) => <div key={i} style={{ color: r.success ? 'var(--success)' : 'var(--error)' }}>{r.success ? <><CheckCircle size={12} /> {r.title} ({r.fileCount}页)</> : <><XCircle size={12} /> {r.folder}: {r.error}</>}</div>)}
             </div>
           )}
           <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
             <button className="btn-sm" onClick={() => { setBatchImportModal(false); setBatchImportResult(null); setImportDirBrowser({ show: false, path: '', items: [], stack: [] }) }}>关闭</button>
-            <button className="btn-sm" onClick={async () => { if (!batchImportForm.parentDir.trim()) { setToast('请选择父目录'); return }; setBatchImporting(true); try { const r = await batchImportGalleries(batchImportForm.parentDir.trim(), batchImportForm.copyFiles); setBatchImportResult(r); loadMetas(); loadPaged() } catch (e) { setToast('批量导入失败: ' + e.message) }; setBatchImporting(false) }} disabled={batchImporting} style={{ color: 'var(--warning)' }}>{batchImporting ? '导入中...' : '🚀 开始'}</button>
+            <button className="btn-sm" onClick={async () => { if (!batchImportForm.parentDir.trim()) { setToast('请选择父目录'); return }; setBatchImporting(true); try { const r = await batchImportGalleries(batchImportForm.parentDir.trim(), batchImportForm.copyFiles); setBatchImportResult(r); loadMetas(); loadPaged() } catch (e) { setToast('批量导入失败: ' + e.message) }; setBatchImporting(false) }} disabled={batchImporting} style={{ color: 'var(--warning)' }}>{batchImporting ? '导入中...' : <><Rocket size={12} /> 开始</>}</button>
           </div>
         </div></div>
       )}

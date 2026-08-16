@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { BookOpen } from 'lucide-react'
 import { API_BASE } from '../api'
 
 /**
@@ -27,9 +28,9 @@ export default function ReaderRedirect() {
   }, [id, navigate])
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: '#888' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-muted)' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>📖</div>
+        <div style={{ fontSize: '1.5rem', marginBottom: 8 }}><BookOpen size={28} /></div>
         <div>正在加载阅读器...</div>
       </div>
     </div>

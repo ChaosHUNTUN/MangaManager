@@ -20,7 +20,7 @@ export default function EHentai() {
   useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) }, [])
 
   // ─── 业务 Hooks（全部在 JSX 之前、一次性调用完毕） ───
-  const cookieHook = useEHCookie({ onCookieSaved: () => { setPopularMode(); browse('', true, true) } })
+  const cookieHook = useEHCookie({ onCookieSaved: () => { setPopularMode(true); browse('', true, true) } })
   const { showCookie, setShowCookie, cookieForm, setCookieForm, cookieInfo, cookieValidating, validateResult, cookieMsg, connectivity, handleSaveCookie, handleValidate } = cookieHook
 
   const browseHook = useEHBrowse()
@@ -28,7 +28,7 @@ export default function EHentai() {
     exhentai, setExhentai, popularMode, setPopularMode, loadMoreRef,
     localGids, setLocalGids, downloadingGids, setDownloadingGids,
     filters, setFilters, toggleCategory, toggleAdvSearch, showAdvanced, setShowAdvanced,
-    browse, togglePopular } = browseHook
+    browse, goPopular } = browseHook
 
   const searchHook = useEHSearch({ search, setSearch, browse, exhentai, setPopularMode })
   const { tagSuggestions, showSuggestions, setShowSuggestions, searchInputRef, handleSearchInput, applyTag, handleSearchKey } = searchHook
@@ -37,7 +37,7 @@ export default function EHentai() {
   const { detail, setDetail, detailLoading, tagTranslations, nsTranslations,
     activeTag, setActiveTag, blockedTags, showBlockedPanel, setShowBlockedPanel,
     loadBlockedTags, handleBlockTag, handleUnblockTag, openDetail, openDetailViaApi, openReader,
-    readerDetail, handleDownload } = detailHook
+    readerDetail, setReaderDetail, handleDownload } = detailHook
 
   // 初始加载（独立 Hook，不污染组件体）
   useEHInit({ browse, openDetailViaApi, cookieInfo })
@@ -170,7 +170,7 @@ export default function EHentai() {
           )}
         </div>
         <button className="btn-primary" onClick={doSearch} disabled={loading}>搜索</button>
-        <button className="btn-sm" onClick={togglePopular} style={{ borderColor: popularMode ? '#f59e0b' : '#444', color: popularMode ? '#fbbf24' : '#888', fontWeight: popularMode ? 600 : 400 }}>热门</button>
+        <button className="btn-sm" onClick={goPopular}>热门</button>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', color: '#888', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={exhentai} onChange={e => toggleExhentai(e.target.checked)} />里站
         </label>

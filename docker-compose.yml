@@ -1,0 +1,46 @@
+services:
+  # ====== API 后端 (ASP.NET Core 9) ======
+  api:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    container_name: mangamanager-api
+    ports:
+      - "5208:5208"
+    volumes:
+      # DB + 配置持久化
+      - ./data/api-data:/app/data
+      # 下载目录
+      - mangamanager-downloads:/app/downloads
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Docker
+      - Database__Provider=sqlite
+      - ConnectionStrings__Default=Data Source=/app/data/manga.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5208/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ====== 前端 (React + Nginx) ======
+  frontend:
+    build:
+      context: .
+      dockerfile: src/frontend/Dockerfile
+    container_name: mangamanager-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  mangamanager-downloads:
+
+# 本地开发时前端用 Vite proxy，不需要 nginx。
+# 启动方式:
+#   docker compose up api          # 仅启动 API
+#   cd src/frontend/manga-ui && npm run dev  # 本地启动 Vite 前端

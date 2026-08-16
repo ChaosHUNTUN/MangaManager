@@ -71,11 +71,7 @@ export default function useEHBrowse() {
     if (!ctrl.signal.aborted) setLoading(false)
   }
 
-  const togglePopular = () => {
-    const newMode = !popularMode
-    setPopularMode(newMode)
-    if (newMode) { setSearch(''); browse('', exhentai) }
-  }
+  const goPopular = () => { setSearch(''); browse('', exhentai, true) }
 
   const loadMore = useCallback(async () => {
     if (loadingMore || loading || !hasMore || !nextCursor) return
@@ -118,6 +114,6 @@ export default function useEHBrowse() {
     exhentai, setExhentai, popularMode, setPopularMode, loadMoreRef,
     localGids, setLocalGids, downloadingGids, setDownloadingGids,
     filters, setFilters, toggleCategory, toggleAdvSearch, buildFiltersObj,
-    showAdvanced, setShowAdvanced, browse, togglePopular, loadMore,
+    showAdvanced, setShowAdvanced, browse, goPopular, loadMore,
   }
 }
