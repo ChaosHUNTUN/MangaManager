@@ -47,6 +47,10 @@ export default function DownloadMonitor() {
         } else if (msg.type === 'download_update') {
           const update = msg.data
           setTasks(prev => {
+            if (update.status === 'removed') {
+              // 任务被删除：直接从列表移除，而不是残留为“已移除”灰条
+              return prev.filter(t => t.gid !== update.gid)
+            }
             const idx = prev.findIndex(t => t.gid === update.gid)
             if (idx >= 0) {
               const next = [...prev]
@@ -169,7 +173,13 @@ export default function DownloadMonitor() {
                 task={task}
                 onPause={() => pauseDownloadTask(task.gid).then(() => showToast('已暂停')).catch(e => showToast(e.message, 'error'))}
                 onResume={() => resumeDownloadTask(task.gid).then(() => showToast('已恢复')).catch(e => showToast(e.message, 'error'))}
-                onRemove={() => removeDownloadTask(task.gid).then(() => showToast('已移除')).catch(e => showToast(e.message, 'error'))}
+                onRemove={() => {
+                  // 先本地移除获得即时反馈，失败时由 SSE/下次拉取自动恢复
+                  setTasks(prev => prev.filter(t => t.gid !== task.gid))
+                  removeDownloadTask(task.gid)
+                    .then(() => showToast('已移除'))
+                    .catch(e => showToast(e.message, 'error'))
+                }}
                 onRestart={() => restartDownloadTask(task.gid).then(() => showToast('已重启')).catch(e => showToast(e.message, 'error'))}
               />
             ))}
@@ -267,10 +277,8 @@ function TaskRow({ task, onPause, onResume, onRemove, onRestart }) {
           <button onClick={onRestart} title="重试"
             style={btnStyle('#f59e0b')}>🔄</button>
         )}
-        {(task.status === 'completed' || task.status === 'failed' || task.status === 'paused') && (
-          <button onClick={onRemove} title="移除"
-            style={btnStyle('#ef4444')}>✕</button>
-        )}
+        <button onClick={onRemove} title={task.status === 'downloading' ? '取消下载' : '移除'}
+          style={btnStyle('#ef4444')}>✕</button>
       </div>
     </div>
   )

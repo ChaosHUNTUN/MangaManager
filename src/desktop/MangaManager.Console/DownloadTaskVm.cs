@@ -139,7 +139,7 @@ public class DownloadTaskVm : INotifyPropertyChanged
         Status is "failed" or "paused" ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility RemoveVisible =>
-        Status is "pending" or "paused" or "failed" or "completed" ? Visibility.Visible : Visibility.Collapsed;
+        Status is "pending" or "downloading" or "paused" or "failed" or "completed" ? Visibility.Visible : Visibility.Collapsed;
 
     [System.Text.Json.Serialization.JsonIgnore]
     public string SpeedText => string.IsNullOrEmpty(_apiSpeedText) ? "0 B/s" : _apiSpeedText;

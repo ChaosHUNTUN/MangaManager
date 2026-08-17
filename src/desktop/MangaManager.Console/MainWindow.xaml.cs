@@ -557,12 +557,26 @@ public partial class MainWindow : Window
 
     private async void BtnRemoveTask_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is int gid)
+        if (sender is not Button btn || btn.Tag is not int gid) return;
+        try
         {
-            await _http.DeleteAsync($"{_apiUrl}/api/download/tasks/{gid}");
-            var task = _tasks.FirstOrDefault(t => t.Gid == gid);
-            if (task != null) _tasks.Remove(task);
-            Log($"移除任务 GID={gid}");
+            var resp = await _http.DeleteAsync($"{_apiUrl}/api/download/tasks/{gid}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var task = _tasks.FirstOrDefault(t => t.Gid == gid);
+                if (task != null) _tasks.Remove(task);
+                Log($"移除任务 GID={gid}");
+                // 立即同步一次，避免残留旧任务（同时消除与轮询快照的竞态）
+                await RefreshDownloadTasks();
+            }
+            else
+            {
+                Log($"移除任务失败 GID={gid} (HTTP {(int)resp.StatusCode})");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"移除任务失败 GID={gid}: {ex.Message}");
         }
     }
 

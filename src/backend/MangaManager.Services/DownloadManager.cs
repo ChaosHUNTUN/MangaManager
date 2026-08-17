@@ -121,12 +121,14 @@ public class DownloadManager
     /// <summary>取消/移除任务</summary>
     public bool RemoveTask(int gid)
     {
-        if (!_tasks.TryRemove(gid, out var t)) return false;
+        // 无论任务是否在内存字典中，都尝试删除 DB 记录（API 重启后历史已完成任务不在内存中）
+        _tasks.TryRemove(gid, out var t);
         if (_taskCts.TryRemove(gid, out var cts))
         {
             try { cts.Cancel(); } finally { cts.Dispose(); }
         }
-        DeleteTaskFromDb(gid);
+        var deleted = DeleteTaskFromDb(gid);
+        if (!deleted && t == null) return false;
         BroadcastUpdate(new DownloadTask { Gid = gid, Status = "removed" });
         return true;
     }
@@ -693,18 +695,22 @@ public class DownloadManager
         }
     }
 
-    private void DeleteTaskFromDb(int gid)
+    private bool DeleteTaskFromDb(int gid)
     {
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
             var task = db.DownloadTasks.FirstOrDefault(t => t.Gid == gid);
-            if (task != null) { db.DownloadTasks.Remove(task); db.SaveChanges(); }
+            if (task == null) return false;
+            db.DownloadTasks.Remove(task);
+            db.SaveChanges();
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogInformation($"[DownloadManager] 删除任务失败: {ex.Message}");
+            return false;
         }
     }
 
