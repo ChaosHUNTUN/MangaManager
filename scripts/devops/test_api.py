@@ -1,6 +1,7 @@
+import os
 import urllib.request, json
 
-BASE = 'http://localhost:5000/api'
+BASE = 'http://localhost:5208/api'
 results = []
 
 def test(name, url, method='GET', body=None, expected_status=200):
@@ -68,7 +69,7 @@ test('GET 越界页码', f'{BASE}/reader/manga/{mid}/page/99999', expected_statu
 # 5. 扫描（空目录/无效目录）
 print('\n--- 5. 扫描接口 ---')
 test('POST 无效目录', f'{BASE}/manga/scan', 'POST', {'directory':'X:\\不存在的路径'}, expected_status=400)
-test('POST 空目录', f'{BASE}/manga/scan', 'POST', {'directory':'D:\\MangaManager\\docs'}, expected_status=400)
+test('POST 空目录', f'{BASE}/manga/scan', 'POST', {'directory': os.path.join(os.path.dirname(__file__), '..', '..', 'docs')}, expected_status=400)
 
 # 6. 边界条件
 print('\n--- 6. 边界条件 ---')

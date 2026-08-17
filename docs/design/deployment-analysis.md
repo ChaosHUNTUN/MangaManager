@@ -72,11 +72,11 @@
 services:
   manga-api:
     build: ./src/backend
-    ports: ["5000:5000"]
+    ports: ["5208:5208"]
   manga-db:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
   manga-ui:
     build: ./src/frontend
     ports: ["80:80"]
@@ -123,7 +123,7 @@ MangaManager-v1.0/
 1. 复制 MangaManager-v1.0 文件夹到目标设备
 2. （可选）安装 NeeView，在 appsettings.json 中配置路径
 3. 双击 MangaManager.exe
-4. 浏览器打开 http://localhost:5000
+4. 浏览器打开 http://localhost:5208
 ```
 
 **总大小**：约 80-100 MB（自包含 .NET 运行时 + 前端 + 数据库驱动）
@@ -170,7 +170,7 @@ D:\MangaManager-release\MangaManager\
 1. 复制 MangaManager 文件夹到目标设备
 2. （可选）安装 NeeView，编辑 appsettings.json 设置路径
 3. 双击 MangaManager.Api.exe
-4. 浏览器打开 http://localhost:5000
+4. 浏览器打开 http://localhost:5208
 5. 点击「扫描入库」导入漫画
 ```
 

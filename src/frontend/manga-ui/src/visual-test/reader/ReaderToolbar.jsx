@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, ArrowLeftRight, ArrowUpDown,
-  BookOpen, GripHorizontal, Sun, ZoomIn, ZoomOut, Maximize, Play, Pause,
+  BookOpen, GripHorizontal, Sun, ZoomIn, ZoomOut, Maximize, Play, Pause, HelpCircle,
 } from 'lucide-react';
 import ThumbnailStrip from './ThumbnailStrip';
 
@@ -30,6 +30,8 @@ export default function ReaderToolbar({
   goBack: _goBack, goForward: _goForward,
   // 图片
   images, pageStep, setCurrentPage,
+  onBack,
+  showHelp, onToggleHelp,
 }) {
   const fitLabel = fit === 'both' ? '⊡' : fit === 'width' ? '⊡W' : fit === 'height' ? '⊡H' : '1:1';
   const bgName = ['暗色', '纯黑', '纸色'][background];
@@ -42,7 +44,7 @@ export default function ReaderToolbar({
         {uiVisible && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }} className="r-hud">
-            <button className="r-hud-back" onClick={() => window.history.back()}>
+            <button className="r-hud-back" onClick={onBack || (() => window.history.back())}>
               <ArrowLeft size={16} />返回
             </button>
             <div>
@@ -50,10 +52,15 @@ export default function ReaderToolbar({
               <div className="r-hud-sub">{currentPage + 1}/{totalPages}</div>
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
-              <Btn active={direction === 'ltr'} onClick={() => setDirection(d => d === 'rtl' ? 'ltr' : 'rtl')}
-                title="阅读方向" icon={direction === 'rtl' ? <ArrowLeftRight size={15} /> : <ArrowLeftRight size={15} style={{transform:'scaleX(-1)'}} />} />
+              <Btn active={direction === 'horizontal'} onClick={() => setDirection(d => d === 'horizontal' ? 'vertical' : 'horizontal')}
+                title={`滚动方向: ${direction === 'horizontal' ? '横向' : '纵向'}`}
+                icon={direction === 'horizontal' ? <ArrowLeftRight size={15} /> : <ArrowUpDown size={15} />} />
               <Btn active={showThumbs} onClick={() => { setShowThumbs(v => !v); if (!uiVisible) setUiVisible(true); }}
                 title="缩略图" icon={<GripHorizontal size={15} />} />
+              {onToggleHelp && (
+                <Btn active={showHelp} onClick={onToggleHelp} title="快捷键 (?)"
+                  icon={<HelpCircle size={15} />} />
+              )}
             </div>
           </motion.div>
         )}

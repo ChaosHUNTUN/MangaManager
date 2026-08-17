@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import EhentaiReader from '../components/EhentaiReader'
 import ScrollToTop from '../components/ScrollToTop'
 import { getEHImageProxyUrl, API_BASE } from '../api'
 import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
@@ -36,8 +35,8 @@ export default function EHentai() {
   const detailHook = useEHDetail({ showToast, localGids, setLocalGids, setDownloadingGids, setError })
   const { detail, setDetail, detailLoading, tagTranslations, nsTranslations,
     activeTag, setActiveTag, blockedTags, showBlockedPanel, setShowBlockedPanel,
-    loadBlockedTags, handleBlockTag, handleUnblockTag, openDetail, openDetailViaApi, openReader,
-    readerDetail, setReaderDetail, handleDownload } = detailHook
+    loadBlockedTags, handleBlockTag, handleUnblockTag, openDetail, openDetailViaApi,
+    handleDownload } = detailHook
 
   // 初始加载（独立 Hook，不污染组件体）
   useEHInit({ browse, openDetailViaApi, cookieInfo })
@@ -51,14 +50,6 @@ export default function EHentai() {
   const doSearch = useCallback(() => { setPopularMode(false); browse(search, exhentai) }, [setPopularMode, browse, search, exhentai])
   const retryBrowse = useCallback(() => browse(search, exhentai), [browse, search, exhentai])
   const closeDetailModal = useCallback((e) => { if (e.target === e.currentTarget) setDetail(null) }, [setDetail])
-  const closeReader = useCallback(() => setReaderDetail(null), [setReaderDetail])
-  const openReaderFromDetail = useCallback((d) => openReader(d), [openReader])
-
-  // ─── 阅读器独占 ───
-  if (readerDetail) {
-    return <EhentaiReader detail={readerDetail} onClose={closeReader}
-      onError={(msg) => { setError(msg); closeReader() }} />
-  }
 
   // ══════════════════════════════════════════
   // 以下全部为 UI 渲染（纯 JSX，零业务逻辑）
@@ -362,8 +353,7 @@ export default function EHentai() {
               </div>
             )}
             <div style={{ padding: '14px 24px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <a href={`https://${detail.isExhentai ? 'exhentai' : 'e-hentai'}.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer" className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 {detail.isExhentai ? 'ExHentai' : 'E-Hentai'} 打开</a>
-              <button className="btn-sm" onClick={() => openReaderFromDetail(detail)} style={{ borderColor: '#10b981', color: '#6ee7b7' }}>📖 在线阅读</button>
+              <a href={`${API_BASE}/api/ehentai/open/${detail.gid}/${detail.token}?exhentai=${detail.isExhentai ? 'true' : 'false'}`} target="_blank" rel="noreferrer" className="btn-sm" style={{ textDecoration: 'none', color: '#a78bfa', borderColor: '#7c3aed' }}>🌐 在 {detail.isExhentai ? 'ExHentai' : 'E-Hentai'} 打开</a>
               {localGids.has(detail.gid) ? <button className="btn-sm" disabled style={{ borderColor: '#10b981', color: '#6ee7b7', opacity: 0.7 }}>✅ 已下载</button>
                 : downloadingGids.has(detail.gid) ? <button className="btn-sm" disabled style={{ borderColor: '#60a5fa', color: '#93c5fd', opacity: 0.7 }}>⏳ 下载中</button>
                 : <button className="btn-sm" onClick={() => handleDownload(detail)} style={{ borderColor: '#f59e0b', color: '#fbbf24' }}>⬇ 下载</button>}

@@ -77,7 +77,12 @@ namespace MangaManager.Data.Migrations
             modelBuilder.Entity("MangaManager.Core.Entities.LocalGallery", b =>
                 {
                     b.Property<int>("Gid")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("AlbumKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Artists")
                         .HasColumnType("text");
@@ -134,6 +139,8 @@ namespace MangaManager.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Gid");
+
+                    b.HasIndex("AlbumKey");
 
                     b.HasIndex("Category");
 

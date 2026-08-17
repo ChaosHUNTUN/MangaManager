@@ -448,7 +448,7 @@
                                                     <TextBlock x:Name="TxtApiStatus" Text="检查中..." FontSize="12"
                                                                Foreground="{StaticResource TextSecondary}"/>
                                                 </StackPanel>
-                                                <TextBlock x:Name="TxtApiEndpoint" Text="localhost:5000" FontSize="10"
+                                                <TextBlock x:Name="TxtApiEndpoint" Text="localhost:5208" FontSize="10"
                                                            Foreground="{StaticResource TextMuted}"
                                                            HorizontalAlignment="Right"/>
                                             </Grid>

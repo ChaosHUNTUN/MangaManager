@@ -12,12 +12,27 @@ if (!string.IsNullOrWhiteSpace(downloadDir))
     EhentaiFileHelper.DefaultDownloadDir = downloadDir;
 }
 
-// CORS - 允许前端跨域
+// CORS - 仅允许配置的前端来源；生产环境同源托管时此策略不参与
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins);
+        }
+        else
+        {
+            // 默认只允许本机前端开发端口；保留配置能力，便于局域网部署时显式收紧到具体域名。
+            policy.SetIsOriginAllowed(origin =>
+            {
+                return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+                    && uri.Port is 5173 or 5208;
+            });
+        }
+        policy.AllowAnyMethod().AllowAnyHeader();
     });
 });
 
@@ -197,7 +212,7 @@ using (var scope = app.Services.CreateScope())
         // 每日自动备份（距上次备份超过24小时则执行）
         try
         {
-            var dbPath = Path.Combine(app.Environment.ContentRootPath, "manga.db");
+            var dbPath = GetSqliteDatabasePath(app);
             var backupDir = Path.Combine(app.Environment.ContentRootPath, "backups");
             Directory.CreateDirectory(backupDir);
             var latestBackup = Directory.GetFiles(backupDir, "manga_*.db")
@@ -226,7 +241,7 @@ app.MapPost("/api/admin/backup", () =>
 {
     try
     {
-        var dbPath = Path.Combine(app.Environment.ContentRootPath, "manga.db");
+        var dbPath = GetSqliteDatabasePath(app);
         var backupDir = Path.Combine(app.Environment.ContentRootPath, "backups");
         Directory.CreateDirectory(backupDir);
         var backupName = $"manga_{DateTime.UtcNow:yyyyMMdd_HHmmss}_manual.db";
@@ -279,6 +294,29 @@ _ = Task.Run(async () =>
 
 app.Run();
 return; // ---- 以下为辅助方法 ----
+
+/// <summary>从 SQLite 连接串解析实际数据库文件路径，兼容相对路径和绝对路径。</summary>
+static string GetSqliteDatabasePath(WebApplication app)
+{
+    var connectionString = app.Configuration.GetConnectionString("Default");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        return Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "manga.db"));
+
+    var dataSource = connectionString
+        .Split(';', StringSplitOptions.RemoveEmptyEntries)
+        .Select(p => p.Trim())
+        .FirstOrDefault(p => p.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase));
+    if (dataSource == null)
+        return Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "manga.db"));
+
+    var value = dataSource["Data Source=".Length..].Trim().Trim('"', '\'');
+    if (string.IsNullOrWhiteSpace(value))
+        return Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "manga.db"));
+
+    return Path.IsPathRooted(value)
+        ? Path.GetFullPath(value)
+        : Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, value));
+}
 
 /// <summary>回填 AllTags：对迁移前旧记录的 AllTags 字段为空的，从 .meta.json 重读并写入 DB</summary>
 static void BackfillAllTagsFromMetaFiles(WebApplication app, MangaDbContext db, string? dlDir)

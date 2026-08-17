@@ -1,7 +1,7 @@
 """从空目录的 .eh 文件提取 token，调用后端 API 触发重新下载
 
 用法:
-  python scripts/db/redownload_empty.py [--scan-dir "G:/学习资料/本子"] [--api-base http://localhost:5000] [--dry-run]
+  python scripts/db/redownload_empty.py [--scan-dir <download-dir>] [--api-base http://localhost:5208] [--dry-run]
 """
 import sqlite3
 import os
@@ -12,7 +12,7 @@ import json
 import time
 
 SCAN_DIR = r"G:\学习资料\本子"
-API_BASE = "http://localhost:5000"
+API_BASE = "http://localhost:5208"
 DRY_RUN = "--dry-run" in sys.argv
 
 for arg in sys.argv[1:]:

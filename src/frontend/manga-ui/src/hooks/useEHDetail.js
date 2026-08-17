@@ -9,7 +9,6 @@ export default function useEHDetail({ showToast, localGids, setLocalGids, setDow
   const [activeTag, setActiveTag] = useState(null)
   const [blockedTags, setBlockedTags] = useState([])
   const [showBlockedPanel, setShowBlockedPanel] = useState(false)
-  const [readerDetail, setReaderDetail] = useState(null)
 
   const loadBlockedTags = async () => {
     try { const tags = await fetchBlockedTags(); setBlockedTags(tags) } catch { }
@@ -53,8 +52,6 @@ export default function useEHDetail({ showToast, localGids, setLocalGids, setDow
     setDetailLoading(false)
   }
 
-  const openReader = (d) => { setDetail(null); setReaderDetail(d) }
-
   // 接收已获取的详情数据（供 init Hook 使用，无需重复 fetch）
   const openDetailViaApi = async (d) => {
     setDetail(d); setTagTranslations({}); setNsTranslations({})
@@ -92,7 +89,7 @@ export default function useEHDetail({ showToast, localGids, setLocalGids, setDow
     detail, setDetail, detailLoading, tagTranslations, nsTranslations,
     activeTag, setActiveTag, blockedTags, setBlockedTags, showBlockedPanel,
     setShowBlockedPanel, loadBlockedTags, translateDetailTags,
-    handleBlockTag, handleUnblockTag, openDetail, openDetailViaApi, openReader,
-    readerDetail, setReaderDetail, handleDownload,
+    handleBlockTag, handleUnblockTag, openDetail, openDetailViaApi,
+    handleDownload,
   }
 }

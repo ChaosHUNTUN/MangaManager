@@ -6,8 +6,12 @@ export async function request(path, options = {}) {
   const url = `${API_BASE}${path}`
   const { signal, ...fetchOptions } = options
 
+  // 仅对幂等的读操作自动重试；POST/PUT/DELETE 因网络抖动重试可能造成重复执行，只尝试一次
+  const method = (fetchOptions.method || 'GET').toUpperCase()
+  const maxAttempts = (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') ? 2 : 1
+
   let lastError = null
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const res = await fetch(url, { ...fetchOptions, signal })
       if (!res.ok) {
@@ -20,7 +24,7 @@ export async function request(path, options = {}) {
     } catch (e) {
       lastError = e
       if (signal?.aborted) throw e
-      if (attempt === 0) await new Promise(r => setTimeout(r, 500))
+      if (attempt < maxAttempts - 1) await new Promise(r => setTimeout(r, 500))
     }
   }
   throw lastError

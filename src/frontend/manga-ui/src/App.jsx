@@ -35,7 +35,7 @@ function OfflineBanner({ onRetry }) {
       padding: '10px 20px', textAlign: 'center', fontSize: '0.85rem',
       borderBottom: '1px solid #ef444440', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12
     }}>
-      <span>⚠️ 无法连接到后端服务 (localhost:5000)</span>
+      <span>⚠️ 无法连接到后端服务 (localhost:5208)</span>
       <button onClick={onRetry} style={{
         background: '#ef444420', border: '1px solid #ef444460', color: '#fca5a5',
         padding: '3px 12px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem'

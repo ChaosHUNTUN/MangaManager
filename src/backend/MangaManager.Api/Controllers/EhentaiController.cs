@@ -174,6 +174,8 @@ public class EhentaiController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(url))
             return BadRequest(new ApiResponse<object>(false, null, "缺少 url 参数"));
+        if (!IsAllowedImageProxyUrl(url))
+            return BadRequest(new ApiResponse<object>(false, null, "仅允许代理 E-Hentai 相关图片地址"));
         try
         {
             if (url.Contains("/s/"))
@@ -195,6 +197,27 @@ public class EhentaiController : ControllerBase
         catch (Exception ex) { return BadRequest(new ApiResponse<object>(false, null, ex.Message)); }
     }
 
+    private static readonly string[] AllowedImageProxyHosts =
+    {
+        "e-hentai.org",
+        "exhentai.org",
+        "ehgt.org",
+        "hath.network"
+    };
+
+    private static bool IsAllowedImageProxyUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+
+        var host = uri.Host.ToLowerInvariant();
+        return AllowedImageProxyHosts.Any(h =>
+            host.Equals(h, StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase));
+    }
+
     // ==================== 搜索翻译 + 页面代理 ====================
 
     [HttpGet("search/translate")]
@@ -214,6 +237,26 @@ public class EhentaiController : ControllerBase
         try
         {
             var (html, contentType) = await _svc.GetGalleryPageHtmlAsync(gid, token, p);
+            return Content(html, contentType);
+        }
+        catch (Exception ex) { return BadRequest(new ApiResponse<object>(false, null, ex.Message)); }
+    }
+
+    /// <summary>「在站点查看」：用后端已保存的 Cookie 抓取画廊详情页并代理返回（浏览器无需自行持有 Cookie）</summary>
+    [HttpGet("open/{gid}/{token}")]
+    public async Task<IActionResult> OpenGallery(int gid, string token, [FromQuery] bool exhentai = false)
+    {
+        if (!_svc.HasCookie())
+            return Unauthorized(new ApiResponse<object>(false, null, "请先配置并保存 E-Hentai Cookie"));
+        try
+        {
+            var (html, contentType) = await _svc.GetGalleryDetailHtmlAsync(gid, token, exhentai);
+            // 注入 <base> 使页面内相对链接/资源正确解析到对应站点
+            var host = exhentai ? "https://exhentai.org" : "https://e-hentai.org";
+            var baseTag = $"<base href=\"{host}/\">";
+            html = html.Contains("<head>", StringComparison.OrdinalIgnoreCase)
+                ? html.Replace("<head>", "<head>" + baseTag, StringComparison.OrdinalIgnoreCase)
+                : baseTag + html;
             return Content(html, contentType);
         }
         catch (Exception ex) { return BadRequest(new ApiResponse<object>(false, null, ex.Message)); }

@@ -21,6 +21,14 @@ src/backend/MangaManager.Services/bin/
 src/backend/MangaManager.Services/obj/
 src/frontend/manga-ui/node_modules/
 src/frontend/manga-ui/dist/
+**/bin/
+**/obj/
+**/dist/
+
+# 日志与本地数据
+*.log
+src/backend/MangaManager.Api/build_*.txt
+data/
 
 # IDE
 .idea/

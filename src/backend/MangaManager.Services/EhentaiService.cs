@@ -818,6 +818,16 @@ public class EhentaiService
         return (html, "text/html; charset=utf-8");
     }
 
+    /// <summary>获取画廊详情页 HTML（/g/{gid}/{token}/，携带 Cookie），供「在站点查看」代理跳转用</summary>
+    public async Task<(string Html, string ContentType)> GetGalleryDetailHtmlAsync(int gid, string token, bool isExhentai)
+    {
+        var host = isExhentai ? HOST_EX : HOST_E;
+        var url = $"{host}/g/{gid}/{token}/";
+        var resp = await _http.GetAsync(url);
+        var html = await resp.Content.ReadAsStringAsync();
+        return (html, "text/html; charset=utf-8");
+    }
+
     private async Task<string> PostJson(string url, object payload)
     {
         var json = JsonSerializer.Serialize(payload, EhentaiJsonOptions.Instance);

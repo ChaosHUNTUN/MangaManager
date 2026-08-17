@@ -8,7 +8,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
  */
 
 const DEFAULTS = {
-  direction: 'rtl',
+  direction: 'vertical',
   flow: 'paginated',
   fit: 'both',
   zoom: 1.0,
@@ -20,6 +20,33 @@ const DEFAULTS = {
 };
 
 const BGS = ['var(--canvas)', '#000000', '#f5eddc'];
+
+// 阅读偏好本地持久化：记住方向/模式/缩放/背景等，跨会话保持
+const STORAGE_KEY = 'manga-reader-settings-v1';
+const PERSISTED_KEYS = ['direction', 'flow', 'fit', 'zoom', 'background', 'padding', 'slideshowInterval', 'scrollSpeed'];
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) || {};
+      const merged = { ...DEFAULTS };
+      for (const k of PERSISTED_KEYS) if (k in parsed) merged[k] = parsed[k];
+      // 兼容旧版把 direction 存成 rtl/ltr 的记录 → 归一化为滚动方向
+      if (merged.direction === 'rtl' || merged.direction === 'ltr') merged.direction = 'vertical';
+      return merged;
+    }
+  } catch { /* ignore malformed storage */ }
+  return { ...DEFAULTS };
+}
+
+function persistSettings(s) {
+  try {
+    const out = {};
+    for (const k of PERSISTED_KEYS) out[k] = s[k];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+  } catch { /* ignore quota/private-mode errors */ }
+}
 
 function getAvailableArea(viewportW, viewportH, padding) {
   const h = viewportH - 44 - 36;
@@ -53,17 +80,23 @@ export function getImageLayout(imgW, imgH, viewportW, viewportH, fit, zoom, padd
 export const getSpreadLayout = getImageLayout;
 
 export function useReaderEngine(totalPages) {
+  const [initial] = useState(loadSettings);
   const [currentPage, setCurrentPage] = useState(0);
-  const [direction, setDirection] = useState(DEFAULTS.direction);
-  const [flow, setFlow] = useState(DEFAULTS.flow);
-  const [fit, setFit] = useState(DEFAULTS.fit);
-  const [zoom, setZoom] = useState(DEFAULTS.zoom);
-  const [background, setBackground] = useState(DEFAULTS.background);
-  const [padding, setPadding] = useState(DEFAULTS.padding);
+  const [direction, setDirection] = useState(initial.direction);
+  const [flow, setFlow] = useState(initial.flow);
+  const [fit, setFit] = useState(initial.fit);
+  const [zoom, setZoom] = useState(initial.zoom);
+  const [background, setBackground] = useState(initial.background);
+  const [padding, setPadding] = useState(initial.padding);
   const [uiVisible, setUiVisible] = useState(true);
   const [slideshowActive, setSlideshowActive] = useState(DEFAULTS.slideshowActive);
-  const [slideshowInterval, setSlideshowInterval] = useState(DEFAULTS.slideshowInterval);
-  const [scrollSpeed, setScrollSpeed] = useState(DEFAULTS.scrollSpeed);
+  const [slideshowInterval, setSlideshowInterval] = useState(initial.slideshowInterval);
+  const [scrollSpeed, setScrollSpeed] = useState(initial.scrollSpeed);
+
+  // 偏好变更即持久化（不含瞬态 currentPage / uiVisible / slideshowActive）
+  useEffect(() => {
+    persistSettings({ direction, flow, fit, zoom, background, padding, slideshowInterval, scrollSpeed });
+  }, [direction, flow, fit, zoom, background, padding, slideshowInterval, scrollSpeed]);
 
   const flipDirRef = useRef(0);
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });

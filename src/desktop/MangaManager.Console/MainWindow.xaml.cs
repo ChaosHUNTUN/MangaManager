@@ -114,6 +114,22 @@ public partial class MainWindow : Window
         // 同步 API 端点显示文本
         var apiUri = new Uri(_apiUrl);
         TxtApiEndpoint.Text = $"{apiUri.Host}:{apiUri.Port}";
+
+        // 启动后自动拉起前后端（若尚未运行），无需手动点击启动
+        try
+        {
+            if (!await IsPortOpen(5208, "/health"))
+            {
+                Log("检测到 API 后端未运行，正在自动启动...");
+                await StartApiAsync();
+            }
+            if (!await IsPortOpen(5173, "/"))
+            {
+                Log("检测到 Web 前端未运行，正在自动启动...");
+                await StartUiAsync();
+            }
+        }
+        catch (Exception ex) { Log($"自动启动服务失败: {ex.Message}"); }
     }
 
     private void Window_Drag(object sender, System.Windows.Input.MouseButtonEventArgs e)

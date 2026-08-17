@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchLocalGalleryPagesAbortable, fetchReadingProgressAbortable, saveReadingProgress, API_BASE } from '../api'
+import { fetchLocalGalleryPagesAbortable, fetchLocalGalleryDetail, fetchReadingProgressAbortable, saveReadingProgress, API_BASE } from '../api'
 import { useReaderEngine } from '../visual-test/reader/useReaderEngine'
 import useImagePreload from '../hooks/useImagePreload'
 import PaginatedView from '../visual-test/reader/PaginatedView'
@@ -42,6 +42,17 @@ export default function ReaderLocal() {
       try { const blob = new Blob([JSON.stringify(items)], { type: 'application/json' }); navigator.sendBeacon(`${API_BASE}/api/readingprogress`, blob) } catch {}
     }
   }, [])
+
+  // 加载画廊标题（详情接口返回标题，失败时回退为 gid）
+  useEffect(() => {
+    if (Number.isNaN(currentGid)) { setTitle(''); return }
+    setTitle(String(currentGid))
+    let cancelled = false
+    fetchLocalGalleryDetail(currentGid)
+      .then(d => { if (!cancelled && d?.title) setTitle(d.title) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [gid])
 
   // 加载上次进度
   useEffect(() => {
@@ -142,6 +153,13 @@ export default function ReaderLocal() {
     if (next) navigate(`/reader-local/${next}`, { replace: true })
   }, [galleryList, currentIdx, navigate, currentGid, currentPage, saveProgress])
 
+  // 返回书架（保存进度后回到进入阅读器前的筛选/排序状态）
+  const handleBack = useCallback(() => {
+    saveProgress(currentGid, currentPage)
+    const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
+    navigate(`/local${returnUrl}`, { replace: true })
+  }, [saveProgress, currentGid, currentPage, navigate])
+
   // ── 图片预加载 (±50 页半径, gid 变化自动中断) ──
   useImagePreload(pages, currentPage, currentGid)
 
@@ -154,6 +172,7 @@ export default function ReaderLocal() {
   }, [setUiVisible, clearTimer])
 
   const [showThumbs, setShowThumbs] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     if (!uiVisible && !showThumbs) return clearTimer()
@@ -214,19 +233,18 @@ export default function ReaderLocal() {
       if (e.key === ' ')   { e.preventDefault(); toggleSlideshow() }
       if (e.key === 'Escape') {
         e.preventDefault()
-        saveProgress(currentGid, currentPage)
-        const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
-        navigate(`/local${returnUrl}`, { replace: true })
+        handleBack()
       }
       if (e.key === '0') zoomReset()
       if (e.key === 'f') setFlow(f => f === 'paginated' ? 'continuous' : 'paginated')
-      if (e.key === 'd') setDirection(d => d === 'rtl' ? 'ltr' : 'rtl')
+      if (e.key === 'd') setDirection(d => d === 'horizontal' ? 'vertical' : 'horizontal')
+      if (e.key === '?' || e.key === 'h' || e.key === 'H') { e.preventDefault(); setShowHelp(s => !s) }
       
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [goForward, goBack, goFirst, goLast, flow, direction, zoomIn, zoomOut, zoomReset, toggleSlideshow,
-    setUiVisible, setFlow, setDirection, scrollerRef, goPrevGallery, goNextGallery,
+    setUiVisible, setFlow, setDirection, scrollerRef, goPrevGallery, goNextGallery, handleBack,
     currentPage, currentGid, saveProgress])
 
   // ── 滚轮缩放 ──
@@ -272,6 +290,8 @@ export default function ReaderLocal() {
         scrollSpeed={scrollSpeed} setScrollSpeed={setScrollSpeed}
         goForward={goForward} goBack={goBack}
         images={pages} pageStep={pageStep} setCurrentPage={setCurrentPage}
+        onBack={handleBack}
+        showHelp={showHelp} onToggleHelp={() => setShowHelp(s => !s)}
       />
       {flow === 'paginated' ? (
         <PaginatedView key={`paginated-${totalPages}`}
@@ -287,6 +307,40 @@ export default function ReaderLocal() {
           padding={padding} viewport={viewport} scrollerRef={scrollerRef}
           uiVisible={uiVisible} setUiVisible={setUiVisible}
         />
+      )}
+
+      {/* 快捷键帮助面板 */}
+      {showHelp && (
+        <div onClick={() => setShowHelp(false)} style={{
+          position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'var(--glass-bg)', backdropFilter: 'blur(20px) saturate(1.2)',
+            border: '1px solid var(--glass-border)', borderRadius: 'var(--radius-lg)',
+            padding: '20px 24px', maxWidth: 440, width: '90vw',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+          }}>
+            <div style={{ fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 14 }}>⌨ 键盘快捷键</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 'var(--text-sm)' }}>
+              {[
+                ['← / A', '上一页'], ['→ / D', '下一页'],
+                ['↑ / ↓', '上 / 下一部作品'], ['PageUp / PageDown', '上 / 下一部作品'],
+                ['Home / End', '第一页 / 最后一页'], ['空格', '幻灯片 / 自动滚动'],
+                ['Tab', '显示 / 隐藏界面'], ['F', '翻页 / 滚动模式'],
+                ['D', '滚动方向'], ['0', '重置缩放'],
+                ['Ctrl + 滚轮 / ±', '缩放'], ['Ctrl + ← / →', '第一页 / 尾页'],
+                ['Esc', '返回书架'], ['? / H', '显示 / 隐藏帮助'],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', minWidth: 104 }}>{k}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 14, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>点击空白处关闭 · 再次按 ? 关闭</div>
+          </div>
+        </div>
       )}
     </div>
   )

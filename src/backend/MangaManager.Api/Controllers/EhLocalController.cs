@@ -37,15 +37,27 @@ public class EhLocalController : ControllerBase
     [HttpGet("local-image/{gid}/{filename}")]
     public IActionResult ServeLocalImage(int gid, string filename)
     {
+        var safeFileName = Path.GetFileName(filename);
+        if (string.IsNullOrEmpty(safeFileName) ||
+            !string.Equals(safeFileName, filename, StringComparison.Ordinal))
+        {
+            return BadRequest(new ApiResponse<object>(false, null, "非法的文件名"));
+        }
+
         if (Directory.Exists(EhentaiFileHelper.DefaultDownloadDir))
         {
             var dirs = Directory.GetDirectories(EhentaiFileHelper.DefaultDownloadDir, $"{gid}-*");
             foreach (var dir in dirs)
             {
-                var filePath = Path.Combine(dir, filename);
+                var filePath = Path.Combine(dir, safeFileName);
                 if (System.IO.File.Exists(filePath))
                 {
-                    var ext = Path.GetExtension(filename).ToLower();
+                    var fullDir = Path.GetFullPath(dir);
+                    var fullFile = Path.GetFullPath(filePath);
+                    if (!fullFile.StartsWith(fullDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var ext = Path.GetExtension(safeFileName).ToLower();
                     var ct = ext switch
                     {
                         ".png" => "image/png",

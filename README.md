@@ -26,7 +26,7 @@ E-Hentai 漫画下载、管理与阅读工具 —— 在线搜索下载、本地
 ```bash
 cd src/backend/MangaManager.Api
 dotnet run
-# 默认监听 http://localhost:5000
+# 默认监听 http://localhost:5208
 ```
 
 ### 2. 启动前端
@@ -304,7 +304,7 @@ cd scripts/devops
 powershell -File publish.ps1
 ```
 
-发布产物在 `src/backend/MangaManager.Api/publish/`，双击 `MangaManager.Api.exe` 即可运行，端口 5000 上同时托管 API 和前端静态文件。
+发布产物在 `src/backend/MangaManager.Api/publish/`，双击 `MangaManager.Api.exe` 即可运行，端口 5208 上同时托管 API 和前端静态文件。
 
 ---
 

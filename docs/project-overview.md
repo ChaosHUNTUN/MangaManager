@@ -12,7 +12,7 @@ MangaManager 是一个 **E-Hentai 漫画下载、本地管理与在线阅读** �
 
 项目采用三层架构：
 - **前端**：React 19 + React Router 7 + Vite 8（端口 5173）
-- **后端**：ASP.NET Core 9 Web API（端口 5000）
+- **后端**：ASP.NET Core 9 Web API（端口 5208）
 - **桌面控制台**：WPF (.NET 9) 作为服务启停 + 下载监控面板
 
 数据库默认使用 SQLite（开发/单机），支持切换到 MySQL（生产）。
@@ -160,11 +160,13 @@ MangaManager.Data        → EF Core DbContext（MangaDbContext）
 MangaManager.Core        → 实体（Entities.cs）+ DTO（DTOs.cs）
 ```
 
-### 5.2 Controller 清单（10 个）
+### 5.2 Controller 清单（15 个）
 
 | Controller | 路由前缀 | 功能 |
 |:---|:---|:---|
 | `MangaController` | `/api/manga` | 漫画 CRUD、扫描、重命名、删除 |
+| `BatchTagController` | `/api/manga/batch/tags` | 批量标签 |
+| `MangaTagController` | `/api/manga/{mangaId}/tags` | 单部漫画标签读写 |
 | `TagController` | `/api/tag` | 标签 CRUD、分类定义 |
 | `AlbumsController` | `/api/albums` | 专辑配置读写 |
 | `CoverController` | `/api/cover` | 封面图片服务 |
@@ -173,16 +175,22 @@ MangaManager.Core        → 实体（Entities.cs）+ DTO（DTOs.cs）
 | `SettingsController` | `/api/settings` | 阅读器设置读写 |
 | `LocalGalleryController` | `/api/local` | 本地画廊 CRUD、导入、重新下载 |
 | `EhentaiController` | `/api/ehentai` | E-Hentai 浏览/搜索/下载/标签 |
+| `EhTagsController` | `/api/ehentai` | E-Hentai 标签翻译、建议、屏蔽 |
+| `EhLocalController` | `/api/ehentai` | E-Hentai 本地文件与遗留下载兼容 |
 | `DownloadController` | `/api/download` | 下载任务管理 + SSE/WebSocket 推送 |
 | `FilesystemController` | `/api/filesystem` | 文件系统浏览（磁盘/目录） |
 
-### 5.3 Service 层（4 个核心服务）
+### 5.3 Service 层（9 个核心服务）
 
 | 服务 | 生命周期 | 职责 |
 |:---|:---|:---|
 | `MangaService` | Scoped | 漫画扫描、搜索、标签关联、CRUD |
 | `LocalGalleryService` | Singleton | 本地画廊文件管理、导入导出、元数据 |
 | `EhentaiService` | Singleton | E-Hentai API 交互、Cookie 管理、标签翻译 |
+| `EhentaiAuthService` | Singleton | E-Hentai Cookie 加载/保存/验证 |
+| `EhentaiBlockedTagService` | Singleton | 屏蔽标签与 My Tags 同步 |
+| `EhentaiTagService` | Static | E-Hentai 标签翻译索引 |
+| `GallerySyncService` | Singleton/HostedService | 本地画廊目录同步与监听 |
 | `DownloadManager` | Singleton | 下载队列管理、并发控制、进度推送 |
 
 ### 5.4 数据库表
@@ -207,7 +215,7 @@ MangaManager.Core        → 实体（Entities.cs）+ DTO（DTOs.cs）
 - **数据库双模式**：`appsettings.json` 中 `Database:Provider` 切换 sqlite/mysql
 - **WAL 模式**：SQLite 启用 WAL + NORMAL synchronous，支持并发读写
 - **自动备份**：每日自动备份 SQLite 数据库，保留最近 7 个
-- **CORS**：开发模式 AllowAnyOrigin，生产模式同源托管
+- **CORS**：默认限制本地前端端口，可通过 `Cors:AllowedOrigins` 配置；生产同源托管
 - **SPA fallback**：生产模式所有非 `/api` 请求返回 `index.html`
 - **全局异常处理**：中间件捕获所有未处理异常，返回 JSON 500 响应
 
@@ -280,7 +288,7 @@ App
 # 终端 1 - 后端
 cd src/backend/MangaManager.Api
 dotnet run
-# → http://localhost:5000
+# → http://localhost:5208
 
 # 终端 2 - 前端
 cd src/frontend/manga-ui
@@ -297,7 +305,7 @@ npx vite
 4. 生成默认 `appsettings.json` + `README.txt`
 5. 清理 `.pdb` 调试文件
 
-产物：自包含 Windows x64 单文件夹，双击 `MangaManager.Api.exe` 启动，端口 5000 同时托管 API 和前端。
+产物：自包含 Windows x64 单文件夹，双击 `MangaManager.Api.exe` 启动，端口 5208 同时托管 API 和前端。
 
 ---
 

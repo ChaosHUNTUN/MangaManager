@@ -67,7 +67,7 @@ $appSettings = @"
   "ConnectionStrings": {
     "Default": "Data Source=manga.db"
   },
-  "Urls": "http://0.0.0.0:5000"
+  "Urls": "http://0.0.0.0:5208"
 }
 "@
 $appSettings | Out-File -FilePath "$publishDir\appsettings.json" -Encoding utf8 -Force
@@ -79,8 +79,8 @@ MangaManager v$Version
 
 使用方法：
   1. 双击 MangaManager.Api.exe 启动服务
-  2. 本机浏览器打开 http://localhost:5000
-  3. 局域网设备访问 http://你的电脑IP:5000
+  2. 本机浏览器打开 http://localhost:5208
+  3. 局域网设备访问 http://你的电脑IP:5208
   4. 使用网页阅读器在线阅读漫画
 
 数据存储：

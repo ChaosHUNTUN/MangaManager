@@ -14,7 +14,9 @@ namespace MangaManager.Data.Migrations
                 name: "local_gallery",
                 columns: table => new
                 {
-                    Gid = table.Column<int>(type: "INTEGER", nullable: false),
+                    Gid = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    AlbumKey = table.Column<string>(type: "TEXT", maxLength: 200, nullable: true),
                     Title = table.Column<string>(type: "TEXT", maxLength: 500, nullable: false),
                     DirPath = table.Column<string>(type: "TEXT", maxLength: 1000, nullable: false),
                     Category = table.Column<string>(type: "TEXT", maxLength: 50, nullable: true),
@@ -55,6 +57,11 @@ namespace MangaManager.Data.Migrations
                 name: "IX_local_gallery_LastModified",
                 table: "local_gallery",
                 column: "LastModified");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_local_gallery_AlbumKey",
+                table: "local_gallery",
+                column: "AlbumKey");
         }
 
         /// <inheritdoc />

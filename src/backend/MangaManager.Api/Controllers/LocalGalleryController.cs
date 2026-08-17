@@ -182,7 +182,7 @@ public class LocalGalleryController : ControllerBase
 
     /// <summary>重新下载画廊（先删除再触发下载）</summary>
     [HttpPost("gallery/{gid}/redownload")]
-    public async Task<IActionResult> Redownload(int gid, [FromQuery] string? title, [FromQuery] string? token)
+    public IActionResult Redownload(int gid, [FromQuery] string? title, [FromQuery] string? token)
     {
         if (string.IsNullOrWhiteSpace(token))
             return BadRequest(new ApiResponse<object>(false, null, "缺少 token 参数"));

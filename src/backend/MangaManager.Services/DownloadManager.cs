@@ -17,6 +17,7 @@ public class DownloadManager
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DownloadManager> _logger;
     private readonly ConcurrentDictionary<int, DownloadTask> _tasks = new();    // gid → 任务
+    private readonly ConcurrentDictionary<int, CancellationTokenSource> _taskCts = new();  // gid → 单任务取消令牌
     private readonly ConcurrentQueue<int> _queue = new();                       // 等待队列
     private readonly SemaphoreSlim _semaphore = new(2, 2);                     // 最多 2 个并发下载
     private readonly object _dbLock = new();
@@ -80,6 +81,7 @@ public class DownloadManager
         };
 
         _tasks[gid] = task;
+        _taskCts[gid] = new CancellationTokenSource();
         _queue.Enqueue(gid);
         SaveTaskToDb(task);
         BroadcastUpdate(task);
@@ -105,6 +107,7 @@ public class DownloadManager
     public bool ResumeTask(int gid)
     {
         if (!_tasks.TryGetValue(gid, out var t) || t.Status != "paused") return false;
+        _taskCts.TryAdd(gid, new CancellationTokenSource());
         t.Status = "pending";
         t.ErrorMsg = null;
         t.UpdatedAt = DateTime.UtcNow;
@@ -119,6 +122,10 @@ public class DownloadManager
     public bool RemoveTask(int gid)
     {
         if (!_tasks.TryRemove(gid, out var t)) return false;
+        if (_taskCts.TryRemove(gid, out var cts))
+        {
+            try { cts.Cancel(); } finally { cts.Dispose(); }
+        }
         DeleteTaskFromDb(gid);
         BroadcastUpdate(new DownloadTask { Gid = gid, Status = "removed" });
         return true;
@@ -128,6 +135,10 @@ public class DownloadManager
     public DownloadTask? RestartTask(int gid)
     {
         if (!_tasks.TryGetValue(gid, out var t) || t.Status != "failed") return null;
+        if (_taskCts.TryRemove(gid, out var oldCts))
+        {
+            try { oldCts.Cancel(); } finally { oldCts.Dispose(); }
+        }
 
         // 删除本地进度文件和已下载的部分文件
         try
@@ -150,6 +161,7 @@ public class DownloadManager
         t.CompletedAt = null;
         t.UpdatedAt = DateTime.UtcNow;
 
+        _taskCts[gid] = new CancellationTokenSource();
         _queue.Enqueue(gid);
         UpdateTaskInDb(t);
         BroadcastUpdate(t);
@@ -172,12 +184,11 @@ public class DownloadManager
         if (_tasks.TryGetValue(gid, out var existing))
         {
             if (existing.Status is "completed") return existing;
-            if (existing.Status is "failed" or "paused")
-            {
+            if (existing.Status == "failed")
                 RestartTask(gid);
-                return _tasks.GetValueOrDefault(gid);
-            }
-            return existing;
+            else if (existing.Status == "paused")
+                ResumeTask(gid);
+            return _tasks.GetValueOrDefault(gid);
         }
 
         // 优先通过 gid 前缀匹配目录（避免 title 中特殊字符导致路径不匹配）
@@ -259,6 +270,7 @@ public class DownloadManager
         };
 
         _tasks[gid] = task;
+        _taskCts[gid] = new CancellationTokenSource();
         _queue.Enqueue(gid);
         SaveTaskToDb(task);
         BroadcastUpdate(task);
@@ -349,7 +361,9 @@ public class DownloadManager
 
     private async Task ExecuteTaskAsync(DownloadTask task, CancellationToken ct)
     {
-        await _semaphore.WaitAsync(ct);
+        var taskCts = _taskCts.GetOrAdd(task.Gid, _ => new CancellationTokenSource());
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, taskCts.Token);
+        await _semaphore.WaitAsync(linkedCts.Token);
         try
         {
             if (task.Status != "pending") return;
@@ -363,7 +377,7 @@ public class DownloadManager
             UpdateTaskInDb(task);
             BroadcastUpdate(task);
 
-            await DownloadTaskAsync(task, ct);
+            await DownloadTaskAsync(task, linkedCts.Token);
 
             if (task.Status == "downloading")
             {
@@ -395,19 +409,35 @@ public class DownloadManager
                 task.CompletedAt = DateTime.UtcNow;
             }
         }
+        catch (OperationCanceledException) when (taskCts.IsCancellationRequested)
+        {
+            if (_tasks.ContainsKey(task.Gid))
+            {
+                task.Status = "failed";
+                task.ErrorMsg = "任务已被移除或取消";
+                task.CompletedAt = DateTime.UtcNow;
+                _logger.LogInformation("[DownloadManager] 任务 {Gid} 已取消", task.Gid);
+            }
+        }
         catch (Exception ex)
         {
-            task.Status = "failed";
-            task.ErrorMsg = ex.Message;
-            task.CompletedAt = DateTime.UtcNow;
-            _logger.LogInformation($"[DownloadManager] 任务 {task.Gid} 异常: {ex.Message}");
+            if (_tasks.ContainsKey(task.Gid))
+            {
+                task.Status = "failed";
+                task.ErrorMsg = ex.Message;
+                task.CompletedAt = DateTime.UtcNow;
+                _logger.LogInformation($"[DownloadManager] 任务 {task.Gid} 异常: {ex.Message}");
+            }
         }
         finally
         {
-            task.UpdatedAt = DateTime.UtcNow;
-            task.CalculateSpeed();
-            UpdateTaskInDb(task);
-            BroadcastUpdate(task);
+            if (_tasks.ContainsKey(task.Gid))
+            {
+                task.UpdatedAt = DateTime.UtcNow;
+                task.CalculateSpeed();
+                UpdateTaskInDb(task);
+                BroadcastUpdate(task);
+            }
             _semaphore.Release();
         }
     }
@@ -608,6 +638,7 @@ public class DownloadManager
                     t.UpdatedAt = DateTime.UtcNow;
                 }
                 _tasks[t.Gid] = t;
+                _taskCts[t.Gid] = new CancellationTokenSource();
                 if (t.Status == "pending") _queue.Enqueue(t.Gid);
             }
             db.SaveChanges();

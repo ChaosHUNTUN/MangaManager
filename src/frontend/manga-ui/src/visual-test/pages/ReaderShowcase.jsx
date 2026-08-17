@@ -37,11 +37,11 @@ export default function ReaderShowcase() {
   // ── Core Engine ──
   const engine = useReaderEngine(images.length);
   const {
-    currentPage, totalPages, layout, direction, flow, fit, zoom,
+    currentPage, totalPages, direction, flow, fit, zoom,
     background, bgValue, padding, uiVisible,
     slideshowActive, slideshowInterval, scrollSpeed,
-    pageStep, canBack, canForward, isCoverAlone, flipDirRef, viewport,
-    setCurrentPage, setLayout, setDirection, setFlow, setFit, setZoom,
+    pageStep, canBack, canForward, flipDirRef, viewport,
+    setCurrentPage, setDirection, setFlow, setFit, setZoom,
     setBackground, setPadding, setUiVisible,
     setSlideshowInterval, setScrollSpeed,
     goForward, goBack, goFirst, goLast, setFitCycled, zoomIn, zoomOut, zoomReset,
@@ -105,14 +105,12 @@ export default function ReaderShowcase() {
       if (e.key === ' ')   { e.preventDefault(); toggleSlideshow(); }
       if (e.key === '0') zoomReset();
       if (e.key === 'f') setFlow(f => f === 'paginated' ? 'continuous' : 'paginated');
-      if (e.key === 'd') setDirection(d => d === 'rtl' ? 'ltr' : 'rtl');
-      if (e.key === 'l' && ((flow === 'paginated' && direction === 'horizontal') || (flow === 'continuous' && direction === 'vertical')))
-          setLayout(l => l === 'auto' ? 'single' : l === 'single' ? 'double' : 'auto');
+      if (e.key === 'd') setDirection(d => d === 'horizontal' ? 'vertical' : 'horizontal');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [goForward, goBack, goFirst, goLast, flow, zoomIn, zoomOut, zoomReset, toggleSlideshow,
-    setUiVisible, setFlow, setDirection, setLayout, scrollerRef, onPrevGallery, onNextGallery]);
+    setUiVisible, setFlow, setDirection, scrollerRef, onPrevGallery, onNextGallery]);
 
   // ── 滚轮缩放 ──
   const handleWheel = useCallback((e) => {
@@ -138,11 +136,11 @@ export default function ReaderShowcase() {
         uiVisible={uiVisible} showThumbs={showThumbs}
         title={IMG_COUNT_LABEL + (images.length ? ` (${images.length})` : '')}
         currentPage={currentPage} totalPages={totalPages}
-        layout={layout} direction={direction} flow={flow} fit={fit} zoom={zoom}
+        direction={direction} flow={flow} fit={fit} zoom={zoom}
         background={background} padding={padding}
         slideshowActive={slideshowActive} slideshowInterval={slideshowInterval}
         setUiVisible={setUiVisible} setShowThumbs={setShowThumbs}
-        setLayout={setLayout} setDirection={setDirection} setFlow={setFlow}
+        setDirection={setDirection} setFlow={setFlow}
         setBgCycled={setBgCycled} setPadding={setPadding} setFitCycled={setFitCycled}
         zoomIn={zoomIn} zoomOut={zoomOut} zoomReset={zoomReset}
         toggleSlideshow={toggleSlideshow} setSlideshowInterval={setSlideshowInterval}

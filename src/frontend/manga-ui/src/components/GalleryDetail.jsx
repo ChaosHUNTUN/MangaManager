@@ -28,19 +28,10 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
     return artists.length > 0 || grps.length > 0
   }, [albumConfig, detail, galleries])
 
-  const handleOpenReader = useCallback(() => {
-    try { sessionStorage.setItem('reader-local-context', JSON.stringify({ gids: filtered.map(g => g.gid) })) } catch { }
-  }, [filtered])
-
-  const handleAddToAlbum = useCallback(() => {
-    onAddToAlbum?.({ gid: detail.gid, title: detail.title, tags: detail.tags || [], matchedAlbums: matchedAlbums })
-  }, [detail, onAddToAlbum, matchedAlbums])
-
   // 计算匹配的专辑（KeyTag 或 title 模糊匹配）
   const matchedAlbums = useMemo(() => {
     if (!albumConfig || !detail) return []
     const tags = (detail.tags || []).map(t => typeof t === 'string' ? t : t.tag || '').filter(Boolean)
-    const keyTags = (detail.tagGroups || []).flatMap(g => g.tags).map(t => `${g.namespace}:${t}`) // dummy
     return Object.entries(albumConfig)
       .filter(([key]) => {
         if (key.includes(':')) {
@@ -51,6 +42,14 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
       })
       .map(([key, val]) => ({ key, name: val.name || key, count: (val.gids || []).length }))
   }, [albumConfig, detail, galleries])
+
+  const handleOpenReader = useCallback(() => {
+    try { sessionStorage.setItem('reader-local-context', JSON.stringify({ gids: filtered.map(g => g.gid) })) } catch { }
+  }, [filtered])
+
+  const handleAddToAlbum = useCallback(() => {
+    onAddToAlbum?.({ gid: detail.gid, title: detail.title, tags: detail.tags || [], matchedAlbums: matchedAlbums })
+  }, [detail, onAddToAlbum, matchedAlbums])
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>

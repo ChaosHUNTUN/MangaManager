@@ -1,7 +1,7 @@
 # API 接口文档（规划）
 
 ## 基础信息
-- Base URL: `http://localhost:5000/api`
+- Base URL: `http://localhost:5208/api`
 - Content-Type: `application/json`
 
 ## 漫画接口

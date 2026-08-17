@@ -3,13 +3,18 @@ import react from '@vitejs/plugin-react'
 import fs from 'fs'
 import path from 'path'
 
-const IMAGE_DIR = 'C:/Users/27639/Pictures/ENDFIELD'
+const IMAGE_DIR = process.env.MANGA_VISUAL_IMAGE_DIR || ''
 
 function serveLocalImages() {
   return {
     name: 'serve-local-images',
     configureServer(server) {
       server.middlewares.use('/local-images', (req, res) => {
+        if (!IMAGE_DIR) {
+          res.statusCode = 404
+          res.end('Visual image directory is not configured')
+          return
+        }
         const filePath = path.join(IMAGE_DIR, decodeURIComponent(req.url || '/'))
         if (!fs.existsSync(filePath)) {
           res.statusCode = 404
@@ -28,6 +33,11 @@ function serveLocalImages() {
       // API to list available images
       server.middlewares.use('/api/local-images', (_req, res) => {
         try {
+          if (!IMAGE_DIR) {
+            res.statusCode = 404
+            res.end(JSON.stringify({ error: 'Visual image directory is not configured' }))
+            return
+          }
           const files = fs.readdirSync(IMAGE_DIR)
             .filter(f => /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f))
             .sort()
