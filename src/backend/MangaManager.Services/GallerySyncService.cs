@@ -366,7 +366,12 @@ public class GallerySyncService : BackgroundService
             await db.WorkTags.Where(w => w.WorkId == gid).ExecuteDeleteAsync(ct);
             foreach (var p in pairs)
                 if (tagMap.TryGetValue(p, out var t))
-                    db.WorkTags.Add(new WorkTag { WorkId = gid, Tag = t });
+                {
+                    if (t.Id == 0)
+                        db.WorkTags.Add(new WorkTag { WorkId = gid, Tag = t });       // 新标签：保持 Added，EF 生成 Id
+                    else
+                        db.WorkTags.Add(new WorkTag { WorkId = gid, TagId = t.Id }); // 已存在：直接引用 Id，避免 Add 级联误插
+                }
         }
         catch (Exception ex)
         {
