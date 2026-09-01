@@ -134,6 +134,54 @@ MangaManager/
 
 ## 5. 近期修复与变更记录（2026-08-25 ~ 09-01）
 
+### 2026-09-01 变更总结（知识点，按模块）
+
+**A. 标签化系统**
+- **标签筛选**：后端 `tagIds` 从 OR 改 **AND（联合筛选=命中全部）**；`artist:/group:` 分组与搜索前缀改 **work_tag JOIN**（修复多作者只匹配数组首元素、JSON 格式依赖）；移除遗留 `AlbumKey==null` 门控（专辑废弃后漏作品）；`tag-stats` 只统计正 Gid（侧边栏计数与筛选一致）
+- **带空格标签**：搜索支持**引号分词**（`tag:"big breasts"`）与下划线兼容（`tag:big_breasts`）；前端补全插入自动加引号
+- **标签库管理**：`POST /api/tag/merge` 合并标签（搬移 work_tag/manga_tag、继承 NameCn/IsBlocked、删源）；`TagLibraryModal`（改名/中文/颜色/分类/合并/删除）；`TagPicker` 补全最近使用/搜索高亮/分类均衡；**批量标签** `POST/DELETE /api/work/batch/tags` + `BatchTagModal`
+- **⚠️ 核心 bug：`tag.Id` 冲突导致新作品不入库**——`SyncGalleryTagsAsync` 用 `db.WorkTags.Add(new WorkTag { Tag = t })` 导航写法，**EF 的 Add 级联把整张关系图标记为 Added**，已存在标签（真实 Id）被当成新增重复 INSERT → 同步回滚 → 作品不进 local_gallery（磁盘有目录但库表无记录）。修复：**已存在标签（Id≠0）改用 `TagId = t.Id` 引用，新标签保持导航 Added**。全扫恢复 2728→2808 画廊、work_tag 47802→49279
+- **NameCn 回填**：误用 `AsNoTracking()` 导致改值不落库 → 去掉后 3052 条真实落库
+- **新作品链路验证**：下载完成 meta.json → `SyncDirectoryAsync` → `EnsureTagsCoreAsync`（自动建标签+翻译）→ work_tag 先清后建，全通（今日 76 个已完成任务全部入库）
+
+**B. 下载管理**
+- **⚠️ 已完成任务重启后消失**：`LoadTasksFromDb` 只加载非 completed，2740 条历史完成记录不载入 → 修复为**加载最近 100 条已完成** + 排序活跃在前/完成按 CompletedAt 倒序 + web/控制台新增「已完成」筛选
+- **⚠️ DownloadMonitor 超时杀死轮询**：`catch (OperationCanceledException) { break; }` 把 HTTP 超时（TaskCanceledException 是其子类）当取消信号，API 重启/慢响应后监控线程永久退出、列表恒空 → 修复 `catch when (ct.IsCancellationRequested)`，超时按瞬时失败退避+留痕
+- 批量暂停/恢复（`pause-all`/`resume-all`）+ 下载页默认展开 + 桌面入口 + 任务行百分比/ETA/失败页/队列位
+
+**C. 桌面控制台**
+- **⚠️ 退出 Mutex 双重释放崩溃**：`Exit_Click` 与 `OnExit` 各释放一次 → 记录所有权 `_appMutexOwned` + `ReleaseAppMutex()` 安全释放
+- `DownloadMonitor` 失败留痕（首次/每6次），防“列表静默为空”无法诊断
+
+**D. 在线模块**
+- **⚠️ 连通性误报**：`/api/ehentai/connectivity` 原用裸 HttpClient 直连（不走代理）→ 代理环境必 false → 红色“无法访问”横幅常驻。修复：`CheckConnectivityAsync` 复用共享 ehentai 客户端（代理+Cookie）
+- 卡片评分右侧「汉语」徽标（解析搜索行 `language:` 标签，**零额外请求**）
+- `useEHSearch` TDZ bug：组合结束处理器引用后声明的 `handleSearchInput` → 声明顺序修复
+
+**E. 搜索框自动补全**
+- 修复“输入时下拉不出现”（`showSearchSuggestions` 只在 focus 打开 → 有建议即显示）
+- 修复前缀匹配（`artist:foo` 用完整串匹配标签名恒失败 → 按冒号后内容）+ `tag:` 前缀查标签库
+- **多标签输入误删**：受控输入 + IME 组合重渲染会重置输入框 → 改**非受控（defaultValue）+ composingRef 组合安全**；补全应用读**输入框实时值**替换当前词
+
+**F. 阅读器**
+- 滚动页内偏移进度（`ScrollOffset` 列，scroll 存页码+0~1 偏移，paged 恒 null）；下一部预加载（读尾 5% 预取）；**RTL 横向反序**（row-reverse 布局 + 热区/键盘/自动阅读适配）；content-visibility 窗口化渲染；可用区域运行时实测；缩略图窗口化 ±40
+
+**G. 移动端 / PWA**
+- 弹窗改底部抽屉（全宽/安全区/90dvh）；横屏误判修复（`≤768px 或 ≤1024px 且 ≤500px 高`）；卡片左滑手势（阅读/删除）；PWA（manifest + 最小安全 SW，API 直连不缓存）
+
+**H. 其他**
+- 页面/封面 URL 加版本参数（`?v=`），重下后浏览器缓存自动失效；`scripts/smoke_test.py` 端到端冒烟（15 项）
+- 提交整理：今日 20+ 个逻辑提交（标签/搜索/下载/控制台/在线/阅读器/移动端/PWA/文档）
+
+**关键知识点（后续易踩坑）**
+1. **EF `Add` 会级联把关系图全部标记 Added**——引用已存在实体务必用外键 Id 或 `Attach`
+2. **HTTP 超时 = TaskCanceledException = OperationCanceledException 子类**——catch 时先判自身令牌是否取消
+3. **完成态任务不加载**——重启后历史完成记录消失
+4. **受控输入 + IME**——需非受控 + `composingRef` 跳过同步
+5. **TDZ**——`useCallback` 依赖数组引用后声明的 const 会崩
+6. **连通性检测必须走与真实请求相同的代理链路**
+7. **代码改动后必须重启对应进程**（API/控制台是独立进程，改后端要重建重启才生效）
+
 ### 第一批：阅读器核心修复
 - **缩放/适配真正生效**：`fit`/`zoom` 接入 PaginatedView 与 ContinuousView（`getImageLayout` + 自然尺寸测量）；放大溢出可滚动
 - **滚动模式补全页码/跳转/进度语义**：滚动跟踪当前页、缩略图/Home/End 跳转、帧固定尺寸 + memo、图片懒加载
