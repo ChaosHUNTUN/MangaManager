@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using MangaManager.Core.DTOs;
 using MangaManager.Services;
+using MangaManager.Data;
 
 namespace MangaManager.Api.Controllers;
 
@@ -13,11 +15,13 @@ public class EhTagsController : ControllerBase
 {
     private readonly EhentaiService _svc;
     private readonly EhentaiBlockedTagService _blockedTag;
+    private readonly MangaDbContext _db;
 
-    public EhTagsController(EhentaiService svc, EhentaiBlockedTagService blockedTag)
+    public EhTagsController(EhentaiService svc, EhentaiBlockedTagService blockedTag, MangaDbContext db)
     {
         _svc = svc;
         _blockedTag = blockedTag;
+        _db = db;
     }
 
     // ==================== 标签翻译 ====================
@@ -52,7 +56,29 @@ public class EhTagsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 1)
             return Ok(new ApiResponse<object>(true, Array.Empty<object>()));
-        var results = EhentaiTagService.SuggestTags(q, Math.Clamp(limit, 1, 100));
+        var max = Math.Clamp(limit, 1, 100);
+        var results = EhentaiTagService.SuggestTags(q, max);
+
+        // 兜底：翻译库不可用时，用本地标签库（全量 EH 标签记录）补全，保证在线搜索也能自动补全
+        if (results.Count == 0)
+        {
+            var kw = q.Trim();
+            var rows = _db.Tags.AsNoTracking()
+                .Where(t => t.Name.Contains(kw) || (t.NameCn != null && t.NameCn.Contains(kw)))
+                .OrderByDescending(t => t.Name.Contains(kw))
+                .ThenBy(t => t.Name)
+                .Take(max)
+                .ToList();
+            results = rows.Select(t => new TagSuggestion
+            {
+                Key = string.IsNullOrEmpty(t.Namespace) ? t.Name : $"{t.Namespace}:{t.Name}",
+                Cn = t.NameCn ?? "",
+                Namespace = t.Namespace ?? "",
+                Tag = t.Name,
+                EhSyntax = string.IsNullOrEmpty(t.Namespace) ? t.Name : $"{t.Namespace}:{t.Name.Replace(" ", "_")}",
+                MatchType = (t.NameCn != null && t.NameCn.Contains(kw)) ? "cn" : "en"
+            }).ToList();
+        }
         return Ok(new ApiResponse<object>(true, results));
     }
 

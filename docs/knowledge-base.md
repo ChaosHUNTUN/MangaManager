@@ -190,6 +190,7 @@ MangaManager/
 - **控制台退出崩溃修复（2026-09-01，真实线上问题）**：`MangaManager.Console` 在退出时反复崩溃（事件日志 `.NET Runtime 1026: System.ApplicationException: Object synchronization method was called from an unsynchronized block of code`，栈指向 `App.OnExit → Mutex.ReleaseMutex`）——`Exit_Click` 先释放 `_appMutex`，`Shutdown()` 触发 `OnExit` 再释放一次（双重释放）；第二个实例（未持有锁）退出时同样崩溃。修复：`_appMutexOwned` 记录所有权 + `ReleaseAppMutex()` 仅持有者释放一次、异常容错、置空防重入。该崩溃会连带终止控制台托管的 API 进程 → 前端 `/api` 全部失败 → 下载列表静默显示为空（本次“有任务但列表不显示”的根因）
 - **Vite 代理 IPv6 加固（2026-09-01）**：`vite.config.js` 的 `/api` 代理 target 从 `http://localhost:5208` 改为 `http://127.0.0.1:5208`，避免 localhost 解析到 `::1` 导致“API 在跑却连不上”
 - **控制台下载列表为空的真因与修复（2026-09-01，线上复现+验证）**：API 正常返回 107 任务、前端反序列化验证通过，但运行中的控制台是 **8/30 旧构建**（`SpeedBps` 等 DTO 契约早于 9/1 定型），线上 `speedBps` 为非整数浮点（47544.5），旧 DTO 反序列化整个列表抛 `JsonException` → `DownloadMonitor` 完全静默指数退避 → `FilteredTasks` 恒空 → 窗口显示“暂无下载任务”。修复：用当前代码重建控制台并重启（API/前端为独立进程未中断、下载断点续传不受影响），UI Automation 实测列表出现“2 下载中 · 105 等待中”与任务条目。**硬化**：`DownloadMonitor` 失败改为首次/每 6 次留一条日志（原完全静默，此类问题无法诊断）
+- **搜索框自动补全完善（2026-09-01）**：① 本地页——修复“输入时下拉不出现”（原 `showSearchSuggestions` 只在 focus 时打开，新增 effect：有建议即显示）；派生池前缀匹配修复（原用完整 `artist:foo` 匹配标签名 `foo` 恒失败，现按冒号后内容匹配）；`tag:` 前缀现在会查本地标签库（任意命名空间，原文/中文）补全 `tag:xxx`；无前缀词继续派生池+标签库双源。模式统一：输入 → 下拉列表 → 点击替换当前词。② 在线页——数据源本就是 EhTagTranslation 全量翻译库（EH 标签大全），新增**本地标签库兜底**（翻译库不可用时 `/api/ehentai/tags/suggest` 改查 `tag` 表），保证在线补全始终可用。实测：suggest 返回 `female:milf`/`other:tankoubon` 等带命名空间与中文的 EH 语法
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

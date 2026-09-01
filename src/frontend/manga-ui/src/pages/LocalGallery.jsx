@@ -194,6 +194,11 @@ export default function LocalGallery() {
   // ── 搜索标签池 & 自动补全（Hook 封装） ──
   const { searchTagPool, searchTagTransMap, searchSuggestions, setSearchSuggestions, handleSearchInput, applySearchTag } = useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast })
 
+  // 输入过程中自动打开补全下拉（有建议即显示，避免必须重新聚焦才出现）
+  useEffect(() => {
+    setShowSearchSuggestions(searchSuggestions.length > 0 && search.trim().length > 0)
+  }, [searchSuggestions, search])
+
   const totalPages = pageTotalPages; const safePage = Math.min(page, totalPages)
   const paged = pageItems; const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
 

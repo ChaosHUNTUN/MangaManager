@@ -56,24 +56,59 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
     if (currentWord.length >= 1) {
       suggestTimerRef.current = setTimeout(() => {
         const s = val.toLowerCase()
+        const colonIdx = currentWord.indexOf(':')
+        const wordPrefix = colonIdx > 0 ? currentWord.slice(0, colonIdx).toLowerCase() : null
+        const wordValue = colonIdx > 0 ? currentWord.slice(colonIdx + 1) : currentWord
+        const kwLower = wordValue.toLowerCase()
+
+        // 派生池匹配：前缀词按「前缀 + 冒号后内容」匹配，无前缀词按标签名/中文匹配
         const matched = searchTagPool.filter(p => {
-          if (!s.includes(p.syntax.toLowerCase()) && !s.includes(p.key.toLowerCase())) {
-            const cn = searchTagTransMap[p.key]
-            if (cn && p.label.toLowerCase().includes(currentWord.toLowerCase())) return true
-            return p.label.toLowerCase().includes(currentWord.toLowerCase()) || (cn && cn.toLowerCase().includes(currentWord.toLowerCase()))
-          }
-          return false
+          if (s.includes(p.syntax.toLowerCase()) || s.includes(p.key.toLowerCase())) return false
+          const cn = searchTagTransMap[p.key]
+          const labelOk = p.label.toLowerCase().includes(kwLower)
+          const cnOk = !!(cn && cn.toLowerCase().includes(kwLower))
+          if (wordPrefix) return p.prefix === wordPrefix && (labelOk || cnOk)
+          return labelOk || cnOk
         })
-        // 无前缀词时补查标签库：任何标签（原文/中文）都可作为 tag:xxx 语法补全
-        const hasPrefix = /^(artist|group|category|language|tag|album):/.test(currentWord.toLowerCase())
-        if (!hasPrefix) {
+
+        // tag: 前缀 → 查本地标签库（任意命名空间，含中文），补全 tag: 语法
+        if (wordPrefix === 'tag') {
+          if (kwLower.length >= 1) {
+            searchTags({ q: wordValue, limit: 8 })
+              .then(rows => {
+                const seen = new Set()
+                const items = (rows || [])
+                  .filter(t => {
+                    const syn = `tag:${t.name}`.toLowerCase()
+                    if (syn === currentWord.toLowerCase() || seen.has(syn)) return false
+                    seen.add(syn)
+                    return true
+                  })
+                  .map(t => ({
+                    key: `tag:${t.name}`,
+                    label: t.nameCn ? `${t.nameCn}（${t.name}）` : t.name,
+                    prefix: 'tag',
+                    syntax: `tag:${t.name}`,
+                    count: t.count,
+                  }))
+                setSearchSuggestions(items.slice(0, 8))
+              })
+              .catch(() => setSearchSuggestions([]))
+          } else {
+            setSearchSuggestions([])
+          }
+          return
+        }
+
+        // 无前缀词时补查标签库：任何本地标签（原文/中文）都可作为 tag:xxx 语法补全
+        if (!wordPrefix) {
           searchTags({ q: currentWord, limit: 8 })
             .then(tagRows => {
               const seen = new Set(matched.map(p => p.key.toLowerCase()))
               const tagMatches = (tagRows || [])
                 .filter(t => {
                   const syntax = `tag:${t.name}`.toLowerCase()
-                  if (s.includes(syntax) || seen.has(syntax)) return false
+                  if (s.includes(syntax) || seen.has(syntax) || syntax === currentWord.toLowerCase()) return false
                   seen.add(syntax)
                   return true
                 })
@@ -88,6 +123,7 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
             })
             .catch(() => setSearchSuggestions(matched.slice(0, 8)))
         } else {
+          // 其他前缀（artist:/group:/category:/language:）走派生池
           setSearchSuggestions(matched.slice(0, 8))
         }
       }, 300)
