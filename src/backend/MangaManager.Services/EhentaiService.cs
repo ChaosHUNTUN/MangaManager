@@ -115,6 +115,11 @@ public class EhentaiService
 
         var resp = await _http.GetAsync(url);
         var html = await resp.Content.ReadAsStringAsync();
+        // 空响应：直连被网络拦截（DNS 污染/防火墙）时 exhentai.org 会返回空 200
+        if (string.IsNullOrWhiteSpace(html))
+            throw new InvalidOperationException(exhentai
+                ? "ExHentai 返回空响应：Cookie（igneous）可能已失效，或网络无法访问里站（请检查代理设置）。"
+                : "E-Hentai 返回空响应，请稍后重试。");
         var result = ParseList(html, host, page);
         result.IsExhentai = exhentai;
         return result;

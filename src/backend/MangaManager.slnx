@@ -3,4 +3,5 @@
   <Project Path="MangaManager.Core/MangaManager.Core.csproj" />
   <Project Path="MangaManager.Data/MangaManager.Data.csproj" />
   <Project Path="MangaManager.Services/MangaManager.Services.csproj" />
+  <Project Path="../shared/MangaManager.Shared/MangaManager.Shared.csproj" />
 </Solution>

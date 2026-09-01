@@ -23,7 +23,7 @@ public class MangaTagController : ControllerBase
         var tags = await _db.MangaTags
             .Where(mt => mt.MangaId == mangaId)
             .Include(mt => mt.Tag)
-            .Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category))
+            .Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category, mt.Tag.Namespace, mt.Tag.NameCn, mt.Tag.IsBlocked))
             .ToListAsync();
         return Ok(new ApiResponse<List<TagDto>>(true, tags));
     }
@@ -51,7 +51,7 @@ public class MangaTagController : ControllerBase
         var tags = await _db.MangaTags
             .Where(mt => mt.MangaId == mangaId)
             .Include(mt => mt.Tag)
-            .Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category))
+            .Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category, mt.Tag.Namespace, mt.Tag.NameCn, mt.Tag.IsBlocked))
             .ToListAsync();
 
         return Ok(new ApiResponse<List<TagDto>>(true, tags));

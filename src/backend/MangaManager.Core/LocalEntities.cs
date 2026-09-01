@@ -6,6 +6,8 @@ public class LocalReadingProgress
     public int Id { get; set; }
     public int Gid { get; set; }
     public int PageIndex { get; set; }
+    /// <summary>滚动模式页内偏移（0~1，null=分页模式或未知）</summary>
+    public double? ScrollOffset { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

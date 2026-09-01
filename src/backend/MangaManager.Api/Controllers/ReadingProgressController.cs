@@ -18,7 +18,7 @@ public class ReadingProgressController : ControllerBase
     public async Task<IActionResult> Get(int gid)
     {
         var p = await _db.LocalReadingProgresses.FirstOrDefaultAsync(x => x.Gid == gid);
-        return Ok(new ApiResponse<object>(true, new { gid, pageIndex = p?.PageIndex ?? 0 }));
+        return Ok(new ApiResponse<object>(true, new { gid, pageIndex = p?.PageIndex ?? 0, scrollOffset = p?.ScrollOffset }));
     }
 
     /// <summary>批量保存阅读进度（upsert）</summary>
@@ -28,6 +28,23 @@ public class ReadingProgressController : ControllerBase
         if (items == null || items.Count == 0)
             return BadRequest(new ApiResponse<object>(false, null, "没有数据"));
 
+        try
+        {
+            await SaveCoreAsync(items);
+        }
+        catch (DbUpdateException)
+        {
+            // 并发写入同一 gid 时「先查后插」可能触发唯一索引冲突（如防抖保存与 sendBeacon 同时到达）
+            // 清空跟踪状态后整体重试一次
+            _db.ChangeTracker.Clear();
+            await SaveCoreAsync(items);
+        }
+
+        return Ok(new ApiResponse<object>(true, new { saved = items.Count }));
+    }
+
+    private async Task SaveCoreAsync(List<ReadingProgressItem> items)
+    {
         var gids = items.Select(i => i.Gid).Distinct().ToList();
         var existing = await _db.LocalReadingProgresses
             .Where(x => gids.Contains(x.Gid))
@@ -38,6 +55,7 @@ public class ReadingProgressController : ControllerBase
             if (existing.TryGetValue(item.Gid, out var entity))
             {
                 entity.PageIndex = item.PageIndex;
+                entity.ScrollOffset = item.ScrollOffset;
                 entity.UpdatedAt = DateTime.UtcNow;
             }
             else
@@ -46,14 +64,14 @@ public class ReadingProgressController : ControllerBase
                 {
                     Gid = item.Gid,
                     PageIndex = item.PageIndex,
+                    ScrollOffset = item.ScrollOffset,
                     UpdatedAt = DateTime.UtcNow
                 });
             }
         }
 
         await _db.SaveChangesAsync();
-        return Ok(new ApiResponse<object>(true, new { saved = items.Count }));
     }
 }
 
-public record ReadingProgressItem(int Gid, int PageIndex);
+public record ReadingProgressItem(int Gid, int PageIndex, double? ScrollOffset = null);

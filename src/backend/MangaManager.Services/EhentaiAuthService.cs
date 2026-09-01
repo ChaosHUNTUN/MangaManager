@@ -90,9 +90,19 @@ public class EhentaiAuthService
                 var eh = await er.Content.ReadAsStringAsync();
                 if (eh.Contains("Your IP address has been temporarily banned"))
                     return new ValidateResult(loggedIn, false, "IP 被暂时封禁，请稍后重试或更换网络。");
-                ex = !eh.Contains("This gallery is unavailable") && !eh.Contains("content warning");
+                // 空响应（网络拦截）或 igneous=mystery（密钥被 EH 作废）→ 里站不可用
+                if (string.IsNullOrWhiteSpace(eh)
+                    || eh.Contains("igneous=mystery")
+                    || eh.Contains("This gallery is unavailable")
+                    || eh.Contains("content warning"))
+                    return new ValidateResult(loggedIn, false, "ExHentai 访问失败：Cookie（igneous）可能已失效，或网络无法访问里站（请检查代理设置）。");
+                ex = true;
             }
-            catch (Exception ex2) { _logger.LogDebug(ex2, "[Auth] ExHentai check failed"); }
+            catch (Exception ex2)
+            {
+                _logger.LogDebug(ex2, "[Auth] ExHentai check failed");
+                return new ValidateResult(loggedIn, false, $"ExHentai 验证失败: {ex2.Message}");
+            }
 
             if (!loggedIn)
                 return new ValidateResult(false, false, "Cookie 无效或已过期。请重新登录 E-Hentai 并更新 Cookie。");

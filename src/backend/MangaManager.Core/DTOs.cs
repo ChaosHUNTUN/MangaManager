@@ -27,7 +27,14 @@ public record MangaDetail(
     DateTime UpdatedAt
 );
 
-public record TagDto(int Id, string Name, string Color, string Category = "other");
+public record TagDto(
+    int Id,
+    string Name,
+    string Color,
+    string Category = "other",
+    string Namespace = "other",
+    string? NameCn = null,
+    bool IsBlocked = false);
 
 public record ScanRequest(string Directory, string? ClientId = null);
 

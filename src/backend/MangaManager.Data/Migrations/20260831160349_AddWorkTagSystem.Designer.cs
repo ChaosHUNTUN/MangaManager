@@ -3,6 +3,7 @@ using System;
 using MangaManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MangaManager.Data.Migrations
 {
     [DbContext(typeof(MangaDbContext))]
-    partial class MangaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831160349_AddWorkTagSystem")]
+    partial class AddWorkTagSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.0");
@@ -266,9 +269,6 @@ namespace MangaManager.Data.Migrations
                     b.Property<int>("PageIndex")
                         .HasColumnType("INTEGER");
 
-                    b.Property<double?>("ScrollOffset")
-                        .HasColumnType("REAL");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -385,9 +385,6 @@ namespace MangaManager.Data.Migrations
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("Data")
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("Direction")
                         .IsRequired()
@@ -608,13 +605,11 @@ namespace MangaManager.Data.Migrations
 
             modelBuilder.Entity("MangaManager.Core.Entities.WorkTag", b =>
                 {
-                    b.HasOne("MangaManager.Core.Entities.Tag", "Tag")
+                    b.HasOne("MangaManager.Core.Entities.Tag", null)
                         .WithMany()
                         .HasForeignKey("TagId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Tag");
                 });
 
             modelBuilder.Entity("MangaManager.Core.Entities.Author", b =>

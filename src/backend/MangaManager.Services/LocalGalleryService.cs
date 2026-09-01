@@ -107,10 +107,11 @@ public class LocalGalleryService
 
     /// <summary>分页获取画廊摘要（DB 查询，筛选+排序在 SQL 层面完成）</summary>
     public GalleryPagedResult GetPagedGalleries(string? group, string? search, string? sort,
-        int page, int pageSize, List<int>? albumGids = null, List<int>? albumOrder = null)
+        int page, int pageSize, List<int>? albumGids = null, List<int>? albumOrder = null,
+        List<int>? tagIds = null)
     {
         using var db = CreateDb();
-        var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder);
+        var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder, tagIds);
 
         // 自定义排序
         if (!string.IsNullOrEmpty(sort) && sort == "custom" && albumOrder != null && albumOrder.Count > 0
@@ -150,10 +151,10 @@ public class LocalGalleryService
 
     /// <summary>获取当前筛选条件下的完整有序 gid 列表（供阅读器跨作品导航使用）</summary>
     public List<int> GetGalleryGids(string? group, string? search, string? sort,
-        List<int>? albumGids = null, List<int>? albumOrder = null)
+        List<int>? albumGids = null, List<int>? albumOrder = null, List<int>? tagIds = null)
     {
         using var db = CreateDb();
-        var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder);
+        var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder, tagIds);
 
         // 自定义排序
         if (!string.IsNullOrEmpty(sort) && sort == "custom" && albumOrder != null && albumOrder.Count > 0
@@ -173,9 +174,16 @@ public class LocalGalleryService
 
     /// <summary>构建筛选查询（分组 + 搜索），供 GetPagedGalleries 和 GetGalleryGids 复用</summary>
     private static IQueryable<LocalGallery> BuildFilteredQuery(MangaDbContext db, string? group, string? search, string? sort,
-        List<int>? albumGids = null, List<int>? albumOrder = null)
+        List<int>? albumGids = null, List<int>? albumOrder = null, List<int>? tagIds = null)
     {
         var query = db.LocalGalleries.AsNoTracking().AsQueryable();
+
+        // 标签筛选：命中任意一个标签（JOIN work_tag）
+        if (tagIds != null && tagIds.Count > 0)
+        {
+            var ids = tagIds.Distinct().ToList();
+            query = query.Where(g => db.WorkTags.Any(wt => wt.WorkId == g.Gid && ids.Contains(wt.TagId)));
+        }
 
         // 分组筛选
         if (!string.IsNullOrEmpty(group) && group != "all")
@@ -249,6 +257,13 @@ public class LocalGalleryService
                             break;
                         case "language":
                             query = query.Where(g => g.Language != null && g.Language.ToLower().Contains(value));
+                            break;
+                        case "tag":
+                            // 标签筛选：原文或中文匹配（JOIN work_tag）
+                            query = query.Where(g => db.WorkTags.Any(wt =>
+                                wt.WorkId == g.Gid
+                                && (wt.Tag!.Name.ToLower().Contains(value)
+                                    || (wt.Tag!.NameCn != null && wt.Tag.NameCn.Contains(value)))));
                             break;
                         default:
                             query = query.Where(g =>
@@ -334,75 +349,42 @@ public class LocalGalleryService
 
         var map = new Dictionary<string, GroupInfo>();
 
-        var existingAlbumKeyTags = db.AlbumConfigs
-            .Where(a => !string.IsNullOrEmpty(a.KeyTag))
-            .Select(a => a.KeyTag)
-            .ToHashSet();
-
-        var albumsToCreate = new Dictionary<string, (string Name, string Ns, int Gid)>();
-        var blacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "unknown", "original", "various", "none" };
-
         foreach (var g in all)
         {
             var artists = DeserializeJsonList(g.Artists);
             var grps = DeserializeJsonList(g.Groups);
 
-            if (artists.Count == 1 && grps.Count == 0)
-            {
-                if (!blacklist.Contains(artists[0]))
-                    albumsToCreate[$"artist:{artists[0]}"] = (artists[0], "artist", g.Gid);
-            }
-            else if (grps.Count == 1 && artists.Count == 0)
-            {
-                if (!blacklist.Contains(grps[0]))
-                    albumsToCreate[$"group:{grps[0]}"] = (grps[0], "group", g.Gid);
-            }
-            else if (artists.Count == 1 && grps.Count == 1)
-            {
-                if (!blacklist.Contains(artists[0]))
-                    albumsToCreate[$"artist:{artists[0]}"] = (artists[0], "artist", g.Gid);
-            }
-            else if (artists.Count + grps.Count > 1)
+            if (artists.Count + grps.Count > 1)
             {
                 if (!map.ContainsKey("multi")) map["multi"] = new GroupInfo { Key = "multi", Type = "multi", Name = "多作者", Count = 0 };
                 map["multi"].Count++;
             }
-            else
+            else if (artists.Count + grps.Count == 0)
             {
                 if (!map.ContainsKey("unknown")) map["unknown"] = new GroupInfo { Key = "unknown", Type = "unknown", Name = "未分类", Count = 0 };
                 map["unknown"].Count++;
             }
         }
 
-        // 批量创建专辑（去重）
-        if (albumsToCreate.Count > 0)
-        {
-            var existingKeys = db.AlbumConfigs.Select(a => a.Key).ToHashSet();
-            var autoColors = new[] { "#4a90d9", "#6b4e9e", "#d4782f", "#3d8b5e", "#b85c7c", "#5b8fa8", "#c48038", "#5e548e" };
-            foreach (var (keyTag, (name, ns, _)) in albumsToCreate)
-            {
-                var safeKey = name.Replace(" ", "_").Replace("/", "-").Replace("\\", "-");
-                if (existingKeys.Contains(safeKey)) continue;
-                var gids = all.Where(g => {
-                    var a = DeserializeJsonList(g.Artists);
-                    var b = DeserializeJsonList(g.Groups);
-                    if (ns == "artist") return a.Count == 1 && b.Count == 0 && a[0] == name;
-                    return b.Count == 1 && a.Count == 0 && b[0] == name;
-                }).Select(g => g.Gid).ToList();
-                if (gids.Count == 0) continue;
-                var color = autoColors[Math.Abs(safeKey.GetHashCode()) % autoColors.Length];
-                db.AlbumConfigs.Add(new AlbumConfig {
-                    Key = safeKey, Name = name, Color = color,
-                    KeyTag = keyTag, Gids = System.Text.Json.JsonSerializer.Serialize(gids),
-                    Count = gids.Count, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-                });
-                existingKeys.Add(safeKey);
-            }
-            db.SaveChanges();
-        }
+        var groups = map.Values.OrderByDescending(g => g.Count).ToList();
+        return groups;
+    }
 
-                var groups = map.Values.OrderByDescending(g => g.Count).ToList();
-                return groups;
+    /// <summary>标签统计（供侧边栏标签云/选择器：每个标签的关联作品数）</summary>
+    public List<TagStatDto> GetTagStats()
+    {
+        using var db = CreateDb();
+        var counts = db.WorkTags.AsNoTracking()
+            .GroupBy(w => w.TagId)
+            .Select(g => new { TagId = g.Key, Count = g.Count() })
+            .ToList();
+        var countMap = counts.ToDictionary(c => c.TagId, c => c.Count);
+        return db.Tags.AsNoTracking()
+            .OrderBy(t => t.Category).ThenBy(t => t.Name)
+            .Select(t => new TagStatDto(
+                t.Id, t.Name, t.Namespace, t.Category, t.NameCn, t.Color,
+                countMap.GetValueOrDefault(t.Id, 0)))
+            .ToList();
     }
 
     /// <summary>获取画廊详情（优先本地 meta.json，页面列表懒加载）</summary>
@@ -468,7 +450,7 @@ public class LocalGalleryService
             // 如果没有 meta.json 或缺少 fileCount，回退到文件系统扫描
             if (fileCount == 0)
             {
-                var files = EnumerateImageFilesSafe(dir).OrderBy(f => f).ToList();
+                var files = EnumerateImageFilesSafe(dir).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
                 fileCount = files.Count;
                 foreach (var f in files)
                 {
@@ -525,7 +507,7 @@ public class LocalGalleryService
         if (dir == null) return null;
         try
         {
-            var files = Directory.GetFiles(dir).Where(f => IsImageFile(f)).OrderBy(f => f).ToList();
+            var files = Directory.GetFiles(dir).Where(f => IsImageFile(f)).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList();
             lock (_pageFilesCacheLock) { _pageFilesCache[gid] = (files, now); }
             return files;
         }
@@ -576,7 +558,7 @@ public class LocalGalleryService
 
         var imageFiles = Directory.GetFiles(sourceDir)
             .Where(f => IsImageFile(f))
-            .OrderBy(f => f)
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (imageFiles.Count == 0)
@@ -863,6 +845,9 @@ public class GroupInfo
     public string Name { get; set; } = "";
     public int Count { get; set; }
 }
+
+public record TagStatDto(
+    int Id, string Name, string Namespace, string Category, string? NameCn, string Color, int Count);
 
 /// <summary>分页查询结果</summary>
 public class GalleryPagedResult

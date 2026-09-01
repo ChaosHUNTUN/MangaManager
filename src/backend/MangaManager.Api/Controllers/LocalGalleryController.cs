@@ -41,7 +41,7 @@ public class LocalGalleryController : ControllerBase
         var result = _svc.GetPagedGalleries(
             req.Group, req.Search, req.Sort,
             req.Page, req.PageSize,
-            req.AlbumGids, req.AlbumOrder);
+            req.AlbumGids, req.AlbumOrder, req.TagIds);
         return Ok(new ApiResponse<object>(true, result));
     }
 
@@ -51,8 +51,16 @@ public class LocalGalleryController : ControllerBase
     {
         var gids = _svc.GetGalleryGids(
             req.Group, req.Search, req.Sort,
-            req.AlbumGids, req.AlbumOrder);
+            req.AlbumGids, req.AlbumOrder, req.TagIds);
         return Ok(new ApiResponse<object>(true, gids));
+    }
+
+    /// <summary>标签统计（每个标签的关联作品数，供标签云/选择器）</summary>
+    [HttpGet("galleries/tag-stats")]
+    public IActionResult GetTagStats()
+    {
+        var list = _svc.GetTagStats();
+        return Ok(new ApiResponse<object>(true, list));
     }
 
     /// <summary>随机抽取 N 部作品（无视筛选条件）</summary>
@@ -473,7 +481,8 @@ public record PagedRequest(
     int Page = 1,
     int PageSize = 20,
     List<int>? AlbumGids = null,
-    List<int>? AlbumOrder = null
+    List<int>? AlbumOrder = null,
+    List<int>? TagIds = null
 );
 
 public record GidsRequest(
@@ -481,5 +490,6 @@ public record GidsRequest(
     string? Search,
     string? Sort,
     List<int>? AlbumGids = null,
-    List<int>? AlbumOrder = null
+    List<int>? AlbumOrder = null,
+    List<int>? TagIds = null
 );

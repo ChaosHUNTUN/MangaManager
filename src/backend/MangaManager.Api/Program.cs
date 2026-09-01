@@ -85,6 +85,8 @@ builder.Services.AddHttpClient("ehentai", client =>
 builder.Services.AddKeyedSingleton("EhentaiCookies", new System.Net.CookieContainer());
 builder.Services.AddSingleton<EhentaiAuthService>();
 builder.Services.AddSingleton<EhentaiBlockedTagService>();
+builder.Services.AddSingleton<TagService>();
+builder.Services.AddSingleton<TagMigrationService>();
 builder.Services.AddSingleton<EhentaiService>();
 
 builder.Services.AddControllers();
@@ -197,6 +199,19 @@ using (var scope = app.Services.CreateScope())
 
     // 一次性回填 AllTags：旧记录从 .meta.json 重读回填
     BackfillAllTagsFromMetaFiles(app, db, dlDir);
+
+    // 标签体系迁移：JSON 标签 → tag 表 + work_tag（幂等）
+    try
+    {
+        // 迁移前先确保翻译字典已加载，让标签创建时带上中文（否则 NameCn 为空）
+        await EhentaiTagService.InitTagTranslationsAsync();
+        var tagMigrator = app.Services.GetRequiredService<TagMigrationService>();
+        await tagMigrator.RunAsync();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "[DB] 标签迁移失败（可下次启动重试）");
+    }
 
     // 启用 WAL 模式（仅 SQLite）：允许并发读写，避免 "database is locked" 错误
     if (dbProvider.Equals("sqlite", StringComparison.OrdinalIgnoreCase))

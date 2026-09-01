@@ -9,11 +9,9 @@ public static class EhentaiFileHelper
     public static string DefaultDownloadDir
     {
         get => _defaultDownloadDir;
-        set
-        {
-            _defaultDownloadDir = value;
-            try { Directory.CreateDirectory(value); } catch { /* permission denied or path invalid */ }
-        }
+        // 不再自动创建目录：避免配置的下载目录不存在时被误建为空目录，
+        // 进而让 GallerySync 把数据库里的画廊全部当成"已删除"清空
+        set => _defaultDownloadDir = value;
     }
 
     /// <summary>获取画廊本地目录路径（{下载目录}/{gid}-{标题}/）</summary>

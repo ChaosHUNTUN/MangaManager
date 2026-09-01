@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using MangaManager.Core.DTOs;
 using MangaManager.Services;
+using MangaManager.Shared.Download;
 
 namespace MangaManager.Api.Controllers;
 
@@ -26,7 +27,7 @@ public class DownloadController : ControllerBase
     public IActionResult GetAllTasks()
     {
         var tasks = _dm.GetAllTasks();
-        return Ok(new ApiResponse<object>(true, tasks));
+        return Ok(new ApiResponse<object>(true, DownloadTaskMapper.ToDtos(tasks)));
     }
 
     /// <summary>获取活跃任务</summary>
@@ -34,7 +35,7 @@ public class DownloadController : ControllerBase
     public IActionResult GetActiveTasks()
     {
         var tasks = _dm.GetActiveTasks();
-        return Ok(new ApiResponse<object>(true, tasks));
+        return Ok(new ApiResponse<object>(true, DownloadTaskMapper.ToDtos(tasks)));
     }
 
     /// <summary>获取单个任务进度</summary>
@@ -43,7 +44,7 @@ public class DownloadController : ControllerBase
     {
         var task = _dm.GetTask(gid);
         if (task == null) return NotFound(new ApiResponse<object>(false, null, "任务不存在"));
-        return Ok(new ApiResponse<object>(true, task));
+        return Ok(new ApiResponse<object>(true, DownloadTaskMapper.ToDto(task)));
     }
 
     /// <summary>添加下载任务</summary>
@@ -57,7 +58,7 @@ public class DownloadController : ControllerBase
         if (task == null)
             return BadRequest(new ApiResponse<object>(false, null, "添加任务失败"));
 
-        return Ok(new ApiResponse<object>(true, task));
+        return Ok(new ApiResponse<object>(true, DownloadTaskMapper.ToDto(task)));
     }
 
     /// <summary>暂停任务</summary>
@@ -96,7 +97,7 @@ public class DownloadController : ControllerBase
     {
         var task = _dm.RestartTask(gid);
         return task != null
-            ? Ok(new ApiResponse<object>(true, task))
+            ? Ok(new ApiResponse<object>(true, DownloadTaskMapper.ToDto(task)))
             : BadRequest(new ApiResponse<object>(false, null, "无法重启"));
     }
 

@@ -19,6 +19,7 @@
     <ProjectReference Include="..\MangaManager.Services\MangaManager.Services.csproj" />
     <ProjectReference Include="..\MangaManager.Core\MangaManager.Core.csproj" />
     <ProjectReference Include="..\MangaManager.Data\MangaManager.Data.csproj" />
+    <ProjectReference Include="..\..\shared\MangaManager.Shared\MangaManager.Shared.csproj" />
   </ItemGroup>
 
 </Project>

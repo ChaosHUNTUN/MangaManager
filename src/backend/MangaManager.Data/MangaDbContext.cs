@@ -28,6 +28,7 @@ public class MangaDbContext : DbContext
     public DbSet<AlbumConfig> AlbumConfigs => Set<AlbumConfig>();
     public DbSet<LocalGallery> LocalGalleries => Set<LocalGallery>();
     public DbSet<LocalReadingProgress> LocalReadingProgresses => Set<LocalReadingProgress>();
+    public DbSet<WorkTag> WorkTags => Set<WorkTag>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,9 +68,20 @@ public class MangaDbContext : DbContext
             e.ToTable("tag");
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Namespace).HasMaxLength(50).HasDefaultValue("other");
+            e.Property(x => x.NameCn).HasMaxLength(200);
+            e.Property(x => x.IsBlocked).HasDefaultValue(false);
             e.Property(x => x.Color).HasMaxLength(7);
             e.Property(x => x.Category).HasMaxLength(20).HasDefaultValue("other");
-            e.HasIndex(x => x.Name).IsUnique();
+            e.HasIndex(x => new { x.Namespace, x.Name }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkTag>(e =>
+        {
+            e.ToTable("work_tag");
+            e.HasKey(x => new { x.WorkId, x.TagId });
+            e.HasIndex(x => x.TagId);
+            e.HasOne(x => x.Tag).WithMany().HasForeignKey(x => x.TagId);
         });
 
         modelBuilder.Entity<MangaTag>(e =>

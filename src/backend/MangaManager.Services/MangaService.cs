@@ -48,7 +48,7 @@ public class MangaService
                 m.Id, m.Title,
                 m.CoverPath != null ? $"/api/cover/{m.Id}" : null,
                 m.FileCount, m.Status, m.CreatedAt,
-                m.MangaTags.Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category)).ToList()
+                m.MangaTags.Select(mt => new TagDto(mt.Tag.Id, mt.Tag.Name, mt.Tag.Color, mt.Tag.Category, mt.Tag.Namespace, mt.Tag.NameCn, mt.Tag.IsBlocked)).ToList()
             )).ToListAsync();
 
         return new PagedResult<MangaListItem>(items, total, page, pageSize);

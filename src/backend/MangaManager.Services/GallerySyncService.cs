@@ -90,6 +90,7 @@ public class GallerySyncService : BackgroundService
                     if (HasChanged(entity, item))
                     {
                         UpdateEntity(entity, item);
+                        await SyncGalleryTagsAsync(db, item.Gid, item.AllTags, item.Artists, item.Groups, ct);
                         updated++;
                     }
                     else
@@ -100,6 +101,7 @@ public class GallerySyncService : BackgroundService
                 else
                 {
                     db.LocalGalleries.Add(item);
+                    await SyncGalleryTagsAsync(db, item.Gid, item.AllTags, item.Artists, item.Groups, ct);
                     added++;
                 }
                 processedGids.Add(item.Gid);
@@ -124,10 +126,19 @@ public class GallerySyncService : BackgroundService
 
         // 清理已删除的目录
         var deletedGids = existing.Keys.Except(processedGids).ToList();
-        if (deletedGids.Count > 0)
+        if (dirs.Length == 0 && existing.Count > 0)
+        {
+            // 扫描到 0 个目录但 DB 有记录：大概率是目录未挂载或配置错误，
+            // 跳过清理，避免把画廊索引全部误删
+            _logger.LogWarning(
+                "[GallerySync] 扫描到 0 个目录但 DB 有 {Count} 条记录，可能下载目录未挂载或路径错误，跳过清理",
+                existing.Count);
+        }
+        else if (deletedGids.Count > 0)
         {
             var deletedEntities = deletedGids.Select(gid => existing[gid]).ToList();
             db.LocalGalleries.RemoveRange(deletedEntities);
+            _logger.LogInformation("[GallerySync] 删除失效画廊 {Count} 条", deletedGids.Count);
         }
 
         await db.SaveChangesAsync(ct);
@@ -155,10 +166,18 @@ public class GallerySyncService : BackgroundService
             var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
             var existing = await db.LocalGalleries.FindAsync(item.Gid);
             if (existing != null)
+            {
                 UpdateEntity(existing, item);
+                await SyncGalleryTagsAsync(db, item.Gid, item.AllTags, item.Artists, item.Groups, default);
+            }
             else
+            {
                 db.LocalGalleries.Add(item);
+                await SyncGalleryTagsAsync(db, item.Gid, item.AllTags, item.Artists, item.Groups, default);
+            }
             await db.SaveChangesAsync();
+            // 目录内容变化 → 立即失效该画廊的页面文件缓存（否则下载完成 10s 内阅读器仍可能读到旧列表）
+            LocalGalleryService.InvalidateScanCache();
         }
         catch (Exception ex)
         {
@@ -176,6 +195,7 @@ public class GallerySyncService : BackgroundService
         {
             db.LocalGalleries.Remove(entity);
             await db.SaveChangesAsync();
+            LocalGalleryService.InvalidateScanCache();
             _logger.LogInformation("[GallerySync] 已删除记录: {Dir}", dirPath);
         }
     }
@@ -328,6 +348,37 @@ public class GallerySyncService : BackgroundService
             || entity.Token != source.Token
             || entity.DownloadedAt != source.DownloadedAt
             || entity.LastModified != source.LastModified;
+    }
+
+    /// <summary>把画廊标签同步为 tag 表 + work_tag 关联（先清后建，幂等）</summary>
+    private async Task SyncGalleryTagsAsync(MangaDbContext db, int gid,
+        string? allTags, string? artists, string? groups, CancellationToken ct)
+    {
+        try
+        {
+            var pairs = TagService.ParseAllTagsJson(allTags);
+            foreach (var a in ParseStringList(artists)) pairs.Add(("artist", a));
+            foreach (var g in ParseStringList(groups)) pairs.Add(("group", g));
+            pairs = pairs.Select(p => (TagService.NormalizeNs(p.ns), p.name.Trim())).Distinct().ToList();
+            if (pairs.Count == 0) return;
+
+            var tagMap = await TagService.EnsureTagsCoreAsync(db, pairs, ct);
+            await db.WorkTags.Where(w => w.WorkId == gid).ExecuteDeleteAsync(ct);
+            foreach (var p in pairs)
+                if (tagMap.TryGetValue(p, out var t))
+                    db.WorkTags.Add(new WorkTag { WorkId = gid, Tag = t });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[GallerySync] 标签同步失败 gid={Gid}", gid);
+        }
+    }
+
+    private static List<string> ParseStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new(); }
+        catch { return new(); }
     }
 
     private async Task ConsistencyCheckAsync(CancellationToken ct)
