@@ -78,14 +78,15 @@ MangaManager/
 | 实体 | 表名 | 说明 |
 |------|------|------|
 | `Manga` | `manga` | 漫画主表：标题、路径、封面、文件数 |
-| `Tag` | `tag` | 标签表：名称、颜色、分类 |
-| `MangaTag` | `manga_tag` | 漫画-标签多对多 |
+| `Tag` | `tag` | 标签静态数据：名称、中文名(NameCn)、命名空间(Namespace)、分类、颜色、屏蔽标记(IsBlocked) |
+| `WorkTag` | `work_tag` | 作品×标签多对多（本地画廊正 Gid、旧版 Manga 负 Id，**统一表**） |
+| `MangaTag` | `manga_tag` | 旧版漫画-标签（已并入 work_tag，遗留保留） |
 | `Author` | `author` | 作者 |
 | `MangaAuthor` | `manga_author` | 漫画-作者多对多 |
 | `ReadingProgress` | `reading_progress` | 阅读进度（1对1） |
 | `LocalReadingProgress` | `local_reading_progress` | 本地画廊阅读进度 |
 | `DownloadTask` | `download_task` | E-Hentai 下载任务 |
-| `AlbumConfig` | `album_config` | 自定义专辑配置 |
+| `AlbumConfig` | `album_config` | 专辑配置（**方案已废弃**：数据保留不使用，成员已转 album 标签） |
 | `ReaderSettings` | `reader_settings` | 阅读器全局设置 |
 | `ScanLog` | `scan_log` | 扫描日志 |
 
@@ -156,16 +157,28 @@ dotnet ef migrations add <MigrationName> --startup-project ../MangaManager.Api
 | 方法 | 路由 | 说明 |
 |------|------|------|
 | GET | `/api/tag` | 标签列表 `?category=author` |
+| GET | `/api/tag/search` | 标签搜索 `?q=&category=&limit=`（原文/中文/命名空间，按使用次数排序） |
+| GET | `/api/tag/common` | 最常用标签 `?limit=` |
 | GET | `/api/tag/categories` | 分类定义（含图标颜色） |
 | POST | `/api/tag` | 创建 `{name, color?, category?}` |
-| PUT | `/api/tag/{id}` | 编辑（影响所有关联漫画） |
-| DELETE | `/api/tag/{id}` | 删除 |
+| PUT | `/api/tag/{id}` | 编辑（改名/中文/颜色/分类，影响所有关联作品） |
+| DELETE | `/api/tag/{id}` | 删除（同步清理 work_tag/manga_tag 关联） |
+| POST | `/api/tag/merge` | 合并标签 `{fromId, intoId}`（搬移关联并去重、删除源） |
+
+### 作品标签（work_tag 统一表）
+
+| 方法 | 路由 | 说明 |
+|------|------|------|
+| GET | `/api/work/{workId}/tags` | 作品标签列表（含命名空间/中文） |
+| POST | `/api/work/{workId}/tags` | 批量添加 `{tagIds}`（幂等） |
+| DELETE | `/api/work/{workId}/tags/{tagId}` | 移除标签 |
 
 ### 本地画廊
 
 | 方法 | 路由 | 说明 |
 |------|------|------|
-| GET | `/api/local/galleries` | 画廊列表 |
+| GET | `/api/local/galleries` | 画廊列表（支持 `tagIds=1,2` 任一命中筛选、`tag:` 搜索语法、`group/album` 分组） |
+| GET | `/api/local/galleries/tag-stats` | 标签统计（每标签关联作品数，标签云/选择器用） |
 | GET | `/api/local/gallery/{gid}` | 画廊详情 |
 | GET | `/api/local/gallery/{gid}/page/{idx}` | 单张图片 |
 | GET | `/api/local/gallery/{gid}/cover` | 封面图片 |
@@ -176,10 +189,12 @@ dotnet ef migrations add <MigrationName> --startup-project ../MangaManager.Api
 | POST | `/api/local/import-batch` | 批量导入 |
 | GET | `/api/local/gallery/{gid}/meta-tags` | 获取元数据标签 |
 | PUT | `/api/local/gallery/{gid}/meta-tags` | 更新元数据标签 |
-| GET | `/api/local/reading-progress/{gid}` | 阅读进度 |
-| PUT | `/api/local/reading-progress/{gid}` | 保存阅读进度 |
+| GET | `/api/readingprogress/{gid}` | 阅读进度（含页内偏移 scrollOffset） |
+| POST | `/api/readingprogress` | 批量保存进度 upsert（并发冲突自动重试） |
 
 ### 专辑管理
+
+> 专辑方案已废弃（`FEATURES.enableAlbums=false`）：数据保留、前端 UI 隐藏，以下接口仅人工/兼容调用。
 
 | 方法 | 路由 | 说明 |
 |------|------|------|
@@ -200,7 +215,7 @@ dotnet ef migrations add <MigrationName> --startup-project ../MangaManager.Api
 | POST | `/api/download/tasks/{gid}/restart` | 重启失败任务 |
 | POST | `/api/download/tasks/restart-all-failed` | 重启所有失败 |
 | POST | `/api/download/tasks/resume-legacy` | 恢复遗留任务 |
-| DELETE | `/api/download/tasks/{gid}` | 删除任务 |
+| DELETE | `/api/download/tasks/{gid}` | 删除任务（**同步删除本地下载文件**） |
 | GET | `/api/download/events` | SSE 实时进度推送 `?gid=` |
 
 ---
