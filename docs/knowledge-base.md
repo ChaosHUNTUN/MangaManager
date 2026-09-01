@@ -185,6 +185,7 @@ MangaManager/
 - **下载监控移动端修复（2026-09-01）**：任务行操作按钮加 `dl-task-btn` 类、移动端 28px → 38px 触控目标；元数据行 `dl-task-meta` 允许换行（状态/页数/速度/错误信息不再横向挤压）；折叠迷你栏 `dl-minibar` 可换行；下载页重试/全部重试此前已接好
 - **本地画廊分组筛选重构（2026-09-01）**：`BuildFilteredQuery` 的 `artist:`/`group:` 分组与搜索前缀从 JSON 字符串匹配改为 **work_tag JOIN**——修复「多作者作品只匹配数组首元素」（实测 artist:8000 旧 2 → 新 3）与子串误伤；`multi`/`unknown` 改为标签计数（≥2 个 artist/group 标签 / 无 artist/group 标签）；**移除遗留的 `AlbumKey==null` 门控**——专辑废弃后该门控让非专辑分组漏掉大量带历史 AlbumKey 的作品（实测 multi 2→794、unknown 36→822，与前端工具栏计数对齐）
 - **端到端冒烟测试脚本（2026-09-01）**：新增 `scripts/smoke_test.py`——真实库副本 + 临时 API 一条龙回归（`--build` 可先构建）：tag-stats/tagIds 命中数一致/artist·multi·unknown 分组与 SQL 计数一致（含多作者修复回归）/进度偏移往返/设置 JSON 落库/tag-search/目录保护不丢画廊/无孤儿 work_tag/标签库与专辑计数稳定。用法 `python scripts/smoke_test.py [--build] [--dll …] [--db …] [--port …]`，退出码 0=全过；实测 15 项全 PASS
+- **页面/封面缓存版本化（2026-09-01）**：页面图片接口 `Cache-Control: 1 天` 且 URL 不变，重下后浏览器会显示旧图 24h——`GetGalleryPages` 现按目录内文件最新 mtime 生成 `?v=` 版本参数（重下/替换文件后自动换新，配合 10s 缓存失效即时生效）；前端 `getLocalCoverUrl(gid, v)`/`getLocalPageUrl` 支持版本参数，画廊卡片/行/详情封面传 `lastModified` 做缓存键
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301
