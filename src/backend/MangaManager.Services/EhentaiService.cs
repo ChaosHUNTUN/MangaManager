@@ -227,10 +227,36 @@ public class EhentaiService
             var catMatch = Regex.Match(ctx, @"class=""(?:cs|cn|ce|cr|ct|cy)""[^>]*>([^<]+)<", RegexOptions.IgnoreCase);
             var category = catMatch.Success ? catMatch.Groups[1].Value.Trim() : null;
 
+            // 语言：链接后 3000 字符独立窗口（避免行边界 </tr> 截断导致语言标签缺失）
+            string? language = null;
+            var langWindow = html[link.Index..Math.Min(html.Length, link.Index + 3000)];
+            var langTag = Regex.Match(langWindow, @"title=""language:([^""]+)""", RegexOptions.IgnoreCase);
+            if (langTag.Success)
+            {
+                language = langTag.Groups[1].Value.Trim();
+            }
+            else
+            {
+                var gnd = Regex.Match(langWindow, @"class=""gnd""[^>]*>(.*?)</div>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                if (gnd.Success)
+                {
+                    var spans = Regex.Matches(gnd.Groups[1].Value, @"<span[^>]*>(.*?)</span>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                    if (spans.Count > 1)
+                        language = Regex.Replace(spans[1].Groups[1].Value, @"<[^>]+>", "").Trim();
+                }
+            }
+            // 兜底：EH 标题常带 [Chinese]/[中文]/[汉语] 后缀（行内未渲染语言标签时）
+            if (language == null && title != null &&
+                (title.Contains("[Chinese]", StringComparison.OrdinalIgnoreCase)
+                 || title.Contains("[中文]") || title.Contains("[汉语]")))
+            {
+                language = "chinese";
+            }
+
             r.Galleries.Add(new GalleryItem
             {
                 Gid = gid, Token = token, Title = title, ThumbUrl = thumbUrl,
-                FileCount = fileCount, Rating = rating, Category = category,
+                FileCount = fileCount, Rating = rating, Category = category, Language = language,
                 IsExhentai = host == HOST_EX
             });
         }

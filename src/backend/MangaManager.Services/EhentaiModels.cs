@@ -26,7 +26,13 @@ public static class EhentaiJsonOptions
     };
 }
 public class GalleryListResult { public int Page { get; set; } public int TotalPages { get; set; } public string? NextCursor { get; set; } public bool IsExhentai { get; set; } public List<GalleryItem> Galleries { get; set; } = new(); }
-public class GalleryItem { public int Gid { get; set; } public string Token { get; set; } = ""; public string? Title { get; set; } public string? ThumbUrl { get; set; } public int FileCount { get; set; } public double Rating { get; set; } public string? Category { get; set; } public bool IsExhentai { get; set; } }
+public class GalleryItem
+{
+    public int Gid { get; set; } public string Token { get; set; } = "";
+    public string? Title { get; set; } public string? ThumbUrl { get; set; }
+    public int FileCount { get; set; } public double Rating { get; set; }
+    public string? Category { get; set; } public string? Language { get; set; } public bool IsExhentai { get; set; }
+}
 public class TagGroup { public string Namespace { get; set; } = ""; public List<string> Tags { get; set; } = new(); }
 public class GalleryDetail
 {

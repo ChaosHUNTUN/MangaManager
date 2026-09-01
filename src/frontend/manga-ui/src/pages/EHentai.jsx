@@ -307,7 +307,13 @@ export default function EHentai() {
             <div style={{ padding: '6px 8px 8px' }}>
               <div title={g.title || `#${g.gid}`} style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', color: 'var(--text-primary)', fontWeight: 'var(--weight-medium)', userSelect: 'none' }}>{g.title || `#${g.gid}`}</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--space-1)', color: 'var(--text-muted)', fontSize: 'var(--text-2xs)' }}>
-                <span style={{ color: 'var(--warning)' }}>{g.rating > 0 ? '★ ' + g.rating.toFixed(1) : ''}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span style={{ color: 'var(--warning)' }}>{g.rating > 0 ? '★ ' + g.rating.toFixed(1) : ''}</span>
+                  {/chinese|汉语|中文/i.test(g.language || '') && (
+                    <span title={`语言: ${g.language}`}
+                      style={{ fontSize: 'var(--text-3xs)', color: '#34d399', border: '1px solid #34d39940', borderRadius: 4, padding: '0 4px', background: '#34d39915', whiteSpace: 'nowrap' }}>汉语</span>
+                  )}
+                </span>
                 {g.fileCount > 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xs)' }}>{g.fileCount}P</span>}
               </div>
             </div>
