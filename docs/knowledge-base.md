@@ -186,6 +186,7 @@ MangaManager/
 - **本地画廊分组筛选重构（2026-09-01）**：`BuildFilteredQuery` 的 `artist:`/`group:` 分组与搜索前缀从 JSON 字符串匹配改为 **work_tag JOIN**——修复「多作者作品只匹配数组首元素」（实测 artist:8000 旧 2 → 新 3）与子串误伤；`multi`/`unknown` 改为标签计数（≥2 个 artist/group 标签 / 无 artist/group 标签）；**移除遗留的 `AlbumKey==null` 门控**——专辑废弃后该门控让非专辑分组漏掉大量带历史 AlbumKey 的作品（实测 multi 2→794、unknown 36→822，与前端工具栏计数对齐）
 - **端到端冒烟测试脚本（2026-09-01）**：新增 `scripts/smoke_test.py`——真实库副本 + 临时 API 一条龙回归（`--build` 可先构建）：tag-stats/tagIds 命中数一致/artist·multi·unknown 分组与 SQL 计数一致（含多作者修复回归）/进度偏移往返/设置 JSON 落库/tag-search/目录保护不丢画廊/无孤儿 work_tag/标签库与专辑计数稳定。用法 `python scripts/smoke_test.py [--build] [--dll …] [--db …] [--port …]`，退出码 0=全过；实测 15 项全 PASS
 - **页面/封面缓存版本化（2026-09-01）**：页面图片接口 `Cache-Control: 1 天` 且 URL 不变，重下后浏览器会显示旧图 24h——`GetGalleryPages` 现按目录内文件最新 mtime 生成 `?v=` 版本参数（重下/替换文件后自动换新，配合 10s 缓存失效即时生效）；前端 `getLocalCoverUrl(gid, v)`/`getLocalPageUrl` 支持版本参数，画廊卡片/行/详情封面传 `lastModified` 做缓存键
+- **下载管理增强（2026-09-01）**：① 后端新增 `POST /api/download/tasks/pause-all` / `resume-all`（`DownloadManager.PauseAll/ResumeAll` 批量暂停/恢复）；② 前端 `/downloads` 独立页**默认展开**（原默认折叠迷你栏，进页面只看到一条小栏）；标题栏新增「全部暂停/全部恢复」；任务行增强——**进度百分比、下载速度 + 预计剩余时间（每页平均耗时×剩余页）、失败页数、pending 队列位置（第 N 个等待）**；③ 桌面端本地页顶栏新增「下载」入口链接（此前只能靠 URL 进下载页）。真实库副本验证：pause-all 暂停 110 个活跃任务、resume-all 恢复 110
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

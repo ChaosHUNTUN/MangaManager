@@ -109,6 +109,22 @@ public class DownloadController : ControllerBase
         return Ok(new ApiResponse<object>(true, new { restarted = count, message = $"已重启 {count} 个失败任务" }));
     }
 
+    /// <summary>暂停全部活跃任务</summary>
+    [HttpPost("tasks/pause-all")]
+    public IActionResult PauseAll()
+    {
+        var count = _dm.PauseAll();
+        return Ok(new ApiResponse<object>(true, new { paused = count, message = $"已暂停 {count} 个任务" }));
+    }
+
+    /// <summary>恢复全部暂停任务</summary>
+    [HttpPost("tasks/resume-all")]
+    public IActionResult ResumeAll()
+    {
+        var count = _dm.ResumeAll();
+        return Ok(new ApiResponse<object>(true, new { resumed = count, message = $"已恢复 {count} 个任务" }));
+    }
+
     /// <summary>从本地遗留 .progress 恢复下载（兼容旧版本未通过管理器管理的任务）</summary>
     [HttpPost("tasks/resume-legacy")]
     public IActionResult ResumeLegacyTask([FromBody] ResumeLegacyRequest req)

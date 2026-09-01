@@ -45,3 +45,13 @@ export async function restartAllFailedTasks() {
   const json = await request('/api/download/tasks/restart-all-failed', { method: 'POST' })
   return json.data
 }
+
+export async function pauseAllDownloadTasks() {
+  const json = await request('/api/download/tasks/pause-all', { method: 'POST' })
+  return json.data
+}
+
+export async function resumeAllDownloadTasks() {
+  const json = await request('/api/download/tasks/resume-all', { method: 'POST' })
+  return json.data
+}

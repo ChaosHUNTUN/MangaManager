@@ -212,6 +212,26 @@ public class DownloadManager
         return failed.Count;
     }
 
+    /// <summary>暂停全部活跃任务（pending/downloading），返回数量</summary>
+    public int PauseAll()
+    {
+        var gids = _tasks.Values
+            .Where(t => t.Status is "pending" or "downloading")
+            .Select(t => t.Gid).ToList();
+        foreach (var g in gids) PauseTask(g);
+        return gids.Count;
+    }
+
+    /// <summary>恢复全部暂停任务，返回数量</summary>
+    public int ResumeAll()
+    {
+        var gids = _tasks.Values
+            .Where(t => t.Status == "paused")
+            .Select(t => t.Gid).ToList();
+        foreach (var g in gids) ResumeTask(g);
+        return gids.Count;
+    }
+
     /// <summary>从本地遗留 .progress 文件恢复下载任务（兼容旧版本未通过 DownloadManager 管理的任务）</summary>
     public DownloadTask? ResumeLegacyTask(int gid, string token, string title)
     {

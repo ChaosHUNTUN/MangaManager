@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import {
   fetchDownloadTasks, fetchActiveDownloadTasks,
   pauseDownloadTask, resumeDownloadTask, removeDownloadTask,
-  restartDownloadTask, restartAllFailedTasks, API_BASE
+  restartDownloadTask, restartAllFailedTasks,
+  pauseAllDownloadTasks, resumeAllDownloadTasks, API_BASE
 } from '../api'
 
 const STATUS_MAP = {
@@ -19,7 +20,7 @@ const formatSpeed = (s) => s || '--'
 
 export default function DownloadMonitor() {
   const [tasks, setTasks] = useState([])
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)   // 独立页面默认展开
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
   const eventSourceRef = useRef(null)
@@ -83,6 +84,7 @@ export default function DownloadMonitor() {
   const activeCount = tasks.filter(t => t.status === 'downloading').length
   const pendingCount = tasks.filter(t => t.status === 'pending').length
   const failedCount = tasks.filter(t => t.status === 'failed').length
+  const pausedCount = tasks.filter(t => t.status === 'paused').length
   const totalActive = activeCount + pendingCount
 
   if (!expanded) {
@@ -146,6 +148,22 @@ export default function DownloadMonitor() {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {(activeCount > 0 || pendingCount > 0) && (
+              <button className="btn-sm" onClick={async () => {
+                try { const r = await pauseAllDownloadTasks(); showToast(r.message || `已暂停 ${r.paused} 个任务`) }
+                catch (e) { showToast('暂停失败: ' + e.message, 'error') }
+              }} style={{ borderColor: '#8b5cf6', color: '#c4b5fd', fontSize: '0.7rem' }}>
+                ⏸ 全部暂停
+              </button>
+            )}
+            {pausedCount > 0 && (
+              <button className="btn-sm" onClick={async () => {
+                try { const r = await resumeAllDownloadTasks(); showToast(r.message || `已恢复 ${r.resumed} 个任务`) }
+                catch (e) { showToast('恢复失败: ' + e.message, 'error') }
+              }} style={{ borderColor: '#3b82f6', color: '#93c5fd', fontSize: '0.7rem' }}>
+                ▶ 全部恢复
+              </button>
+            )}
             {failedCount > 0 && (
               <button className="btn-sm" onClick={async () => {
                 try { const r = await restartAllFailedTasks(); showToast(`已重启 ${r.restarted} 个失败任务`) }
@@ -168,10 +186,17 @@ export default function DownloadMonitor() {
           </div>
         ) : (
           <div style={{ padding: '8px 12px' }}>
-            {tasks.map(task => (
+            {tasks.map(task => {
+              // 队列位置：pending 任务按入队时间（CreatedAt 升序）排位
+              const pendingOrdered = tasks
+                .filter(t => t.status === 'pending')
+                .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+              const queuePos = pendingOrdered.findIndex(t => t.gid === task.gid) + 1
+              return (
               <TaskRow
                 key={task.gid}
                 task={task}
+                queuePos={task.status === 'pending' ? queuePos : 0}
                 onPause={() => pauseDownloadTask(task.gid).then(() => showToast('已暂停')).catch(e => showToast(e.message, 'error'))}
                 onResume={() => resumeDownloadTask(task.gid).then(() => showToast('已恢复')).catch(e => showToast(e.message, 'error'))}
                 onRemove={() => {
@@ -183,7 +208,8 @@ export default function DownloadMonitor() {
                 }}
                 onRestart={() => restartDownloadTask(task.gid).then(() => showToast('已重启')).catch(e => showToast(e.message, 'error'))}
               />
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -192,8 +218,19 @@ export default function DownloadMonitor() {
   )
 }
 
-function TaskRow({ task, onPause, onResume, onRemove, onRestart }) {
+function TaskRow({ task, queuePos = 0, onPause, onResume, onRemove, onRestart }) {
   const st = STATUS_MAP[task.status] || STATUS_MAP.removed
+  // 估算剩余时间：每页平均耗时 × 剩余页数（下载中且至少完成 1 页时）
+  let etaText = ''
+  if (task.status === 'downloading' && task.downloadedPages > 0 && task.totalPages > task.downloadedPages && task.startedAt) {
+    const elapsedSec = (Date.now() - new Date(task.startedAt).getTime()) / 1000
+    const avgPerPage = elapsedSec / task.downloadedPages
+    const remainSec = (task.totalPages - task.downloadedPages) * avgPerPage
+    if (remainSec > 0 && remainSec < 3600 * 24) {
+      const m = Math.floor(remainSec / 60), s = Math.floor(remainSec % 60)
+      etaText = m > 0 ? `预计剩余 ${m}分${s}秒` : `预计剩余 ${s}秒`
+    }
+  }
 
   return (
     <div className="dl-task-row" style={{
@@ -234,11 +271,22 @@ function TaskRow({ task, onPause, onResume, onRemove, onRestart }) {
           <span style={{ fontSize: '0.68rem', color: '#888' }}>
             {task.downloadedPages}/{task.totalPages || '?'} 页
             {task.downloadedBytes > 0 && ` · ${formatBytes(task.downloadedBytes)}`}
+            {task.totalPages > 0 && (task.status === 'downloading' || task.status === 'paused') && (
+              ` · ${Math.min(100, Math.round((task.progress || (task.downloadedPages / task.totalPages * 100)) || 0))}%`
+            )}
           </span>
           {task.status === 'downloading' && task.speed && (
             <span style={{ fontSize: '0.68rem', color: '#60a5fa', fontWeight: 500 }}>
-              {formatSpeed(task.speed)}
+              {formatSpeed(task.speed)}{etaText && ` · ${etaText}`}
             </span>
+          )}
+          {task.failedPages > 0 && (
+            <span style={{ fontSize: '0.68rem', color: '#f87171' }}>
+              {task.failedPages} 页失败
+            </span>
+          )}
+          {queuePos > 0 && (
+            <span style={{ fontSize: '0.68rem', color: '#a78bfa' }}>第 {queuePos} 个等待</span>
           )}
           {task.errorMsg && (
             <span style={{ fontSize: '0.65rem', color: '#f87171', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}

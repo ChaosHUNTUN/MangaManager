@@ -28,7 +28,7 @@ export {
 export {
   fetchDownloadTasks, fetchActiveDownloadTasks, fetchDownloadTask, addDownloadTask,
   pauseDownloadTask, resumeDownloadTask, removeDownloadTask, restartDownloadTask,
-  restartAllFailedTasks
+  restartAllFailedTasks, pauseAllDownloadTasks, resumeAllDownloadTasks
 } from './download'
 
 // 本地画廊
