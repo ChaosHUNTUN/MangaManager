@@ -187,6 +187,8 @@ MangaManager/
 - **端到端冒烟测试脚本（2026-09-01）**：新增 `scripts/smoke_test.py`——真实库副本 + 临时 API 一条龙回归（`--build` 可先构建）：tag-stats/tagIds 命中数一致/artist·multi·unknown 分组与 SQL 计数一致（含多作者修复回归）/进度偏移往返/设置 JSON 落库/tag-search/目录保护不丢画廊/无孤儿 work_tag/标签库与专辑计数稳定。用法 `python scripts/smoke_test.py [--build] [--dll …] [--db …] [--port …]`，退出码 0=全过；实测 15 项全 PASS
 - **页面/封面缓存版本化（2026-09-01）**：页面图片接口 `Cache-Control: 1 天` 且 URL 不变，重下后浏览器会显示旧图 24h——`GetGalleryPages` 现按目录内文件最新 mtime 生成 `?v=` 版本参数（重下/替换文件后自动换新，配合 10s 缓存失效即时生效）；前端 `getLocalCoverUrl(gid, v)`/`getLocalPageUrl` 支持版本参数，画廊卡片/行/详情封面传 `lastModified` 做缓存键
 - **下载管理增强（2026-09-01）**：① 后端新增 `POST /api/download/tasks/pause-all` / `resume-all`（`DownloadManager.PauseAll/ResumeAll` 批量暂停/恢复）；② 前端 `/downloads` 独立页**默认展开**（原默认折叠迷你栏，进页面只看到一条小栏）；标题栏新增「全部暂停/全部恢复」；任务行增强——**进度百分比、下载速度 + 预计剩余时间（每页平均耗时×剩余页）、失败页数、pending 队列位置（第 N 个等待）**；③ 桌面端本地页顶栏新增「下载」入口链接（此前只能靠 URL 进下载页）。真实库副本验证：pause-all 暂停 110 个活跃任务、resume-all 恢复 110
+- **控制台退出崩溃修复（2026-09-01，真实线上问题）**：`MangaManager.Console` 在退出时反复崩溃（事件日志 `.NET Runtime 1026: System.ApplicationException: Object synchronization method was called from an unsynchronized block of code`，栈指向 `App.OnExit → Mutex.ReleaseMutex`）——`Exit_Click` 先释放 `_appMutex`，`Shutdown()` 触发 `OnExit` 再释放一次（双重释放）；第二个实例（未持有锁）退出时同样崩溃。修复：`_appMutexOwned` 记录所有权 + `ReleaseAppMutex()` 仅持有者释放一次、异常容错、置空防重入。该崩溃会连带终止控制台托管的 API 进程 → 前端 `/api` 全部失败 → 下载列表静默显示为空（本次“有任务但列表不显示”的根因）
+- **Vite 代理 IPv6 加固（2026-09-01）**：`vite.config.js` 的 `/api` 代理 target 从 `http://localhost:5208` 改为 `http://127.0.0.1:5208`，避免 localhost 解析到 `::1` 导致“API 在跑却连不上”
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

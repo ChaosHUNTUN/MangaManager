@@ -16,6 +16,7 @@ public partial class App : Application
 {
     private static readonly string AppMutexName = "Global\\MangaManager.Console.SingleInstance";
     private static Mutex? _appMutex;
+    private static bool _appMutexOwned;   // 仅创建者持有，释放前必须校验，避免双重释放崩溃
     private TaskbarIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private MainViewModel? _vm;
@@ -26,6 +27,7 @@ public partial class App : Application
     {
         // 单实例校验：如果已有实例在运行，激活已有窗口并退出
         _appMutex = new Mutex(true, AppMutexName, out bool createdNew);
+        _appMutexOwned = createdNew;
         if (!createdNew)
         {
             WakeExistingInstance();
@@ -127,15 +129,27 @@ public partial class App : Application
         if (_vm != null) await _vm.ShutdownAsync();
         if (_monitor != null) await _monitor.DisposeAsync();
         _trayIcon?.Dispose();
-        _appMutex?.ReleaseMutex();
         Application.Current.Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         _trayIcon?.Dispose();
-        _appMutex?.ReleaseMutex();
+        ReleaseAppMutex();
         base.OnExit(e);
+    }
+
+    /// <summary>安全释放单实例互斥锁：仅持有者释放一次，异常容错（避免双重释放/未持有释放崩溃）</summary>
+    private static void ReleaseAppMutex()
+    {
+        if (_appMutex != null && _appMutexOwned)
+        {
+            try { _appMutex.ReleaseMutex(); }
+            catch (ApplicationException) { /* 已释放或线程不持有，忽略 */ }
+            _appMutexOwned = false;
+        }
+        _appMutex?.Dispose();
+        _appMutex = null;
     }
 
     /// <summary>向上查找项目根目录（包含 MangaManager.slnx 或 src 目录）</summary>

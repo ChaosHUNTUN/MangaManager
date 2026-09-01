@@ -59,7 +59,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5208',
+        target: 'http://127.0.0.1:5208',   // 避免 localhost 解析到 IPv6 ::1 导致 API 可达却连不上
         changeOrigin: false,
         bypass: (req) => {
           // Don't proxy our local image API
