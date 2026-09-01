@@ -145,9 +145,41 @@ public class TagController : ControllerBase
         return Ok(new ApiResponse<object>(true, new { movedWork, movedManga }));
     }
 
+    /// <summary>获取标签内手动顺序（gid 数组；无记录返回 null）</summary>
+    [HttpGet("{id}/order")]
+    public async Task<IActionResult> GetOrder(int id)
+    {
+        var o = await _db.TagOrders.FindAsync(id);
+        List<int>? gids = null;
+        if (o != null)
+        {
+            try { gids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(o.Gids); } catch { }
+        }
+        return Ok(new ApiResponse<object>(true, new { tagId = id, gids }));
+    }
+
+    /// <summary>保存标签内手动顺序（连载顺序等）</summary>
+    [HttpPut("{id}/order")]
+    public async Task<IActionResult> SaveOrder(int id, [FromBody] SaveTagOrderRequest? req)
+    {
+        var tag = await _db.Tags.FindAsync(id);
+        if (tag == null) return NotFound(new ApiResponse<object>(false, null, "标签不存在"));
+        var o = await _db.TagOrders.FindAsync(id);
+        if (o == null)
+        {
+            o = new TagOrder { TagId = id };
+            _db.TagOrders.Add(o);
+        }
+        o.Gids = System.Text.Json.JsonSerializer.Serialize(req?.Gids ?? new List<int>());
+        o.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new ApiResponse<object>(true, new { tagId = id, saved = (req?.Gids ?? new List<int>()).Count }));
+    }
+
     private static TagDto ToDto(Tag t) => new(t.Id, t.Name, t.Color, t.Category, t.Namespace, t.NameCn, t.IsBlocked);
 }
 
 public record CreateTagRequest(string Name, string? Color, string? Category, string? Namespace = null, string? NameCn = null);
 public record UpdateTagRequest(string? Name, string? Color, string? Category, string? Namespace = null, string? NameCn = null, bool? IsBlocked = null);
 public record MergeTagsRequest(int FromId, int IntoId);
+public record SaveTagOrderRequest(List<int>? Gids);

@@ -143,6 +143,7 @@ MangaManager/
 - **⚠️ 核心 bug：`tag.Id` 冲突导致新作品不入库**——`SyncGalleryTagsAsync` 用 `db.WorkTags.Add(new WorkTag { Tag = t })` 导航写法，**EF 的 Add 级联把整张关系图标记为 Added**，已存在标签（真实 Id）被当成新增重复 INSERT → 同步回滚 → 作品不进 local_gallery（磁盘有目录但库表无记录）。修复：**已存在标签（Id≠0）改用 `TagId = t.Id` 引用，新标签保持导航 Added**。全扫恢复 2728→2808 画廊、work_tag 47802→49279
 - **NameCn 回填**：误用 `AsNoTracking()` 导致改值不落库 → 去掉后 3052 条真实落库
 - **新作品链路验证**：下载完成 meta.json → `SyncDirectoryAsync` → `EnsureTagsCoreAsync`（自动建标签+翻译）→ work_tag 先清后建，全通（今日 76 个已完成任务全部入库）
+- **标签内自定义顺序（连载顺序）**：新增 `tag_order` 表（TagId 主键、Gids=JSON int 数组）+ 迁移 `AddTagOrder`；`GET/PUT /api/tag/{id}/order` 读取/保存；**单标签 + `sort=custom`** 时 `GetPagedGalleries`/`GetGalleryGids` 按 tag_order 排列（未列入数组的 gid 排末尾）；tag-stats 增加 `HasOrder`（标签云显示 `▤`）；前端单标签视图工具栏「自定义顺序」按钮 + dnd-kit 拖拽重排 + 「清除顺序」回退规则排序。**保存采用合并式**：拖拽后先取完整 gid 列表（POST /local/galleries/gids, sort=custom），只替换当前页块，其余页顺序保留，避免跨页覆盖
 
 **B. 下载管理**
 - **⚠️ 已完成任务重启后消失**：`LoadTasksFromDb` 只加载非 completed，2740 条历史完成记录不载入 → 修复为**加载最近 100 条已完成** + 排序活跃在前/完成按 CompletedAt 倒序 + web/控制台新增「已完成」筛选
@@ -181,6 +182,7 @@ MangaManager/
 5. **TDZ**——`useCallback` 依赖数组引用后声明的 const 会崩
 6. **连通性检测必须走与真实请求相同的代理链路**
 7. **代码改动后必须重启对应进程**（API/控制台是独立进程，改后端要重建重启才生效）
+8. **拖拽排序保存要合并式**——只保存当前页数组会整体覆盖全量顺序；跨页场景（连载系列几十上百部）必须先取完整列表、替换当前页块
 
 ### 第一批：阅读器核心修复
 - **缩放/适配真正生效**：`fit`/`zoom` 接入 PaginatedView 与 ContinuousView（`getImageLayout` + 自然尺寸测量）；放大溢出可滚动

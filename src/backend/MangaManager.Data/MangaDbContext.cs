@@ -29,6 +29,7 @@ public class MangaDbContext : DbContext
     public DbSet<LocalGallery> LocalGalleries => Set<LocalGallery>();
     public DbSet<LocalReadingProgress> LocalReadingProgresses => Set<LocalReadingProgress>();
     public DbSet<WorkTag> WorkTags => Set<WorkTag>();
+    public DbSet<TagOrder> TagOrders => Set<TagOrder>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -82,6 +83,13 @@ public class MangaDbContext : DbContext
             e.HasKey(x => new { x.WorkId, x.TagId });
             e.HasIndex(x => x.TagId);
             e.HasOne(x => x.Tag).WithMany().HasForeignKey(x => x.TagId);
+        });
+
+        modelBuilder.Entity<TagOrder>(e =>
+        {
+            e.ToTable("tag_order");
+            e.HasKey(x => x.TagId);
+            e.Property(x => x.Gids).HasColumnType("TEXT");
         });
 
         modelBuilder.Entity<MangaTag>(e =>

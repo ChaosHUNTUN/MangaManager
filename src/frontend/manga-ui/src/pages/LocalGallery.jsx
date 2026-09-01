@@ -21,6 +21,7 @@ import { User, Users, FolderOpen, Save, Hash, CheckCircle, XCircle, Rocket, Tag 
 import { CATEGORY_COLORS } from '../components/GalleryCard'
 import { FEATURES } from '../config'
 import { fetchTagStats } from '../api/work'
+import { fetchTagOrder, saveTagOrder } from '../api'
 
 const PAGE_OPTIONS = [20, 40, 60]
 const SORT_OPTIONS = [
@@ -208,6 +209,18 @@ export default function LocalGallery() {
 
   const totalPages = pageTotalPages; const safePage = Math.min(page, totalPages)
   const paged = pageItems; const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
+  // 标签内自定义顺序：单标签 + sort=custom
+  const singleTagId = tagIds && tagIds.length === 1 ? tagIds[0] : null
+  const isTagOrderMode = !!singleTagId && sortBy === 'custom'
+  const [tagHasOrder, setTagHasOrder] = useState(false)
+
+  // 单标签视图：读取该标签是否已有手动顺序（供"清除顺序"按钮与标识）
+  useEffect(() => {
+    let cancelled = false
+    if (!singleTagId) { setTagHasOrder(false); return }
+    fetchTagOrder(singleTagId).then(r => { if (!cancelled) setTagHasOrder(!!r.gids && r.gids.length > 0) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [singleTagId, tagStats])
 
   // ── 增删改操作（Hook 封装） ──
   const ops = useGalleryOperations({ galleryMetas, albumConfig, paged, pageTotal, activeGroup, search, sortBy, randomMode, tagIds, loadMetas, loadPaged, setError, setToast })
@@ -256,6 +269,30 @@ export default function LocalGallery() {
     saveAlbumConfig(cfg).catch(e => { setToast('保存排序失败: ' + e.message) })
     setToast('排序已更新')
   }, [paged, activeGroup, albumConfig])
+
+  // 标签内自定义顺序：拖拽重排 → 保存该标签的 gid 顺序
+  const handleTagOrderDragEnd = useCallback((event) => {
+    const { active, over } = event; setActiveDragId(null)
+    if (!over || active.id === over.id) return
+    const oi = paged.findIndex(g => g.gid === active.id); const ni = paged.findIndex(g => g.gid === over.id)
+    if (oi === -1 || ni === -1) return
+    const no = arrayMove(paged, oi, ni); setPageItems(no)
+    if (!singleTagId) return
+    // 合并式保存：取完整顺序列表，仅替换当前页块，避免跨页拖拽时覆盖其他页已排好的顺序
+    fetchLocalGalleryGids({ group: 'all', search, sort: 'custom', tagIds: [singleTagId] })
+      .then(full => {
+        const pageSet = new Set(paged.map(g => g.gid))
+        const firstIdx = full.findIndex(gid => pageSet.has(gid))
+        if (firstIdx === -1) return no.map(g => g.gid)
+        const head = full.slice(0, firstIdx).filter(gid => !pageSet.has(gid))
+        const tail = full.slice(firstIdx).filter(gid => !pageSet.has(gid))
+        return [...head, ...no.map(g => g.gid), ...tail]
+      })
+      .catch(() => no.map(g => g.gid))   // 取不到完整列表时退化为保存当前页
+      .then(gids => saveTagOrder(singleTagId, gids))
+      .then(() => { setTagHasOrder(true); setToast('顺序已保存') })
+      .catch(e => setToast('保存顺序失败: ' + e.message))
+  }, [paged, singleTagId, search])
 
   const isInAlbum = activeGroup.startsWith('album:')
 
@@ -442,6 +479,22 @@ export default function LocalGallery() {
               {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
             {isAlbumSortMode && <button className="btn-sm" onClick={() => { const ak = activeGroup.slice(6); const o = paged.map(g => g.gid); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], order: o }; saveAlbums(cfg); setToast('顺序已保存') }}><Save size={13} /></button>}
+            {singleTagId && (
+              <button className="btn-sm" onClick={() => updateParams({ sort: sortBy === 'custom' ? null : 'custom', p: null })}
+                title="在该标签内自定义连载/阅读顺序：开启后拖拽卡片调整顺序"
+                style={{ borderColor: isTagOrderMode ? 'var(--accent-border)' : 'var(--border-input)', color: isTagOrderMode ? 'var(--accent)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                <IconGripDots size={13} /> {tagHasOrder && !isTagOrderMode ? '已排序' : '自定义顺序'}
+              </button>
+            )}
+            {isTagOrderMode && (
+              <button className="btn-sm" onClick={async () => {
+                try { await saveTagOrder(singleTagId, []); setTagHasOrder(false); setToast('已清除自定义顺序'); loadPaged() }
+                catch (e) { setToast('清除失败: ' + e.message) }
+              }} title="清除该标签的自定义顺序，恢复规则排序"
+                style={{ borderColor: 'var(--border-input)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                清除顺序
+              </button>
+            )}
             <div style={{ display: 'flex', gap: 0 }}>
               <button className="btn-sm" onClick={() => setViewMode('grid')} style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
               <button className="btn-sm" onClick={() => setViewMode('list')} style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
@@ -476,8 +529,9 @@ export default function LocalGallery() {
 
           {/* 画廊网格/列表 */}
           {viewMode === 'grid' ? (
-            isAlbumSortMode ? (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => setActiveDragId(e.active.id)} onDragEnd={handleDragEnd}>
+            (isAlbumSortMode || isTagOrderMode) ? (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => setActiveDragId(e.active.id)}
+                onDragEnd={isTagOrderMode ? handleTagOrderDragEnd : handleDragEnd}>
                 <SortableContext items={paged.map(g => g.gid)} strategy={verticalListSortingStrategy}>
                   <div className="grid">
                     {paged.map(g => (

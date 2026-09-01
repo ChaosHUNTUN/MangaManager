@@ -43,6 +43,19 @@ export async function mergeTags(fromId, intoId) {
   })
 }
 
+export async function fetchTagOrder(tagId) {
+  const json = await request(`/api/tag/${tagId}/order`)
+  return json.data || { tagId, gids: null }
+}
+
+export async function saveTagOrder(tagId, gids) {
+  return request(`/api/tag/${tagId}/order`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gids })
+  })
+}
+
 export async function fetchMangaTags(mangaId) {
   const json = await request(`/api/manga/${mangaId}/tags`)
   return json.data || []

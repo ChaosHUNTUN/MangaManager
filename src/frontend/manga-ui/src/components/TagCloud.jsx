@@ -56,6 +56,7 @@ export default function TagCloud({ tagStats = [], activeTagIds = [], onToggleTag
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontSize: 'var(--text-2xs)', color: on ? 'var(--accent)' : 'var(--text-secondary)', background: on ? 'var(--accent-bg)' : 'transparent' }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.color || '#6366f1', flexShrink: 0 }} />
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.nameCn || t.name}</span>
+                    {t.hasOrder && <span title="已自定义顺序" style={{ fontSize: '0.58rem', color: 'var(--accent)', flexShrink: 0 }}>▤</span>}
                     <span style={{ opacity: 0.5, fontSize: '0.62rem', flexShrink: 0 }}>{t.count}</span>
                   </div>
                 )

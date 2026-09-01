@@ -113,7 +113,25 @@ public class LocalGalleryService
         using var db = CreateDb();
         var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder, tagIds);
 
-        // 自定义排序
+        // 标签内自定义顺序（单标签 + sort=custom → 按 tag_order 数组排列）
+        var tagOrder = LoadTagOrder(db, tagIds, sort);
+        if (tagOrder != null && tagOrder.Count > 0)
+        {
+            var all = query.ToList();
+            var orderMap = new Dictionary<int, int>();
+            for (int i = 0; i < tagOrder.Count; i++) orderMap[tagOrder[i]] = i;
+            all = all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999)).ToList();
+            var total = all.Count;
+            var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
+            var safePage = Math.Clamp(page, 1, Math.Max(1, totalPages));
+            return new GalleryPagedResult
+            {
+                Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
+                Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
+            };
+        }
+
+        // 专辑自定义排序（旧）
         if (!string.IsNullOrEmpty(sort) && sort == "custom" && albumOrder != null && albumOrder.Count > 0
             && !string.IsNullOrEmpty(group) && group.StartsWith("album:"))
         {
@@ -156,7 +174,18 @@ public class LocalGalleryService
         using var db = CreateDb();
         var query = BuildFilteredQuery(db, group, search, sort, albumGids, albumOrder, tagIds);
 
-        // 自定义排序
+        // 标签内自定义顺序
+        var tagOrder = LoadTagOrder(db, tagIds, sort);
+        if (tagOrder != null && tagOrder.Count > 0)
+        {
+            var all = query.ToList();
+            var orderMap = new Dictionary<int, int>();
+            for (int i = 0; i < tagOrder.Count; i++) orderMap[tagOrder[i]] = i;
+            return all.OrderBy(g => orderMap.GetValueOrDefault(g.Gid, 9999))
+                      .Select(g => g.Gid).ToList();
+        }
+
+        // 专辑自定义排序（旧）
         if (!string.IsNullOrEmpty(sort) && sort == "custom" && albumOrder != null && albumOrder.Count > 0
             && !string.IsNullOrEmpty(group) && group.StartsWith("album:"))
         {
@@ -170,6 +199,15 @@ public class LocalGalleryService
         // 通用排序
         query = ApplyDbSort(query, sort);
         return query.Select(g => g.Gid).ToList();
+    }
+
+    /// <summary>单标签 + sort=custom 时读取该标签的手动顺序（无则 null）</summary>
+    private static List<int>? LoadTagOrder(MangaDbContext db, List<int>? tagIds, string? sort)
+    {
+        if (sort != "custom" || tagIds == null || tagIds.Count != 1) return null;
+        var o = db.TagOrders.AsNoTracking().FirstOrDefault(to => to.TagId == tagIds[0]);
+        if (o == null) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<int>>(o.Gids); } catch { return null; }
     }
 
     /// <summary>构建筛选查询（分组 + 搜索），供 GetPagedGalleries 和 GetGalleryGids 复用</summary>
@@ -409,11 +447,12 @@ public class LocalGalleryService
             .Select(g => new { TagId = g.Key, Count = g.Count() })
             .ToList();
         var countMap = counts.ToDictionary(c => c.TagId, c => c.Count);
+        var orderedTagIds = db.TagOrders.AsNoTracking().Select(o => o.TagId).ToHashSet();
         return db.Tags.AsNoTracking()
             .OrderBy(t => t.Category).ThenBy(t => t.Name)
             .Select(t => new TagStatDto(
                 t.Id, t.Name, t.Namespace, t.Category, t.NameCn, t.Color,
-                countMap.GetValueOrDefault(t.Id, 0)))
+                countMap.GetValueOrDefault(t.Id, 0), orderedTagIds.Contains(t.Id)))
             .ToList();
     }
 
@@ -888,7 +927,7 @@ public class GroupInfo
 }
 
 public record TagStatDto(
-    int Id, string Name, string Namespace, string Category, string? NameCn, string Color, int Count);
+    int Id, string Name, string Namespace, string Category, string? NameCn, string Color, int Count, bool HasOrder = false);
 
 /// <summary>分页查询结果</summary>
 public class GalleryPagedResult

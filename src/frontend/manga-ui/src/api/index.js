@@ -12,6 +12,7 @@ export {
 // 标签
 export {
   fetchAllTags, fetchTagCategories, createTag, updateTag, deleteTag, mergeTags,
+  fetchTagOrder, saveTagOrder,
   fetchMangaTags, setMangaTags, batchAddTags
 } from './tags'
 

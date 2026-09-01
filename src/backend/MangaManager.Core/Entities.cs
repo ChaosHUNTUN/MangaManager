@@ -59,6 +59,14 @@ public class WorkTag
     public Tag? Tag { get; set; }
 }
 
+/// <summary>标签内手动顺序（连载顺序等）：TagId 1:1，Gids 为手动排序的 gid 数组</summary>
+public class TagOrder
+{
+    public int TagId { get; set; }            // PK（与 tag 一一对应）
+    public string Gids { get; set; } = "[]";  // JSON int 数组：自定义顺序
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class MangaTag
 {
     public int Id { get; set; }
