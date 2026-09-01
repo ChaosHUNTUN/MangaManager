@@ -182,6 +182,7 @@ MangaManager/
 - **PWA 化（2026-09-01）**：`public/manifest.webmanifest`（standalone、主题色 #0f0f1a、192/512 PNG + maskable 图标，PIL 按品牌色生成闪电图标）+ `public/sw.js` 最小安全 Service Worker——安装时预取外壳、运行时静态资源网络优先失败回退缓存、`/api/` 与 `/local-images/` 一律网络直连（绝不清新数据）；`main.jsx` 仅生产构建注册。验证：构建产物含 manifest/sw/图标、JSON 合法、sw 语法通过、index.html 注入 manifest 链接
 - **移动端横屏适配（2026-09-01）**：`useIsMobile` 与 `mobile.css` 媒体查询从仅 `≤768px` 改为 `(≤768px), (≤1024px and ≤500px 高)`——横屏手机（844~932px 宽）不再误判桌面端；横屏作用域下 EH 网格 `auto-fill minmax(140px,1fr)`、本地卡片最小宽 150px、标签栏 44px、底部留白 48px、缩略图收窄。构建产物验证：LightningCSS 将查询改写为区间语法 `(width<=768px),(width<=1024px) and (height<=500px)`，两处均正确编译
 - **画廊卡片左滑手势（2026-09-01）**：`GalleryCard` 内容包一层可滑动层（`touch-action: pan-y` 纵向滚动让位），左滑露出「阅读/删除」操作（72px×2 吸附展开），右滑/点击空白收起；滑动距离阈值 30px 吸附、40px 回弹；滑动后吞掉合成 click 防误触；`onDelete` 复用本地页确认弹窗；批量模式禁用。SortableGalleryCard 透传
+- **下载监控移动端修复（2026-09-01）**：任务行操作按钮加 `dl-task-btn` 类、移动端 28px → 38px 触控目标；元数据行 `dl-task-meta` 允许换行（状态/页数/速度/错误信息不再横向挤压）；折叠迷你栏 `dl-minibar` 可换行；下载页重试/全部重试此前已接好
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

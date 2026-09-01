@@ -116,6 +116,15 @@
   .mobile .btn-sm, .mobile .btn-primary, .mobile .btn-ghost { min-height: 38px; }
   .mobile input, .mobile select { font-size: 16px; } /* 防止 iOS 聚焦自动缩放 */
 
+  /* ── 下载监控：操作按钮触控目标 + 元数据行换行 ── */
+  .mobile .dl-task-row { gap: 8px; }
+  .mobile .dl-task-meta { flex-wrap: wrap; row-gap: 3px; }
+  .mobile .dl-task-btn {
+    width: 38px !important; height: 38px !important;
+    font-size: 0.95rem !important; border-radius: 8px !important;
+  }
+  .mobile .dl-minibar { flex-wrap: wrap; row-gap: 4px; }
+
   /* ── 隐藏仅 hover 可见的桌面元素 ── */
   .mobile .gallery-hover-overlay { display: none !important; }
   .mobile .album-actions { opacity: 1 !important; }

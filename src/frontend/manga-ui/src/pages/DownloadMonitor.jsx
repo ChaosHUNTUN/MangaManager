@@ -90,6 +90,7 @@ export default function DownloadMonitor() {
     return (
       <>
         <div
+          className="dl-minibar"
           onClick={() => setExpanded(true)}
           style={{
             position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
@@ -195,7 +196,7 @@ function TaskRow({ task, onPause, onResume, onRemove, onRestart }) {
   const st = STATUS_MAP[task.status] || STATUS_MAP.removed
 
   return (
-    <div style={{
+    <div className="dl-task-row" style={{
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '8px 10px', marginBottom: 4, borderRadius: 8,
       background: '#14142a', border: '1px solid #2a2a4a',
@@ -223,7 +224,7 @@ function TaskRow({ task, onPause, onResume, onRemove, onRestart }) {
         }}>
           {task.title || `Gallery #${task.gid}`}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+        <div className="dl-task-meta" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
           <span style={{
             padding: '1px 6px', borderRadius: 4, fontSize: '0.65rem',
             background: st.bg, color: st.color, fontWeight: 600
@@ -266,18 +267,18 @@ function TaskRow({ task, onPause, onResume, onRemove, onRestart }) {
       {/* 操作按钮 */}
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
         {task.status === 'downloading' && (
-          <button onClick={onPause} title="暂停"
+          <button className="dl-task-btn" onClick={onPause} title="暂停"
             style={btnStyle('#8b5cf6')}>⏸</button>
         )}
         {task.status === 'paused' && (
-          <button onClick={onResume} title="继续"
+          <button className="dl-task-btn" onClick={onResume} title="继续"
             style={btnStyle('#3b82f6')}>▶</button>
         )}
         {task.status === 'failed' && (
-          <button onClick={onRestart} title="重试"
+          <button className="dl-task-btn" onClick={onRestart} title="重试"
             style={btnStyle('#f59e0b')}>🔄</button>
         )}
-        <button onClick={onRemove} title={task.status === 'downloading' ? '取消下载' : '移除'}
+        <button className="dl-task-btn" onClick={onRemove} title={task.status === 'downloading' ? '取消下载' : '移除'}
           style={btnStyle('#ef4444')}>✕</button>
       </div>
     </div>
