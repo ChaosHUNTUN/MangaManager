@@ -165,15 +165,23 @@ public class TagController : ControllerBase
         var tag = await _db.Tags.FindAsync(id);
         if (tag == null) return NotFound(new ApiResponse<object>(false, null, "标签不存在"));
         var o = await _db.TagOrders.FindAsync(id);
+        var gids = req?.Gids ?? new List<int>();
+        // 清空顺序 = 删除记录，避免空数组行让 hasOrder 仍为 true
+        if (gids.Count == 0)
+        {
+            if (o != null) _db.TagOrders.Remove(o);
+            await _db.SaveChangesAsync();
+            return Ok(new ApiResponse<object>(true, new { tagId = id, saved = 0 }));
+        }
         if (o == null)
         {
             o = new TagOrder { TagId = id };
             _db.TagOrders.Add(o);
         }
-        o.Gids = System.Text.Json.JsonSerializer.Serialize(req?.Gids ?? new List<int>());
+        o.Gids = System.Text.Json.JsonSerializer.Serialize(gids);
         o.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return Ok(new ApiResponse<object>(true, new { tagId = id, saved = (req?.Gids ?? new List<int>()).Count }));
+        return Ok(new ApiResponse<object>(true, new { tagId = id, saved = gids.Count }));
     }
 
     private static TagDto ToDto(Tag t) => new(t.Id, t.Name, t.Color, t.Category, t.Namespace, t.NameCn, t.IsBlocked);

@@ -290,14 +290,14 @@ export default function LocalGallery() {
       })
       .catch(() => no.map(g => g.gid))   // 取不到完整列表时退化为保存当前页
       .then(gids => saveTagOrder(singleTagId, gids))
-      .then(() => { setTagHasOrder(true); setToast('顺序已保存') })
+      .then(() => { setTagHasOrder(true); fetchTagStats().then(setTagStats).catch(() => {}); setToast('顺序已保存') })
       .catch(e => setToast('保存顺序失败: ' + e.message))
   }, [paged, singleTagId, search])
 
   const isInAlbum = activeGroup.startsWith('album:')
 
   const { dragGidRef, handleDragMouseDown } = useGalleryDrag({
-    isSortMode: false, disabled: batchMode || isInAlbum,
+    isSortMode: false, disabled: batchMode || isInAlbum || isTagOrderMode,
     onDropToAlbum: doAlbumDrop, onDropToSort: () => {},
     onDragStart: (gid) => setDragGid(gid), onDragEnd: () => setDragGid(null),
     onToast: (msg) => setToast(msg)
@@ -351,8 +351,10 @@ export default function LocalGallery() {
     const next = current.includes(tagId)
       ? current.filter(x => x !== tagId)
       : [...current, tagId]
-    updateParams({ tags: next.length > 0 ? next.join(',') : null, group: null, p: null, sort: null })
-  }, [tagIds, updateParams])
+    // 单选标签且该标签已保存顺序 → 自动进入"标签顺序"排序；否则回退规则排序
+    const single = next.length === 1 ? tagStats.find(x => x.id === next[0]) : null
+    updateParams({ tags: next.length > 0 ? next.join(',') : null, group: null, p: null, sort: single?.hasOrder ? 'custom' : null })
+  }, [tagIds, tagStats, updateParams])
 
   // ═══════════════════════════════════════════
   // 渲染
@@ -476,6 +478,7 @@ export default function LocalGallery() {
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
             <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })} style={{ height: 28, fontSize: 'var(--text-xs)' }}>
               {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}
+              {singleTagId && <option value="custom">{'🔢 '}标签顺序</option>}
               {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
             {isAlbumSortMode && <button className="btn-sm" onClick={() => { const ak = activeGroup.slice(6); const o = paged.map(g => g.gid); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], order: o }; saveAlbums(cfg); setToast('顺序已保存') }}><Save size={13} /></button>}
@@ -488,7 +491,7 @@ export default function LocalGallery() {
             )}
             {isTagOrderMode && (
               <button className="btn-sm" onClick={async () => {
-                try { await saveTagOrder(singleTagId, []); setTagHasOrder(false); setToast('已清除自定义顺序'); loadPaged() }
+                try { await saveTagOrder(singleTagId, []); setTagHasOrder(false); fetchTagStats().then(setTagStats).catch(() => {}); setToast('已清除自定义顺序'); loadPaged() }
                 catch (e) { setToast('清除失败: ' + e.message) }
               }} title="清除该标签的自定义顺序，恢复规则排序"
                 style={{ borderColor: 'var(--border-input)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
@@ -541,7 +544,7 @@ export default function LocalGallery() {
                         ribbonText={gidToAlbum[g.gid]?.name}
                         batchMode={batchMode}
                         onCardClick={() => handleCardClick(g)}
-                        onDragMouseDown={handleDragMouseDown}
+                        onDragMouseDown={isTagOrderMode ? undefined : handleDragMouseDown}
                         onOpenDetail={handleOpenDetail}
                         onOpenReader={handleOpenReader}
                         onDelete={(card) => setDeleteConfirm({ gid: card.gid, title: card.title })} />
