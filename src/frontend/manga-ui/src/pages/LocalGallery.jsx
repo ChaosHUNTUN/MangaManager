@@ -11,6 +11,7 @@ import GalleryDetail from '../components/GalleryDetail'
 import AlbumSidebar from '../components/AlbumSidebar'
 import AlbumEditModal from '../components/AlbumEditModal'
 import TagLibraryModal from '../components/TagLibraryModal'
+import BatchTagModal from '../components/BatchTagModal'
 import GalleryCard from '../components/GalleryCard'
 import GalleryRow from '../components/GalleryRow'
 import SortableGalleryCard from '../components/SortableGalleryCard'
@@ -105,6 +106,7 @@ export default function LocalGallery() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [tagLibOpen, setTagLibOpen] = useState(false)
+  const [batchTagOpen, setBatchTagOpen] = useState(false)
 
   // 拖拽状态
   const sensors = useSensors(
@@ -372,6 +374,7 @@ export default function LocalGallery() {
               <button className="btn-sm" onClick={() => { const all = paged.map(g => g.gid); setSelected(selected.size === all.length ? new Set() : new Set(all)) }}>{selected.size === paged.length ? '取消全选' : '全选'}</button>
               <button className="btn-sm" onClick={() => { setSelected(new Set()); setBatchMode(false) }} style={{ color: 'var(--text-muted)' }}>退出</button>
               {activeGroup.startsWith('album:') && <button className="btn-sm" disabled={selected.size === 0} onClick={() => { const ak = activeGroup.slice(6); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], gids: cfg[ak].gids.filter(id => !selected.has(id)) }; saveAlbums(cfg); setSelected(new Set()); setBatchMode(false); setToast(`已从专辑移除 ${selected.size} 部`) }} style={{ borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)' }}>移出专辑</button>}
+              <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchTagOpen(true)} style={{ color: 'var(--accent)' }}><Tag size={14} /> 标签</button>
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchRedownloadConfirm(true)} style={{ color: 'var(--warning)' }}>重新下载</button>
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchDeleteConfirm(true)} style={{ color: 'var(--error)' }}>删除</button>
             </> : <>
@@ -546,6 +549,16 @@ export default function LocalGallery() {
       {tagLibOpen && (
         <TagLibraryModal onClose={() => setTagLibOpen(false)}
           onChanged={() => { fetchTagStats().then(setTagStats).catch(() => {}); loadMetas() }} />
+      )}
+
+      {/* 批量标签 */}
+      {batchTagOpen && (
+        <BatchTagModal workIds={[...selected]} onClose={() => setBatchTagOpen(false)}
+          onDone={(n, mode) => {
+            setToast(`已${mode === 'add' ? '添加' : '移除'}标签，影响 ${n ?? ''} 条关联`)
+            fetchTagStats().then(setTagStats).catch(() => {})
+            loadMetas(); loadPaged()
+          }} />
       )}
 
       {/* 编辑标签 */}

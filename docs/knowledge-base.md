@@ -177,6 +177,7 @@ MangaManager/
 - **滚动模式窗口化渲染（2026-09-01）**：ContinuousView 帧启用 `content-visibility: auto`（离屏帧浏览器跳过渲染，长画廊 DOM 开销大减）+ `contain-intrinsic-size: auto 估算`（纵向按容器宽×滚动区高、横向按 0.7×滚动区高×滚动区高，先撑起完整滚动条；`auto` 关键字让浏览器记住图片加载后的真实尺寸）。偏移恢复守卫加 `dimsMap[pageIndex]` 条件，确保按真实尺寸而非估算落位。CSS 兜底 `.r-frame` 默认 800×1200
 - **阅读器设置双轨统一（2026-09-01）**：`ReaderSettings.Data`（JSON）列 + 迁移 `AddReaderSettingsData`；SettingsController GET 返回 `{ data }`、PUT 接受 `{ data }` 落库（旧列保留兼容）；`useReaderEngine` 挂载时 `fetchReaderSettings` 读回应用（方向/模式/阅读顺序/适配/缩放/背景/边距/间隔/速度），偏好变更 `saveReaderSettings` 写透，`serverReadyRef` 防止首轮读取前本地值覆盖服务端。真实库副本验证：PUT → GET 原样返回、Data 列存在、JSON 落库、画廊 2728 不丢
 - **全栈一致性审计 + 回归（2026-09-01）**：README 实体/API 表同步标签化现状（`work_tag` 统一表、`tag` 新字段、`tag/search|common|merge`、`work/{id}/tags`、`tag-stats`、`tagIds` 筛选、专辑标记废弃；修正错误的 `/api/local/reading-progress` 路由为 `/api/readingprogress`）；`.clinerules` 加知识库入口指引。三端全量构建 0 警告 0 错误（后端/前端/桌面控制台）。真实库副本 Python 冒烟全绿：tag-stats 3961、`big breasts` 标签筛选命中 2047、作品标签含该标签、进度偏移 0.37 往返、设置 JSON 落库、目录保护不丢画廊（2728）、专辑 631 不变、work_tag 47802
+- **批量标签操作（2026-09-01）**：后端新增 `POST/DELETE /api/work/batch/tags`（`{workIds, tagIds}` 批量添加/移除，幂等按 (WorkId,TagId) 去重）；前端本地页批量模式新增「标签」按钮 + `BatchTagModal`（添加/移除切换、搜索优先选标签、确认批量执行后刷新统计）。真实库副本验证：2 作品×2 标签添加 4 条、重复 0、移除 1、关联精确、删除临时标签后孤儿 0
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

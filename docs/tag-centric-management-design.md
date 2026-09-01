@@ -84,6 +84,8 @@ API（P0 已落地）：
 | `GET /api/work/{workId}/tags` | 作品标签列表（含命名空间/中文） |
 | `POST /api/work/{workId}/tags` | 批量添加标签 `{tagIds}`（幂等） |
 | `DELETE /api/work/{workId}/tags/{tagId}` | 移除标签 |
+| `POST /api/work/batch/tags` | 多作品批量添加 `{workIds, tagIds}`（幂等，按对去重） |
+| `DELETE /api/work/batch/tags` | 多作品批量移除 `{workIds, tagIds}`（幂等） |
 | `GET /api/tag/search?q=&category=&limit=` | 标签搜索（选择器） |
 | `GET /api/tag/common?limit=` | 最常用标签 |
 | `GET/POST/PUT/DELETE /api/tag` | 标签 CRUD（扩展命名空间/中文/屏蔽） |

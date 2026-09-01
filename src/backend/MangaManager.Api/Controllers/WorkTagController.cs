@@ -42,7 +42,28 @@ public class WorkTagController : ControllerBase
             : NotFound(new ApiResponse<object>(false, null, "关联不存在"));
     }
 
+    /// <summary>批量给多部作品添加标签（幂等）</summary>
+    [HttpPost("batch/tags")]
+    public async Task<IActionResult> AddBatchTags([FromBody] BatchWorkTagsRequest? req, CancellationToken ct)
+    {
+        if (req?.WorkIds == null || req.WorkIds.Count == 0 || req.TagIds == null || req.TagIds.Count == 0)
+            return BadRequest(new ApiResponse<object>(false, null, "请提供作品与标签 ID"));
+        var added = await _tags.AddWorkTagsBatchAsync(req.WorkIds, req.TagIds, ct);
+        return Ok(new ApiResponse<object>(true, new { added }));
+    }
+
+    /// <summary>批量移除多部作品的指定标签（幂等）</summary>
+    [HttpDelete("batch/tags")]
+    public async Task<IActionResult> RemoveBatchTags([FromBody] BatchWorkTagsRequest? req, CancellationToken ct)
+    {
+        if (req?.WorkIds == null || req.WorkIds.Count == 0 || req.TagIds == null || req.TagIds.Count == 0)
+            return BadRequest(new ApiResponse<object>(false, null, "请提供作品与标签 ID"));
+        var removed = await _tags.RemoveWorkTagsBatchAsync(req.WorkIds, req.TagIds, ct);
+        return Ok(new ApiResponse<object>(true, new { removed }));
+    }
+
     private static TagDto ToDto(Tag t) => new(t.Id, t.Name, t.Color, t.Category, t.Namespace, t.NameCn, t.IsBlocked);
 }
 
 public record AddWorkTagsRequest(List<int> TagIds);
+public record BatchWorkTagsRequest(List<int> WorkIds, List<int> TagIds);

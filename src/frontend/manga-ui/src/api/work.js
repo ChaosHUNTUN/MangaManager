@@ -19,6 +19,22 @@ export async function removeWorkTag(workId, tagId) {
   return request(`/api/work/${workId}/tags/${tagId}`, { method: 'DELETE' })
 }
 
+export async function batchAddWorkTags(workIds, tagIds) {
+  return request('/api/work/batch/tags', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workIds, tagIds }),
+  })
+}
+
+export async function batchRemoveWorkTags(workIds, tagIds) {
+  return request('/api/work/batch/tags', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workIds, tagIds }),
+  })
+}
+
 // ===== 标签库 =====
 
 export async function searchTags({ q, category, limit = 50 } = {}) {

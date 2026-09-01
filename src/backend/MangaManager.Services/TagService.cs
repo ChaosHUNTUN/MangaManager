@@ -179,6 +179,46 @@ public class TagService
         return true;
     }
 
+    /// <summary>批量给多部作品添加标签（幂等；按 (WorkId, TagId) 去重）</summary>
+    public async Task<int> AddWorkTagsBatchAsync(IEnumerable<int> workIds, IEnumerable<int> tagIds, CancellationToken ct = default)
+    {
+        using var db = CreateDb();
+        var wids = workIds.Distinct().ToList();
+        var tids = tagIds.Distinct().ToList();
+        if (wids.Count == 0 || tids.Count == 0) return 0;
+
+        var existing = await db.WorkTags
+            .Where(w => wids.Contains(w.WorkId) && tids.Contains(w.TagId))
+            .Select(w => new { w.WorkId, w.TagId })
+            .ToListAsync(ct);
+        var existSet = existing.Select(x => (x.WorkId, x.TagId)).ToHashSet();
+
+        var toAdd = new List<WorkTag>();
+        foreach (var wid in wids)
+            foreach (var tid in tids)
+                if (!existSet.Contains((wid, tid)))
+                    toAdd.Add(new WorkTag { WorkId = wid, TagId = tid });
+        db.WorkTags.AddRange(toAdd);
+        await db.SaveChangesAsync(ct);
+        return toAdd.Count;
+    }
+
+    /// <summary>批量移除多部作品的指定标签（幂等；不存在的关联忽略）</summary>
+    public async Task<int> RemoveWorkTagsBatchAsync(IEnumerable<int> workIds, IEnumerable<int> tagIds, CancellationToken ct = default)
+    {
+        using var db = CreateDb();
+        var wids = workIds.Distinct().ToList();
+        var tids = tagIds.Distinct().ToList();
+        if (wids.Count == 0 || tids.Count == 0) return 0;
+
+        var links = await db.WorkTags
+            .Where(w => wids.Contains(w.WorkId) && tids.Contains(w.TagId))
+            .ToListAsync(ct);
+        db.WorkTags.RemoveRange(links);
+        await db.SaveChangesAsync(ct);
+        return links.Count;
+    }
+
     /// <summary>标签搜索（用于标签选择器：按原文/中文/命名空间模糊匹配，按使用次数降序）</summary>
     public async Task<List<Tag>> SearchTagsAsync(string? q, string? category, int limit = 50, CancellationToken ct = default)
     {
