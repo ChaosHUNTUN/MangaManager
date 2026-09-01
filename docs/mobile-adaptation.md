@@ -43,13 +43,18 @@ App.jsx
 
 ### 3.3 专辑侧边栏 → 抽屉
 - 侧边栏在移动端固定为 82vw 抽屉（关闭时滑出屏幕、`pointer-events:none` 不挡触摸，打开时盖过标签栏）
-- 本地画廊顶栏新增 **☰ 专辑** 汉堡按钮（桌面端隐藏）
+- 本地画廊顶栏新增 **☰ 标签** 汉堡按钮（专辑方案废弃后为标签云抽屉，桌面端隐藏）
 
 ### 3.4 触摸与移动端细节
 - 按钮最小高度 38px；input/select 字号 16px（防 iOS 缩放）
 - 隐藏 hover 专属覆盖层；专辑行操作按钮常显
 - 阅读器：按钮 40px、HUD 标题截断、缩略图加大、高度 `100dvh`
 - viewport 增加 `viewport-fit=cover`
+
+### 3.5 弹窗 → 底部抽屉（2026-09-01）
+- 所有 `.modal` 在移动端从居中弹窗改为**底部抽屉**：`align-items:flex-end` + 全宽（`!important` 覆盖内联 `min(…,94vw)`）+ 顶部圆角 + 底部安全区（`env(safe-area-inset-bottom)`）+ `90dvh` 最大高度 + 上滑动画
+- 覆盖 TagPicker / TagLibraryModal / BatchTagModal / GalleryDetail / AlbumEditModal 等全部弹窗；内部列表区本就是 `flex:1 + overflowY:auto`，随抽屉高度自适应
+- 桌面端行为不变（媒体查询 ≤768px 作用域）
 
 ## 4. 后续可做的增强
 

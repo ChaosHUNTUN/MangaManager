@@ -38,6 +38,26 @@
     height: auto !important;
     overflow: visible !important;
   }
+
+  /* ── 弹窗 → 底部抽屉（覆盖内联宽度，含安全区） ── */
+  .mobile .modal-overlay {
+    align-items: flex-end;
+  }
+  @keyframes r-modal-up {
+    from { transform: translateY(28px); opacity: 0.5; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .mobile .modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 90vh !important;
+    max-height: 90dvh !important;
+    margin: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: none;
+    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom)) !important;
+    animation: r-modal-up 0.22s ease-out;
+  }
   .mobile .gallery-topbar {
     flex-wrap: wrap; height: auto !important;
     padding: var(--space-2) var(--space-3) !important;
