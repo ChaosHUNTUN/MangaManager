@@ -13,10 +13,16 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
   const [searchSuggestions, setSearchSuggestions] = useState([])
   const suggestTimerRef = useRef(null)
 
+  // 带空格的标签/作者名在插入搜索框时加引号，避免后端按空格拆词导致搜不到
+  const syntaxOf = (prefix, name) => {
+    const v = name.includes(' ') ? `"${name}"` : name
+    return `${prefix}:${v}`
+  }
+
   // ── 搜索标签池（画师/社团/分类/语言 + 专辑名） ──
   const searchTagPool = useMemo(() => {
     const pool = []; const seen = new Set()
-    const add = (p, l) => { const k = `${p}:${l}`; if (!seen.has(k)) { seen.add(k); pool.push({ key: k, label: l, prefix: p, syntax: `${p}:${l}` }) } }
+    const add = (p, l) => { const k = `${p}:${l}`; if (!seen.has(k)) { seen.add(k); pool.push({ key: k, label: l, prefix: p, syntax: syntaxOf(p, l) }) } }
     galleryMetas.forEach(g => { (g.artists || []).forEach(t => add('artist', t)); (g.groups || []).forEach(t => add('group', t)); if (g.category) add('category', g.category); if (g.language) add('language', g.language) })
     Object.entries(albumConfig).forEach(([, val]) => { const n = val.name || ''; if (n && !seen.has(n)) { seen.add(n); pool.push({ key: n, label: n, prefix: 'album', syntax: n }) } })
     return pool.sort((a, b) => a.label.localeCompare(b.label))
@@ -79,16 +85,16 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
                 const seen = new Set()
                 const items = (rows || [])
                   .filter(t => {
-                    const syn = `tag:${t.name}`.toLowerCase()
-                    if (syn === currentWord.toLowerCase() || seen.has(syn)) return false
-                    seen.add(syn)
-                    return true
+                const syn = syntaxOf('tag', t.name).toLowerCase()
+                if (seen.has(syn)) return false
+                seen.add(syn)
+                return true
                   })
                   .map(t => ({
                     key: `tag:${t.name}`,
                     label: t.nameCn ? `${t.nameCn}（${t.name}）` : t.name,
                     prefix: 'tag',
-                    syntax: `tag:${t.name}`,
+                    syntax: syntaxOf('tag', t.name),
                     count: t.count,
                   }))
                 setSearchSuggestions(items.slice(0, 8))
@@ -107,7 +113,7 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
               const seen = new Set(matched.map(p => p.key.toLowerCase()))
               const tagMatches = (tagRows || [])
                 .filter(t => {
-                  const syntax = `tag:${t.name}`.toLowerCase()
+                  const syntax = syntaxOf('tag', t.name).toLowerCase()
                   if (s.includes(syntax) || seen.has(syntax) || syntax === currentWord.toLowerCase()) return false
                   seen.add(syntax)
                   return true
@@ -116,7 +122,7 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
                   key: `tag:${t.name}`,
                   label: t.nameCn ? `${t.nameCn}（${t.name}）` : t.name,
                   prefix: 'tag',
-                  syntax: `tag:${t.name}`,
+                  syntax: syntaxOf('tag', t.name),
                   count: t.count,
                 }))
               setSearchSuggestions([...matched.slice(0, 6), ...tagMatches].slice(0, 8))

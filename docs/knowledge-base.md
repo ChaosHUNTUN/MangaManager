@@ -193,6 +193,7 @@ MangaManager/
 - **搜索框自动补全完善（2026-09-01）**：① 本地页——修复“输入时下拉不出现”（原 `showSearchSuggestions` 只在 focus 时打开，新增 effect：有建议即显示）；派生池前缀匹配修复（原用完整 `artist:foo` 匹配标签名 `foo` 恒失败，现按冒号后内容匹配）；`tag:` 前缀现在会查本地标签库（任意命名空间，原文/中文）补全 `tag:xxx`；无前缀词继续派生池+标签库双源。模式统一：输入 → 下拉列表 → 点击替换当前词。② 在线页——数据源本就是 EhTagTranslation 全量翻译库（EH 标签大全），新增**本地标签库兜底**（翻译库不可用时 `/api/ehentai/tags/suggest` 改查 `tag` 表），保证在线补全始终可用。实测：suggest 返回 `female:milf`/`other:tankoubon` 等带命名空间与中文的 EH 语法
 - **多标签输入误删修复（2026-09-01）**：本地/在线搜索框原为严格受控输入（`value={search}`，本地 search 还来自 URL），配合中文输入法组合输入时 React 重渲染会把输入框重置回旧值，导致“第二个标签输入时第一个被删/只能输入一个标签”。修复：两个搜索框改**非受控（`defaultValue`）+ 组合安全同步**（`composingRef` 在输入法组合中跳过外部同步）；补全应用（`applySearchTag`/`applyTag`）改为**读取输入框实时值与光标位置**替换当前词并立即写回 DOM（不再依赖可能过期的 state），彻底消除多标签误删
 - **标签筛选失效/联合筛选修复（2026-09-01）**：① 前端——触发 `loadPaged` 的 effect 依赖**漏了 `tagIdsParam`**：第一次点标签恰好因 `group` 置空触发重查（“只生效一次”），之后只变 `tags` 不重查（“联合筛选失效”）；已补依赖，标签增删每次都会重查。② 后端——`tagIds` 筛选原为 **OR（命中任一）**，与“联合筛选”预期不符，改为 **AND（命中全部）**：`ids.All(id => WorkTags.Any(...))`。③ `GetTagStats` 原把旧版漫画的负 WorkId 关联也计入，侧边栏计数与筛选结果不一致（如 832 vs 814），改为只统计正 Gid。真实库副本验证：单标签 api=1773=计数 1773；双标签（chinese+monster hunter）AND 命中 49=SQL 交集（OR 为 1776）
+- **带空格标签搜索不到修复（2026-09-01）**：`tag:big breasts` 搜不到——后端搜索按空格拆词，被拆成 `tag:big`+`breasts` 两个词。修复：① 后端分词支持**双引号分组**（`tag:"big breasts"` 作为一个词，引号剥离）；② `tag:` 过滤兼容**下划线写法**（`tag:big_breasts` 转空格匹配）；③ 前端补全插入带空格标签/作者名时**自动加引号**（`tag:"big breasts"`），去重逻辑同步用引号后语法。真实库副本验证：引号写法与下划线写法均命中 2047（big breasts 标签计数）
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

@@ -236,7 +236,8 @@ public class LocalGalleryService
         // 搜索筛选
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var terms = search.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // 引号分词：`tag:"big breasts"` 作为一个词（带空格的标签/作者名）
+            var terms = SplitSearchTerms(search);
             foreach (var term in terms)
             {
                 var lower = term.ToLower();
@@ -262,12 +263,17 @@ public class LocalGalleryService
                             query = query.Where(g => g.Language != null && g.Language.ToLower().Contains(value));
                             break;
                         case "tag":
+                        {
                             // 标签筛选：原文或中文匹配（JOIN work_tag）
+                            var v = value;
+                            var vSpace = v.Replace("_", " ");   // 兼容 `tag:big_breasts` 下划线写法
                             query = query.Where(g => db.WorkTags.Any(wt =>
                                 wt.WorkId == g.Gid
-                                && (wt.Tag!.Name.ToLower().Contains(value)
-                                    || (wt.Tag!.NameCn != null && wt.Tag.NameCn.Contains(value)))));
+                                && (wt.Tag!.Name.ToLower().Contains(v)
+                                    || wt.Tag.Name.ToLower().Contains(vSpace)
+                                    || (wt.Tag!.NameCn != null && wt.Tag.NameCn.Contains(v)))));
                             break;
+                        }
                         default:
                             query = query.Where(g =>
                                 g.Title.ToLower().Contains(lower) ||
@@ -291,6 +297,25 @@ public class LocalGalleryService
         }
 
         return query;
+    }
+
+    /// <summary>按空格分词，但双引号内的内容作为一个整体（引号本身被剥离）</summary>
+    private static List<string> SplitSearchTerms(string search)
+    {
+        var terms = new List<string>();
+        var sb = new System.Text.StringBuilder();
+        bool inQuote = false;
+        foreach (var ch in search)
+        {
+            if (ch == '"') { inQuote = !inQuote; continue; }
+            if (ch == ' ' && !inQuote)
+            {
+                if (sb.Length > 0) { terms.Add(sb.ToString()); sb.Clear(); }
+            }
+            else sb.Append(ch);
+        }
+        if (sb.Length > 0) terms.Add(sb.ToString());
+        return terms;
     }
 
     private static LocalGallerySummary MapToSummary(LocalGallery g) => new()
