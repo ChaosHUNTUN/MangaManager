@@ -297,7 +297,8 @@ export default function LocalGallery() {
   const isInAlbum = activeGroup.startsWith('album:')
 
   const { dragGidRef, handleDragMouseDown } = useGalleryDrag({
-    isSortMode: false, disabled: batchMode || isInAlbum || isTagOrderMode,
+    // 旧专辑拖拽仅在专辑功能开启时可用；标签顺序用 dnd-kit，其余视图一律不可拖
+    isSortMode: false, disabled: batchMode || isInAlbum || isTagOrderMode || !FEATURES.enableAlbums,
     onDropToAlbum: doAlbumDrop, onDropToSort: () => {},
     onDragStart: (gid) => setDragGid(gid), onDragEnd: () => setDragGid(null),
     onToast: (msg) => setToast(msg)

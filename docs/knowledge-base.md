@@ -144,7 +144,7 @@ MangaManager/
 - **NameCn 回填**：误用 `AsNoTracking()` 导致改值不落库 → 去掉后 3052 条真实落库
 - **新作品链路验证**：下载完成 meta.json → `SyncDirectoryAsync` → `EnsureTagsCoreAsync`（自动建标签+翻译）→ work_tag 先清后建，全通（今日 76 个已完成任务全部入库）
 - **标签内自定义顺序（连载顺序）**：新增 `tag_order` 表（TagId 主键、Gids=JSON int 数组）+ 迁移 `AddTagOrder`；`GET/PUT /api/tag/{id}/order` 读取/保存；**单标签 + `sort=custom`** 时 `GetPagedGalleries`/`GetGalleryGids` 按 tag_order 排列（未列入数组的 gid 排末尾）；tag-stats 增加 `HasOrder`（标签云显示 `▤`）；前端单标签视图工具栏「自定义顺序」按钮 + dnd-kit 拖拽重排 + 「清除顺序」回退规则排序。**保存采用合并式**：拖拽后先取完整 gid 列表（POST /local/galleries/gids, sort=custom），只替换当前页块，其余页顺序保留，避免跨页覆盖
-  - **拖拽冲突修复**：标签顺序模式必须禁用旧 `useGalleryDrag` 自定义拖拽（只留 dnd-kit），否则两套 mousedown/pointer 拖拽同时运行导致排序失效；单选标签且该标签已有顺序时 `handleToggleTag` 自动带 `sort=custom`（无需再手动点按钮）；清空顺序改为**删除 tag_order 记录**（空数组行会让 hasOrder 恒为 true）
+  - **拖拽冲突修复**：标签顺序模式必须禁用旧 `useGalleryDrag` 自定义拖拽（只留 dnd-kit），否则两套 mousedown/pointer 拖拽同时运行导致排序失效；单选标签且该标签已有顺序时 `handleToggleTag` 自动带 `sort=custom`（无需再手动点按钮）；清空顺序改为**删除 tag_order 记录**（空数组行会让 hasOrder 恒为 true）；**拖拽可用性原则=仅"单选标签+sort=custom"（或专辑开启时的专辑排序），其余视图一律不可拖**——旧专辑拖拽整体受 `FEATURES.enableAlbums` 门控
 
 **B. 下载管理**
 - **⚠️ 已完成任务重启后消失**：`LoadTasksFromDb` 只加载非 completed，2740 条历史完成记录不载入 → 修复为**加载最近 100 条已完成** + 排序活跃在前/完成按 CompletedAt 倒序 + web/控制台新增「已完成」筛选
