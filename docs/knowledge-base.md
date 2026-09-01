@@ -180,7 +180,7 @@ MangaManager/
 2. **HTTP 超时 = TaskCanceledException = OperationCanceledException 子类**——catch 时先判自身令牌是否取消
 3. **完成态任务不加载**——重启后历史完成记录消失
 4. **受控输入 + IME**——需非受控 + `composingRef` 跳过同步
-5. **TDZ**——`useCallback` 依赖数组引用后声明的 const 会崩
+5. **TDZ**——`useCallback`/`useEffect` 的依赖数组或函数体引用**后声明**的 const 会崩（本次：ReaderLocal 预取 effect 在 engine 解构出 `currentPage` 之前引用它；measure effect 依赖 `showThumbs` 在其声明之前）。凡是"声明在后、引用在前"的变量，声明必须上移或 effect 下移
 6. **连通性检测必须走与真实请求相同的代理链路**
 7. **代码改动后必须重启对应进程**（API/控制台是独立进程，改后端要重建重启才生效）
 8. **拖拽排序保存要合并式**——只保存当前页数组会整体覆盖全量顺序；跨页场景（连载系列几十上百部）必须先取完整列表、替换当前页块

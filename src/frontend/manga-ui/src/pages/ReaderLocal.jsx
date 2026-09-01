@@ -147,7 +147,22 @@ export default function ReaderLocal() {
 
   const currentIdx = galleryList.indexOf(parseInt(gid))
 
+  // ── Engine ──
+  const engine = useReaderEngine(pages.length)
+  const { currentPage, totalPages, direction, flow, readingOrder, fit, zoom,
+    background, bgValue, padding, uiVisible,
+    slideshowActive, slideshowInterval, scrollSpeed, viewport,
+    pageStep, flipDirRef,
+    setCurrentPage, setDirection, setFlow, setReadingOrder, setFit, setZoom,
+    setBackground, setPadding, setUiVisible,
+    setSlideshowInterval, setScrollSpeed,
+    goForward, goBack, goFirst, goLast, setFitCycled, zoomIn, zoomOut, zoomReset,
+    setBgCycled, toggleSlideshow, setSlideshowActive,
+    scrollerRef, updateChrome,
+  } = engine
+
   // ── 下一部预取：读到末尾阈值（最后 5%，至少 3 页）时预取下一页列表，切换秒开 ──
+  // 注意：必须在 engine 解构之后（currentPage 已声明），否则 TDZ 崩溃
   useEffect(() => {
     if (loading || galleryList.length === 0 || pages.length === 0) return
     const idx = galleryList.indexOf(currentGid)
@@ -169,25 +184,13 @@ export default function ReaderLocal() {
     return () => { if (preloadCtrlRef.current === ctrl) preloadCtrlRef.current = null }
   }, [currentPage, pages, galleryList, currentGid, loading])
 
-  // ── Engine ──
-  const engine = useReaderEngine(pages.length)
-  const { currentPage, totalPages, direction, flow, readingOrder, fit, zoom,
-    background, bgValue, padding, uiVisible,
-    slideshowActive, slideshowInterval, scrollSpeed, viewport,
-    pageStep, flipDirRef,
-    setCurrentPage, setDirection, setFlow, setReadingOrder, setFit, setZoom,
-    setBackground, setPadding, setUiVisible,
-    setSlideshowInterval, setScrollSpeed,
-    goForward, goBack, goFirst, goLast, setFitCycled, zoomIn, zoomOut, zoomReset,
-    setBgCycled, toggleSlideshow, setSlideshowActive,
-    scrollerRef, updateChrome,
-  } = engine
-
   // 方向/模式派生（键盘、手势、帮助面板共用）
   const isVertical = direction === 'vertical'
   const isPaged = flow === 'paginated'
   const [scrollRestore, setScrollRestore] = useState(null)   // {pageIndex, offset} 滚动恢复意图
   const rootRef = useRef(null)
+  const [showThumbs, setShowThumbs] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // ── 运行时测量 HUD/底部栏实际高度（含缩略图展开），替代硬编码 44/36 ──
   useEffect(() => {
@@ -243,9 +246,6 @@ export default function ReaderLocal() {
     clearTimer()
     uiTimerRef.current = setTimeout(() => { setUiVisible(false); setShowThumbs(false) }, 4000)
   }, [setUiVisible, clearTimer])
-
-  const [showThumbs, setShowThumbs] = useState(false)
-  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     if (!uiVisible && !showThumbs) return clearTimer()
