@@ -62,10 +62,13 @@ public class DownloadMonitor : IDownloadMonitor
                 _dispatcher.Invoke(() => TasksUpdated?.Invoke(this, copy));
             }
             catch (OperationCanceledException) { break; }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // API 未运行等场景：静默跳过 + 指数退避，避免日志刷屏
+                // API 未运行等场景：指数退避，避免日志刷屏；
+                // 但首次/每 6 次留一条日志，防止"拉取失败→列表静默为空"这类问题无法诊断
                 _consecutiveFailures++;
+                if (_consecutiveFailures == 1 || _consecutiveFailures % 6 == 0)
+                    _log.Log($"[DownloadMonitor] 拉取下载任务失败 x{_consecutiveFailures}: {ex.Message}");
                 delay = GetBackoffDelay();
             }
 
