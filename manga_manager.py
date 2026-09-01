@@ -138,8 +138,8 @@ class Service:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            for _ in range(30):
-                time.sleep(0.3)
+            for _ in range(60):
+                time.sleep(0.5)
                 if self.is_running():
                     return True
             return False

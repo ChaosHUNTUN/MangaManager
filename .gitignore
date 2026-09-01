@@ -29,6 +29,8 @@ src/frontend/manga-ui/dist/
 *.log
 src/backend/MangaManager.Api/build_*.txt
 data/
+__pycache__/
+*.pyc
 
 # IDE
 .idea/
