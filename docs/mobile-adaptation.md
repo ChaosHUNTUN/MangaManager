@@ -56,6 +56,10 @@ App.jsx
 - 覆盖 TagPicker / TagLibraryModal / BatchTagModal / GalleryDetail / AlbumEditModal 等全部弹窗；内部列表区本就是 `flex:1 + overflowY:auto`，随抽屉高度自适应
 - 桌面端行为不变（媒体查询 ≤768px 作用域）
 
+### 3.6 横屏适配（2026-09-01）
+- **修复横屏误判**：原 `useIsMobile`/CSS 只认 `≤768px` 宽度，iPhone 横屏（844~932px 宽、高度 ≤500px）会被当成桌面端套短高桌面布局。检测条件改为 `(max-width:768px), (max-width:1024px) and (max-height:500px)`（JS 与 CSS 同步；构建后 LightningCSS 会改写为区间语法 `(width<=…) and (height<=500px)`，现代浏览器均支持）
+- 横屏微调（`height≤500px` 作用域）：EH 网格从固定 2 列改 `auto-fill minmax(140px,1fr)`、本地画廊卡片最小宽 150px（更密列）、标签栏 44px、底部留白 48px、缩略图略收窄
+
 ## 4. 后续可做的增强
 
 | 项 | 说明 |
@@ -64,4 +68,4 @@ App.jsx
 | ~~PWA~~ | **已完成（2026-09-01）**：`manifest.webmanifest`（standalone + 192/512/maskable 图标）+ 最小安全 Service Worker（仅缓存应用外壳、/api 与图片网络直连、静态资源网络优先失败回退缓存），生产构建注册；可"添加到主屏幕"全屏运行 |
 | 手势增强 | 画廊卡片左右滑操作（加入收藏/删除），阅读器已有滑动翻页 |
 | 虚拟化 | 移动端画廊网格用窗口化渲染（当前一次渲染整页） |
-| 横屏适配 | 手机横屏时阅读器/画廊的布局切换 |
+| ~~横屏适配~~ | **已完成（2026-09-01）**：横屏手机不再误判桌面端；EH/本地网格列数、标签栏高度、留白在短高视口下收紧 |

@@ -180,6 +180,7 @@ MangaManager/
 - **批量标签操作（2026-09-01）**：后端新增 `POST/DELETE /api/work/batch/tags`（`{workIds, tagIds}` 批量添加/移除，幂等按 (WorkId,TagId) 去重）；前端本地页批量模式新增「标签」按钮 + `BatchTagModal`（添加/移除切换、搜索优先选标签、确认批量执行后刷新统计）。真实库副本验证：2 作品×2 标签添加 4 条、重复 0、移除 1、关联精确、删除临时标签后孤儿 0
 - **移动端弹窗底部抽屉化（2026-09-01）**：`mobile.css` 新增 `.mobile .modal` 规则——居中弹窗改全宽底部抽屉（`align-items:flex-end`、宽度 `!important` 覆盖内联 `min(…,94vw)`、顶部圆角、`env(safe-area-inset-bottom)` 安全区、`90dvh` 最大高度、上滑动画），覆盖 TagPicker/TagLibraryModal/BatchTagModal/GalleryDetail/AlbumEditModal 等全部弹窗；桌面端不变
 - **PWA 化（2026-09-01）**：`public/manifest.webmanifest`（standalone、主题色 #0f0f1a、192/512 PNG + maskable 图标，PIL 按品牌色生成闪电图标）+ `public/sw.js` 最小安全 Service Worker——安装时预取外壳、运行时静态资源网络优先失败回退缓存、`/api/` 与 `/local-images/` 一律网络直连（绝不清新数据）；`main.jsx` 仅生产构建注册。验证：构建产物含 manifest/sw/图标、JSON 合法、sw 语法通过、index.html 注入 manifest 链接
+- **移动端横屏适配（2026-09-01）**：`useIsMobile` 与 `mobile.css` 媒体查询从仅 `≤768px` 改为 `(≤768px), (≤1024px and ≤500px 高)`——横屏手机（844~932px 宽）不再误判桌面端；横屏作用域下 EH 网格 `auto-fill minmax(140px,1fr)`、本地卡片最小宽 150px、标签栏 44px、底部留白 48px、缩略图收窄。构建产物验证：LightningCSS 将查询改写为区间语法 `(width<=768px),(width<=1024px) and (height<=500px)`，两处均正确编译
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

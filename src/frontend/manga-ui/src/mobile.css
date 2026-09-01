@@ -3,7 +3,7 @@
    原则：复用现有页面与 hooks，通过布局重排 + 抽屉 + 触摸目标优化
    ═══════════════════════════════════════════════════ */
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 1024px) and (max-height: 500px) {
   /* 普通流页面（EHentai / DownloadMonitor）底部给标签栏留白 */
   body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 
@@ -131,4 +131,13 @@
   .mobile .r-bar-row { gap: 4px; }
   .mobile .r-thumb { width: 52px; height: 72px; }
   .mobile .r-speed-slider { width: 90px; }
+
+  /* ── 横屏微调（短高视口：网格更密、标签栏更矮、留白收紧） ── */
+  @media (max-height: 500px) {
+    .mobile .eh-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
+    .mobile .grid { --card-min-width: 150px; }
+    .mobile-tab { min-height: 44px; }
+    body { padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
+    .mobile .r-thumb { width: 44px; height: 62px; }
+  }
 }
