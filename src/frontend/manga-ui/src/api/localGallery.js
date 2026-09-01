@@ -47,12 +47,13 @@ export async function fetchLocalGalleryPagesAbortable(gid, signal) {
   return json.data || []
 }
 
-export function getLocalCoverUrl(gid) {
-  return `${API_BASE}/api/local/gallery/${gid}/cover`
+export function getLocalCoverUrl(gid, v) {
+  // v = 版本（如 LastModified），重下后变化可让浏览器缓存键换新
+  return `${API_BASE}/api/local/gallery/${gid}/cover?v=${v ? encodeURIComponent(v) : 0}`
 }
 
-export function getLocalPageUrl(gid, pageIndex) {
-  return `${API_BASE}/api/local/gallery/${gid}/page/${pageIndex}`
+export function getLocalPageUrl(gid, pageIndex, v) {
+  return `${API_BASE}/api/local/gallery/${gid}/page/${pageIndex}${v ? `?v=${encodeURIComponent(v)}` : ''}`
 }
 
 export async function deleteLocalGallery(gid) {

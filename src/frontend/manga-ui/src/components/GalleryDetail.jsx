@@ -80,7 +80,7 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
         <div style={{ position: 'relative', background: 'linear-gradient(180deg, var(--surface-elevated) 0%, var(--canvas) 100%)', padding: '20px 24px 16px', borderBottom: '1px solid var(--border-card)' }}>
           <button className="btn-sm" onClick={onClose} style={{ position: 'absolute', top: 10, right: 10, border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>✕</button>
           <div className="detail-header-layout" style={{ display: 'flex', gap: 16 }}>
-            <div style={{ flexShrink: 0, width: 140, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-card)', background: 'var(--surface)' }}><img src={getLocalCoverUrl(detail.gid)} alt="" style={{ width: '100%', display: 'block' }} /></div>
+            <div style={{ flexShrink: 0, width: 140, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-card)', background: 'var(--surface)' }}><img src={getLocalCoverUrl(detail.gid, detail.lastModified)} alt="" style={{ width: '100%', display: 'block' }} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 title={detail.title} style={{ margin: '0 0 4px', fontSize: '1rem', lineHeight: 1.4, color: 'var(--text-primary)', fontWeight: 600 }}>{detail.title}</h3>
               {detail.titleJpn && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>{detail.titleJpn}</div>}

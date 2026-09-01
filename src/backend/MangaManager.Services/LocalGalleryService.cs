@@ -489,11 +489,22 @@ public class LocalGalleryService
     {
         var files = GetCachedPageFiles(gid);
         if (files == null) return new();
+        // 版本 = 目录内文件最新修改时间：重下/替换文件后版本变化 → 前端 URL 换新 → 浏览器缓存自动失效
+        long version = 0;
+        foreach (var f in files)
+        {
+            try
+            {
+                var t = System.IO.File.GetLastWriteTimeUtc(f).Ticks;
+                if (t > version) version = t;
+            }
+            catch { /* 文件可能刚被删除，忽略 */ }
+        }
         return files.Select((f, i) => new LocalPageItem
         {
             Index = i + 1,
             FileName = Path.GetFileName(f),
-            Url = $"/api/local/gallery/{gid}/page/{i}"
+            Url = $"/api/local/gallery/{gid}/page/{i}?v={version}"
         }).ToList();
     }
 

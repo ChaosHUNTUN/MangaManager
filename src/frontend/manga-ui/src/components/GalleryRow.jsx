@@ -54,7 +54,7 @@ const GalleryRow = memo(({
       )}
 
       {/* 封面缩略图 */}
-      <img src={getLocalCoverUrl(g.gid)} alt=""
+      <img src={getLocalCoverUrl(g.gid, g.lastModified)} alt=""
         draggable={false}
         style={{
           width: 48, height: 64, objectFit: 'cover', borderRadius: 'var(--radius-xs)',

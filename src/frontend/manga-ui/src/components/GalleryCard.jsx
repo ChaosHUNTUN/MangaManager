@@ -151,7 +151,7 @@ const GalleryCard = memo(({
             <FileText size={28} />
           </div>
         )}
-        <img src={getLocalCoverUrl(g.gid)} alt={g.title}
+        <img src={getLocalCoverUrl(g.gid, g.lastModified)} alt={g.title}
           draggable={false}
           style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
