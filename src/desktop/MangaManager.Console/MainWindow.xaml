@@ -6,10 +6,50 @@
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True"
         Background="Transparent"
-        Closing="Window_Closing" Loaded="Window_Loaded"
+        Loaded="Window_Loaded"
         MouseLeftButtonDown="Window_Drag">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <!-- 任务筛选 chips -->
+        <Style x:Key="FilterChip" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bd" Background="#14142A" CornerRadius="4" Padding="8,3"
+                                BorderBrush="#2A2A4A" BorderThickness="1">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#7C3AED20"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#8B5CF6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 任务列表项：去掉默认选中高亮/内边距，保留卡片外观 -->
+        <Style x:Key="TaskListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- ====== 调色板 ====== -->
         <SolidColorBrush x:Key="BgPrimary" Color="#0C0C1D"/>
         <SolidColorBrush x:Key="BgSecondary" Color="#111128"/>
@@ -331,9 +371,9 @@
 
                         <!-- 快捷入口内联到标题栏 -->
                         <Button Content="🌐 前端页面" Style="{StaticResource GhostBtn}"
-                                Click="OpenWeb_Click" ToolTip="打开前端页面 (http://localhost:5173)"/>
+                                Command="{Binding OpenWebCommand}" ToolTip="打开前端页面"/>
                         <Button Content="🐱 本地画廊" Style="{StaticResource GhostBtn}" Margin="6,0,0,0"
-                                Click="OpenLocalGallery_Click"/>
+                                Command="{Binding OpenLocalCommand}"/>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -341,7 +381,7 @@
                                 Foreground="#64748B" Click="Minimize_Click"/>
                         <Button Content="✕" Style="{StaticResource TitlebarBtn}"
                                 Foreground="#94A3B8" Click="Close_Click" x:Name="BtnClose"
-                                Margin="4,0,0,0"/>
+                                Margin="4,0,0,0" ToolTip="最小化到托盘（服务继续运行）"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -360,22 +400,23 @@
                                                Foreground="{StaticResource TextPrimary}" Margin="6,0,0,0"
                                                VerticalAlignment="Center"/>
                                     <Border Style="{StaticResource StatusPill}" Margin="12,0,0,0"
-                                            Background="{Binding ElementName=TxtGlobalStatus, Path=Tag, FallbackValue=#1878350F}">
-                                        <TextBlock x:Name="TxtGlobalStatus" Text="● 检查中..." FontSize="11"
-                                                   Foreground="{StaticResource Warning}" Tag="#1878350F"/>
+                                            Background="{Binding GlobalStatusPillBrush}">
+                                        <TextBlock Text="{Binding GlobalStatusText}" FontSize="11"
+                                                   Foreground="{Binding GlobalStatusBrush}"/>
                                     </Border>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Content="▶ 全部启动" Style="{StaticResource PrimaryBtn}" FontSize="11"
-                                            Padding="12,6" Click="BtnStartAll_Click" Background="#059669"/>
+                                            Padding="12,6" Command="{Binding StartAllCommand}" Background="#059669"/>
                                     <Button Content="⏹ 全部停止" Style="{StaticResource DangerBtn}"
-                                            Click="BtnStopAll_Click" Margin="8,0,0,0"/>
+                                            Command="{Binding StopAllCommand}" Margin="8,0,0,0"/>
                                 </StackPanel>
                             </Grid>
 
                             <WrapPanel>
                                 <!-- Web 前端卡片 -->
-                                <Border Style="{StaticResource SubCard}" Width="268">
+                                <Border Style="{StaticResource SubCard}" Width="268"
+                                        Visibility="{Binding UiCardVisibility}">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -396,11 +437,11 @@
                                         <StackPanel Grid.Row="1" Margin="0,12,0,0">
                                             <Grid>
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Ellipse Width="9" Height="9" Fill="{StaticResource Warning}"
-                                                             x:Name="UiStatusDot" Margin="0,0,8,0"
+                                                    <Ellipse Width="9" Height="9"
+                                                             Fill="{Binding UiCard.DotBrush}" Margin="0,0,8,0"
                                                              VerticalAlignment="Center"/>
-                                                    <TextBlock x:Name="TxtUiStatus" Text="检查中..." FontSize="12"
-                                                               Foreground="{StaticResource TextSecondary}"/>
+                                                    <TextBlock Text="{Binding UiCard.StateText}" FontSize="12"
+                                                               Foreground="{Binding UiCard.StateBrush}"/>
                                                 </StackPanel>
                                                 <TextBlock Text="localhost:5173" FontSize="10"
                                                            Foreground="{StaticResource TextMuted}"
@@ -408,20 +449,21 @@
                                             </Grid>
                                         </StackPanel>
                                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                                            <Button x:Name="BtnUiStart" Content="▶ 启动"
+                                            <Button Content="▶ 启动"
                                                     Style="{StaticResource ActionBtn}" Background="#059669"
-                                                    Click="BtnUiStart_Click"/>
-                                            <Button x:Name="BtnUiStop" Content="⏹ 停止"
+                                                    Command="{Binding StartUiCommand}"/>
+                                            <Button Content="⏹ 停止"
                                                     Style="{StaticResource ActionBtn}" Background="#DC2626"
-                                                    Margin="6,0,0,0" Click="BtnUiStop_Click"/>
+                                                    Margin="6,0,0,0" Command="{Binding StopUiCommand}"/>
                                             <Button Content="🔄" Style="{StaticResource IconBtn}" Margin="6,0,0,0"
-                                                    Click="BtnUiRestart_Click" ToolTip="重启"/>
+                                                    Command="{Binding RestartUiCommand}" ToolTip="重启"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
 
                                 <!-- API 后端卡片 -->
-                                <Border Style="{StaticResource SubCard}" Width="268">
+                                <Border Style="{StaticResource SubCard}" Width="268"
+                                        Visibility="{Binding ApiCardVisibility}">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -442,26 +484,26 @@
                                         <StackPanel Grid.Row="1" Margin="0,12,0,0">
                                             <Grid>
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Ellipse Width="9" Height="9" Fill="{StaticResource Warning}"
-                                                             x:Name="ApiStatusDot" Margin="0,0,8,0"
+                                                    <Ellipse Width="9" Height="9"
+                                                             Fill="{Binding ApiCard.DotBrush}" Margin="0,0,8,0"
                                                              VerticalAlignment="Center"/>
-                                                    <TextBlock x:Name="TxtApiStatus" Text="检查中..." FontSize="12"
-                                                               Foreground="{StaticResource TextSecondary}"/>
+                                                    <TextBlock Text="{Binding ApiCard.StateText}" FontSize="12"
+                                                               Foreground="{Binding ApiCard.StateBrush}"/>
                                                 </StackPanel>
-                                                <TextBlock x:Name="TxtApiEndpoint" Text="localhost:5208" FontSize="10"
+                                                <TextBlock Text="{Binding ApiCard.EndpointShort}" FontSize="10"
                                                            Foreground="{StaticResource TextMuted}"
                                                            HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
-                                            <Button x:Name="BtnApiStart" Content="▶ 启动"
+                                            <Button Content="▶ 启动"
                                                     Style="{StaticResource ActionBtn}" Background="#059669"
-                                                    Click="BtnApiStart_Click"/>
-                                            <Button x:Name="BtnApiStop" Content="⏹ 停止"
+                                                    Command="{Binding StartApiCommand}"/>
+                                            <Button Content="⏹ 停止"
                                                     Style="{StaticResource ActionBtn}" Background="#DC2626"
-                                                    Margin="6,0,0,0" Click="BtnApiStop_Click"/>
+                                                    Margin="6,0,0,0" Command="{Binding StopApiCommand}"/>
                                             <Button Content="🔄" Style="{StaticResource IconBtn}" Margin="6,0,0,0"
-                                                    Click="BtnApiRestart_Click" ToolTip="重启"/>
+                                                    Command="{Binding RestartApiCommand}" ToolTip="重启"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -478,21 +520,38 @@
                                     <TextBlock Text="下载任务" FontSize="15" FontWeight="Bold"
                                                Foreground="{StaticResource TextPrimary}" Margin="6,0,0,0"
                                                VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="TxtDownloadSummary" Text="" FontSize="12"
+                                    <TextBlock Text="{Binding DownloadSummary}" FontSize="12"
                                                Foreground="{StaticResource TextMuted}" Margin="12,0,0,0"
                                                VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                                        <RadioButton Content="全部" GroupName="TaskFilter"
+                                                     IsChecked="{Binding IsFilterAll}" Style="{StaticResource FilterChip}"/>
+                                        <RadioButton Content="下载中" GroupName="TaskFilter"
+                                                     IsChecked="{Binding IsFilterDownloading}" Style="{StaticResource FilterChip}"/>
+                                        <RadioButton Content="等待" GroupName="TaskFilter"
+                                                     IsChecked="{Binding IsFilterPending}" Style="{StaticResource FilterChip}"/>
+                                        <RadioButton Content="暂停" GroupName="TaskFilter"
+                                                     IsChecked="{Binding IsFilterPaused}" Style="{StaticResource FilterChip}"/>
+                                        <RadioButton Content="失败" GroupName="TaskFilter"
+                                                     IsChecked="{Binding IsFilterFailed}" Style="{StaticResource FilterChip}"/>
+                                    </StackPanel>
                                 </StackPanel>
-                                <Button x:Name="BtnRestartFailed" Content="🔄 重启全部失败"
+                                <Button Content="🔄 重启全部失败"
                                         Style="{StaticResource GhostBtn}"
                                         Background="#2078350F" Foreground="{StaticResource Warning}"
                                         BorderBrush="#40F59E0B"
-                                        Click="BtnRestartFailed_Click" Visibility="Collapsed"
+                                        Command="{Binding RestartAllFailedCommand}"
+                                        Visibility="{Binding HasFailedTasks, Converter={StaticResource BoolToVis}}"
                                         HorizontalAlignment="Right"/>
                             </Grid>
 
-                            <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl x:Name="TasksList">
-                                    <ItemsControl.ItemTemplate>
+                            <ListBox ItemsSource="{Binding FilteredTasks}" MaxHeight="300"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling"
+                                     Background="Transparent" BorderThickness="0"
+                                     ItemContainerStyle="{StaticResource TaskListItemStyle}">
+                                    <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Border Background="{StaticResource BgCard}" CornerRadius="8"
                                                     Padding="14,12" Margin="0,0,0,6"
@@ -558,35 +617,38 @@
                                                                 VerticalAlignment="Center" Margin="12,0,0,0">
                                                         <Button Content="⏸" Style="{StaticResource TaskBtn}"
                                                                 Background="#308B5CF6" Foreground="{StaticResource AccentLight}"
-                                                                Click="BtnPauseTask_Click" Tag="{Binding Gid}"
+                                                                Command="{Binding DataContext.PauseTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding Gid}"
                                                                 Visibility="{Binding PauseVisible}"/>
                                                         <Button Content="▶" Style="{StaticResource TaskBtn}"
                                                                 Background="#303B82F6" Foreground="{StaticResource Info}"
-                                                                Click="BtnResumeTask_Click" Tag="{Binding Gid}"
+                                                                Command="{Binding DataContext.ResumeTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding Gid}"
                                                                 Margin="4,0,0,0"
                                                                 Visibility="{Binding ResumeVisible}"/>
                                                         <Button Content="↻" Style="{StaticResource TaskBtn}"
                                                                 Background="#30F59E0B" Foreground="{StaticResource Warning}"
-                                                                Click="BtnRestartTask_Click" Tag="{Binding Gid}"
+                                                                Command="{Binding DataContext.RestartTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding Gid}"
                                                                 Margin="4,0,0,0"
                                                                 Visibility="{Binding RestartVisible}"/>
                                                         <Button Content="✕" Style="{StaticResource TaskBtn}"
                                                                 Background="#30EF4444" Foreground="#FCA5A5"
-                                                                Click="BtnRemoveTask_Click" Tag="{Binding Gid}"
+                                                                Command="{Binding DataContext.RemoveTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding Gid}"
                                                                 Margin="4,0,0,0"
                                                                 Visibility="{Binding RemoveVisible}"/>
                                                     </StackPanel>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
+                                    </ListBox.ItemTemplate>
+                            </ListBox>
 
-                            <TextBlock x:Name="TxtNoTasks" Text="✨ 暂无下载任务" FontSize="12"
+                            <TextBlock Text="✨ 暂无下载任务" FontSize="12"
                                        Foreground="{StaticResource TextMuted}"
                                        HorizontalAlignment="Center" Margin="0,18,0,0"
-                                       Visibility="Collapsed"/>
+                                       Visibility="{Binding HasNoTasks, Converter={StaticResource BoolToVis}}"/>
                         </StackPanel>
                     </Border>
 
@@ -605,7 +667,11 @@
                                            VerticalAlignment="Center"/>
                                 <Button Content="🗑 清空" Style="{StaticResource GhostBtn}"
                                         Margin="12,0,0,0" Padding="8,4"
-                                        Click="ClearLog_Click"/>
+                                        Command="{Binding ClearLogCommand}"/>
+                                <Button Content="📄 日志文件" Style="{StaticResource GhostBtn}"
+                                        Margin="8,0,0,0" Padding="8,4"
+                                        Command="{Binding OpenLogCommand}"
+                                        ToolTip="打开 console.log"/>
                             </StackPanel>
 
                             <Border Grid.Row="1" Background="{StaticResource BgInput}"
@@ -617,7 +683,9 @@
                                          FontFamily="Cascadia Code, Consolas, monospace" FontSize="11"
                                          IsReadOnly="True"
                                          VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
-                                         MinHeight="120" MaxHeight="200"/>
+                                         MinHeight="120" MaxHeight="200"
+                                         Text="{Binding LogText, Mode=OneWay}"
+                                         TextChanged="TxtLog_TextChanged"/>
                             </Border>
                         </Grid>
                     </Border>
