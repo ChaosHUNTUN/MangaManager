@@ -182,7 +182,7 @@ export default function LocalGallery() {
     if (!albumsLoaded) return
     if (randomMode) { loadRandom(); return }
     loadPaged(page)
-  }, [activeGroup, search, sortBy, pageSize, page, albumsLoaded, randomMode])
+  }, [activeGroup, search, sortBy, pageSize, page, albumsLoaded, randomMode, tagIdsParam])
 
   useEffect(() => {
     const handler = () => { loadMetas(); loadPaged() }

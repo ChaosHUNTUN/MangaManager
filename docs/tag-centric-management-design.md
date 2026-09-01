@@ -98,7 +98,7 @@ API（P0 已落地）：
   - `EnsureTags(IEnumerable<(ns, name)>)`：按 (ns,name) upsert，缺失即创建，自动分配分类颜色，翻译从 `EhentaiTagService` 取 NameCn
   - `SetGalleryTags(gid, tags)` / `GetGalleryTags(gid)`：作品级增删
   - 改名/合并：改 `tag.Name` → 所有关联作品自动生效（多对多的天然优势）
-- 筛选：`/api/local/galleries?tagIds=1,2,3` 走 JOIN；搜索 `artist:xxx` 走标签表模糊匹配
+- 筛选：`/api/local/galleries?tagIds=1,2,3` 走 JOIN，**AND 语义（命中全部选中标签）**；搜索 `artist:xxx` 走标签表模糊匹配
 
 ### 3.3 下载/同步管线自动补齐标签
 1. `DownloadManager` 下载完成后写 `.meta.json`（已有）

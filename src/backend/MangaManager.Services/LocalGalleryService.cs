@@ -178,11 +178,11 @@ public class LocalGalleryService
     {
         var query = db.LocalGalleries.AsNoTracking().AsQueryable();
 
-        // 标签筛选：命中任意一个标签（JOIN work_tag）
+        // 标签筛选：命中全部选中标签（AND，JOIN work_tag；与"联合筛选"预期一致）
         if (tagIds != null && tagIds.Count > 0)
         {
             var ids = tagIds.Distinct().ToList();
-            query = query.Where(g => db.WorkTags.Any(wt => wt.WorkId == g.Gid && ids.Contains(wt.TagId)));
+            query = query.Where(g => ids.All(id => db.WorkTags.Any(wt => wt.WorkId == g.Gid && wt.TagId == id)));
         }
 
         // 分组筛选
@@ -377,7 +377,9 @@ public class LocalGalleryService
     public List<TagStatDto> GetTagStats()
     {
         using var db = CreateDb();
+        // 只统计本地画廊（正 Gid）的关联，与筛选结果一致（旧版 Manga 用负 WorkId，不计入）
         var counts = db.WorkTags.AsNoTracking()
+            .Where(w => w.WorkId > 0)
             .GroupBy(w => w.TagId)
             .Select(g => new { TagId = g.Key, Count = g.Count() })
             .ToList();
