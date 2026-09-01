@@ -45,7 +45,7 @@ export default function EHentai() {
     browse, goPopular } = browseHook
 
   const searchHook = useEHSearch({ search, setSearch, browse, exhentai, setPopularMode })
-  const { tagSuggestions, showSuggestions, setShowSuggestions, searchInputRef, handleSearchInput, applyTag, handleSearchKey } = searchHook
+  const { tagSuggestions, showSuggestions, setShowSuggestions, searchInputRef, handleSearchInput, handleCompositionStart, handleCompositionEnd, applyTag, handleSearchKey } = searchHook
 
   const detailHook = useEHDetail({ showToast, localGids, setLocalGids, setDownloadingGids, setError })
   const { detail, setDetail, detailLoading, tagTranslations, nsTranslations,
@@ -177,7 +177,8 @@ export default function EHentai() {
       {/* 智能搜索栏 */}
       <div className="eh-searchbar" style={{ position: 'relative', display: 'flex', gap: 8, marginBottom: 8, width: '100%' }}>
         <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-          <input ref={searchInputRef} value={search} onChange={handleSearchInput} onKeyDown={handleSearchKey}
+          <input ref={searchInputRef} defaultValue={search} onChange={handleSearchInput} onKeyDown={handleSearchKey}
+            onCompositionStart={handleCompositionStart} onCompositionEnd={handleCompositionEnd}
             placeholder="搜索... 输入中文标签会自动提示 (Enter搜索, Esc关闭提示)"
             style={{ width: '100%', minWidth: '200px', padding: '8px 14px' }}
             onFocus={() => search && setShowSuggestions(tagSuggestions.length > 0)}

@@ -8,7 +8,7 @@ import { searchTags } from '../api/work'
  * — 标签翻译（artist/group/category/language 中文映射）
  * — 搜索输入自动补全
  */
-export default function useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast }) {
+export default function useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast, searchInputRef }) {
   const [searchTagTransMap, setSearchTagTransMap] = useState({})
   const [searchSuggestions, setSearchSuggestions] = useState([])
   const suggestTimerRef = useRef(null)
@@ -131,14 +131,23 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
   }, [search, setSearch, searchTagPool, searchTagTransMap, setCursorPos])
 
   const applySearchTag = useCallback((tag) => {
-    const val = search; const pos = cursorPos
+    // 用输入框实时值（而非可能过期的 state），避免多标签输入时用旧值替换导致误删
+    const el = searchInputRef?.current
+    const val = el ? el.value : search
+    const pos = el ? (el.selectionStart ?? cursorPos) : cursorPos
     const lastSpace = val.lastIndexOf(' ', pos - 1)
     const before = val.substring(0, lastSpace + 1)
     const after = val.substring(pos)
     const insert = tag.key.includes(':') ? tag.syntax : tag.key
     const newVal = (before + insert + ' ' + after).replace(/\s+/g, ' ').trim()
-    setSearch(newVal); setSearchSuggestions([])
-  }, [search, cursorPos, setSearch])
+    setSearch(newVal)
+    if (el) {
+      el.value = newVal
+      el.focus()
+      try { el.setSelectionRange(newVal.length, newVal.length) } catch { }
+    }
+    setSearchSuggestions([])
+  }, [search, cursorPos, setSearch, searchInputRef])
 
   return { searchTagPool, searchTagTransMap, searchSuggestions, setSearchSuggestions, handleSearchInput, applySearchTag }
 }

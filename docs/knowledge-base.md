@@ -191,6 +191,7 @@ MangaManager/
 - **Vite 代理 IPv6 加固（2026-09-01）**：`vite.config.js` 的 `/api` 代理 target 从 `http://localhost:5208` 改为 `http://127.0.0.1:5208`，避免 localhost 解析到 `::1` 导致“API 在跑却连不上”
 - **控制台下载列表为空的真因与修复（2026-09-01，线上复现+验证）**：API 正常返回 107 任务、前端反序列化验证通过，但运行中的控制台是 **8/30 旧构建**（`SpeedBps` 等 DTO 契约早于 9/1 定型），线上 `speedBps` 为非整数浮点（47544.5），旧 DTO 反序列化整个列表抛 `JsonException` → `DownloadMonitor` 完全静默指数退避 → `FilteredTasks` 恒空 → 窗口显示“暂无下载任务”。修复：用当前代码重建控制台并重启（API/前端为独立进程未中断、下载断点续传不受影响），UI Automation 实测列表出现“2 下载中 · 105 等待中”与任务条目。**硬化**：`DownloadMonitor` 失败改为首次/每 6 次留一条日志（原完全静默，此类问题无法诊断）
 - **搜索框自动补全完善（2026-09-01）**：① 本地页——修复“输入时下拉不出现”（原 `showSearchSuggestions` 只在 focus 时打开，新增 effect：有建议即显示）；派生池前缀匹配修复（原用完整 `artist:foo` 匹配标签名 `foo` 恒失败，现按冒号后内容匹配）；`tag:` 前缀现在会查本地标签库（任意命名空间，原文/中文）补全 `tag:xxx`；无前缀词继续派生池+标签库双源。模式统一：输入 → 下拉列表 → 点击替换当前词。② 在线页——数据源本就是 EhTagTranslation 全量翻译库（EH 标签大全），新增**本地标签库兜底**（翻译库不可用时 `/api/ehentai/tags/suggest` 改查 `tag` 表），保证在线补全始终可用。实测：suggest 返回 `female:milf`/`other:tankoubon` 等带命名空间与中文的 EH 语法
+- **多标签输入误删修复（2026-09-01）**：本地/在线搜索框原为严格受控输入（`value={search}`，本地 search 还来自 URL），配合中文输入法组合输入时 React 重渲染会把输入框重置回旧值，导致“第二个标签输入时第一个被删/只能输入一个标签”。修复：两个搜索框改**非受控（`defaultValue`）+ 组合安全同步**（`composingRef` 在输入法组合中跳过外部同步）；补全应用（`applySearchTag`/`applyTag`）改为**读取输入框实时值与光标位置**替换当前词并立即写回 DOM（不再依赖可能过期的 state），彻底消除多标签误删
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301

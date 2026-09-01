@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { suggestEHTags } from '../api'
 
 export default function useEHSearch({ search, setSearch, browse, exhentai, setPopularMode }) {
@@ -7,6 +7,19 @@ export default function useEHSearch({ search, setSearch, browse, exhentai, setPo
   const [cursorPos, setCursorPos] = useState(0)
   const searchInputRef = useRef(null)
   const suggestTimerRef = useRef(null)
+  const composingRef = useRef(false)
+
+  // 组合安全：输入法组合中不覆盖输入框（search 变化时同步，组合中跳过）
+  useEffect(() => {
+    const el = searchInputRef.current
+    if (el && !composingRef.current && el.value !== search) el.value = search
+  }, [search])
+
+  const handleCompositionStart = useCallback(() => { composingRef.current = true }, [])
+  const handleCompositionEnd = useCallback((e) => {
+    composingRef.current = false
+    handleSearchInput(e)
+  }, [handleSearchInput])
 
   const handleSearchInput = useCallback((e) => {
     const val = e.target.value
@@ -38,15 +51,21 @@ export default function useEHSearch({ search, setSearch, browse, exhentai, setPo
   }, [search, setSearch])
 
   const applyTag = useCallback((tag) => {
-    const val = search
-    const pos = cursorPos
+    // 用输入框实时值（而非可能过期的 state），避免多标签输入时误删前一个标签
+    const el = searchInputRef.current
+    const val = el ? el.value : search
+    const pos = el ? (el.selectionStart ?? cursorPos) : cursorPos
     const lastSpace = val.lastIndexOf(' ', pos - 1)
     const before = val.substring(0, lastSpace + 1)
     const after = val.substring(pos)
     const newVal = (before + (tag.ehSyntax || tag.key) + ' ' + after).replace(/\s+/g, ' ').trim()
     setSearch(newVal)
+    if (el) {
+      el.value = newVal
+      el.focus()
+      try { el.setSelectionRange(newVal.length, newVal.length) } catch { }
+    }
     setShowSuggestions(false)
-    searchInputRef.current?.focus()
   }, [search, cursorPos, setSearch])
 
   const handleSearchKey = useCallback((e) => {
@@ -58,5 +77,5 @@ export default function useEHSearch({ search, setSearch, browse, exhentai, setPo
     if (e.key === 'Escape') setShowSuggestions(false)
   }, [showSuggestions, search, exhentai, browse, setPopularMode])
 
-  return { tagSuggestions, showSuggestions, setShowSuggestions, searchInputRef, handleSearchInput, applyTag, handleSearchKey }
+  return { tagSuggestions, showSuggestions, setShowSuggestions, searchInputRef, handleSearchInput, handleCompositionStart, handleCompositionEnd, applyTag, handleSearchKey }
 }

@@ -91,6 +91,7 @@ export default function LocalGallery() {
 
   // ── REMAINING COMPONENT STATE ──
   const searchInputRef = useRef(null)
+  const composingRef = useRef(false)   // 输入法组合中：禁止外部同步覆盖输入框
   const [cursorPos, setCursorPos] = useState(0)
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
 
@@ -192,12 +193,18 @@ export default function LocalGallery() {
   // 自动匹配 + 分组计算 → useAlbumConfig Hook
 
   // ── 搜索标签池 & 自动补全（Hook 封装） ──
-  const { searchTagPool, searchTagTransMap, searchSuggestions, setSearchSuggestions, handleSearchInput, applySearchTag } = useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast })
+  const { searchTagPool, searchTagTransMap, searchSuggestions, setSearchSuggestions, handleSearchInput, applySearchTag } = useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast, searchInputRef })
 
   // 输入过程中自动打开补全下拉（有建议即显示，避免必须重新聚焦才出现）
   useEffect(() => {
     setShowSearchSuggestions(searchSuggestions.length > 0 && search.trim().length > 0)
   }, [searchSuggestions, search])
+
+  // 组合安全：search 来自 URL，外部变化时同步到输入框；输入法组合中跳过，避免吃掉正在输入的内容
+  useEffect(() => {
+    const el = searchInputRef.current
+    if (el && !composingRef.current && el.value !== search) el.value = search
+  }, [search])
 
   const totalPages = pageTotalPages; const safePage = Math.min(page, totalPages)
   const paged = pageItems; const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
@@ -354,7 +361,9 @@ export default function LocalGallery() {
           {/* 中间：搜索框 */}
           <div style={{ flex: 1, minWidth: 0, maxWidth: 480, position: 'relative', margin: '0 auto' }}>
             <input ref={searchInputRef} type="text" placeholder="搜索标题 / GID / artist:xxx / tag:xxx …"
-              value={search} onChange={handleSearchInput}
+              defaultValue={search} onChange={handleSearchInput}
+              onCompositionStart={() => { composingRef.current = true }}
+              onCompositionEnd={(e) => { composingRef.current = false; handleSearchInput(e) }}
               onKeyDown={e => { if (e.key === 'Escape') setShowSearchSuggestions(false) }}
               onFocus={() => { if (search && searchSuggestions.length > 0) setShowSearchSuggestions(true) }}
               onBlur={() => setTimeout(() => setShowSearchSuggestions(false), 150)}
