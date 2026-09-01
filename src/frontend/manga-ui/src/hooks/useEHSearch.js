@@ -15,12 +15,6 @@ export default function useEHSearch({ search, setSearch, browse, exhentai, setPo
     if (el && !composingRef.current && el.value !== search) el.value = search
   }, [search])
 
-  const handleCompositionStart = useCallback(() => { composingRef.current = true }, [])
-  const handleCompositionEnd = useCallback((e) => {
-    composingRef.current = false
-    handleSearchInput(e)
-  }, [handleSearchInput])
-
   const handleSearchInput = useCallback((e) => {
     const val = e.target.value
     setSearch(val)
@@ -49,6 +43,12 @@ export default function useEHSearch({ search, setSearch, browse, exhentai, setPo
       }, 300)
     } else setShowSuggestions(false)
   }, [search, setSearch])
+
+  const handleCompositionStart = useCallback(() => { composingRef.current = true }, [])
+  const handleCompositionEnd = useCallback((e) => {
+    composingRef.current = false
+    handleSearchInput(e)
+  }, [handleSearchInput])
 
   const applyTag = useCallback((tag) => {
     // 用输入框实时值（而非可能过期的 state），避免多标签输入时误删前一个标签
