@@ -190,7 +190,7 @@ MangaManager/
 | ~~滚动模式渲染~~ | **已解决（2026-09-01）**：帧加 `content-visibility: auto` + `contain-intrinsic-size: auto 估算尺寸`（浏览器级窗口化——离屏帧跳过渲染，占位尺寸先撑起完整滚动条，图片加载后自动记住真实尺寸）；偏移恢复守卫改为等待目标帧真实尺寸（dimsMap），避免按估算落位 |
 | ~~页面列表 10s 缓存~~ | **已解决（2026-09-01）**：`GallerySync.SyncDirectoryAsync` / `RemoveDirectoryAsync` 成功后调用 `InvalidateScanCache()`，下载完成/文件变动即失效缓存，不再等 10s TTL |
 | ~~`getAvailableArea` 硬编码~~ | **已解决（2026-09-01）**：运行时测量 `.r-hud`/`.r-bar` 实际高度（ReaderLocal 测量 + `updateChrome` 传入），缩略图展开/UI 隐藏都精确；初始兜底仍 44/36 不回归 |
-遗留工作区文件 | `.codebuddy/memory/2026-08-18.md`、`docs/HANDOVER-2026-08-18.md`、`scripts/verify_g.py` 未提交（verify_g.py 计划删除） |
+遗留工作区文件 | `.codebuddy/memory/2026-08-18.md`、`scripts/verify_g.py` 未跟踪（verify_g.py 计划删除；其余工作已按功能拆分提交） |
 
 ## 7. 待办 / 路线图
 
