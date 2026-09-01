@@ -7,7 +7,10 @@ import ReaderLocal from './pages/ReaderLocal'
 import DownloadMonitor from './pages/DownloadMonitor'
 import NotFound from './pages/NotFound'
 import { API_BASE } from './api'
+import useIsMobile from './hooks/useIsMobile'
+import MobileTabBar from './components/MobileTabBar'
 import './App.css'
+import './mobile.css'
 
 // Visual test pages (loaded lazily)
 import VTColors from './visual-test/pages/ColorsShowcase'
@@ -46,6 +49,7 @@ function OfflineBanner({ onRetry }) {
 
 export default function App() {
   const [offline, setOffline] = useState(false)
+  const isMobile = useIsMobile()
 
   const checkHealth = () => {
     fetch(`${API_BASE}/health`).then(r => {
@@ -57,34 +61,37 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      {offline && <OfflineBanner onRetry={checkHealth} />}
-      <Routes>
-        <Route path="/" element={<LocalGallery />} />
-        <Route path="/local" element={<LocalGallery />} />
-        <Route path="/reader/:id" element={<ReaderRedirect />} />
-        <Route path="/reader-local/:gid" element={<ReaderLocal />} />
-        <Route path="/ehentai" element={<EHentai />} />
-        <Route path="/downloads" element={<DownloadMonitor />} />
+      <div className={isMobile ? 'mobile' : ''}>
+        {offline && <OfflineBanner onRetry={checkHealth} />}
+        <Routes>
+          <Route path="/" element={<LocalGallery />} />
+          <Route path="/local" element={<LocalGallery />} />
+          <Route path="/reader/:id" element={<ReaderRedirect />} />
+          <Route path="/reader-local/:gid" element={<ReaderLocal />} />
+          <Route path="/ehentai" element={<EHentai />} />
+          <Route path="/downloads" element={<DownloadMonitor />} />
 
-        {/* Visual Test Routes */}
-        <Route path="/visual-test/reader" element={<VTReader />} />
-        <Route path="/visual-test" element={<VTNav />}>
-          <Route index element={<VTDesign />} />
-          <Route path="design" element={<VTDesign />} />
-          <Route path="colors" element={<VTColors />} />
-          <Route path="typography" element={<VTTypo />} />
-          <Route path="icons" element={<VTIcons />} />
-          <Route path="buttons" element={<VTButtons />} />
-          <Route path="cards" element={<VTCards />} />
-          <Route path="forms" element={<VTForms />} />
-          <Route path="charts" element={<VTCharts />} />
-          <Route path="glass" element={<VTGlass />} />
-          <Route path="animations" element={<VTAnims />} />
-          <Route path="components" element={<VTComps />} />
-        </Route>
+          {/* Visual Test Routes */}
+          <Route path="/visual-test/reader" element={<VTReader />} />
+          <Route path="/visual-test" element={<VTNav />}>
+            <Route index element={<VTDesign />} />
+            <Route path="design" element={<VTDesign />} />
+            <Route path="colors" element={<VTColors />} />
+            <Route path="typography" element={<VTTypo />} />
+            <Route path="icons" element={<VTIcons />} />
+            <Route path="buttons" element={<VTButtons />} />
+            <Route path="cards" element={<VTCards />} />
+            <Route path="forms" element={<VTForms />} />
+            <Route path="charts" element={<VTCharts />} />
+            <Route path="glass" element={<VTGlass />} />
+            <Route path="animations" element={<VTAnims />} />
+            <Route path="components" element={<VTComps />} />
+          </Route>
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+        {isMobile && <MobileTabBar />}
+      </div>
     </BrowserRouter>
   )
 }

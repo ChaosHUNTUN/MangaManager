@@ -11,6 +11,9 @@ import useEHDetail from '../hooks/useEHDetail'
 import useEHInit from '../hooks/useEHInit'
 const getCategoryColor = getCategoryColorDetail
 
+// 一键导出书签：在已登录的 e-hentai.org 页面点击，自动复制 ipb_member_id / ipb_pass_hash / igneous 为 JSON
+const BOOKMARKLET = "javascript:(()=>{const g=n=>{const m=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(n+'='));return m?decodeURIComponent(m.slice(n.length+1)):''};const o={ipb_member_id:g('ipb_member_id'),ipb_pass_hash:g('ipb_pass_hash'),igneous:g('igneous')};const t=JSON.stringify(o);navigator.clipboard.writeText(t).then(()=>alert('已复制 EH Cookie，回 MangaManager 粘贴导入'))['catch'](()=>prompt('手动复制：',t))})()"
+
 export default function EHentai() {
   // ─── Toast ───
   const [toast, setToast] = useState(null)
@@ -20,7 +23,19 @@ export default function EHentai() {
 
   // ─── 业务 Hooks（全部在 JSX 之前、一次性调用完毕） ───
   const cookieHook = useEHCookie({ onCookieSaved: () => { setPopularMode(true); browse('', true, true) } })
-  const { showCookie, setShowCookie, cookieForm, setCookieForm, cookieInfo, cookieValidating, validateResult, cookieMsg, connectivity, handleSaveCookie, handleValidate } = cookieHook
+  const { showCookie, setShowCookie, cookieForm, setCookieForm, rawCookie, setRawCookie, cookieInfo, cookieValidating, validateResult, cookieMsg, connectivity, handleSaveCookie, handleValidate, handleImportRaw, handleImportClipboard } = cookieHook
+
+  // 登录状态徽章
+  const cookieStatus = !cookieInfo?.ipbMemberId ? { color: '#888', text: '未配置' }
+    : !validateResult ? { color: '#888', text: '验证中…' }
+    : !validateResult.loggedIn ? { color: '#ef4444', text: 'Cookie 失效' }
+    : validateResult.exhentai ? { color: '#10b981', text: '里站可用' }
+    : { color: '#f59e0b', text: '仅表站' }
+
+  const copyBookmarklet = async () => {
+    try { await navigator.clipboard.writeText(BOOKMARKLET); showToast('脚本已复制，去 EH 页面新建书签粘贴') }
+    catch { showToast('复制失败，请手动选择复制') }
+  }
 
   const browseHook = useEHBrowse()
   const { galleries, search, setSearch, totalPages, hasMore, loading, loadingMore, error, setError,
@@ -55,7 +70,7 @@ export default function EHentai() {
   // 以下全部为 UI 渲染（纯 JSX，零业务逻辑）
   // ══════════════════════════════════════════
   return (
-    <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 'var(--space-4)', minHeight: '100vh' }}>
+      <div className="container eh-container" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 'var(--space-4)', minHeight: '100vh' }}>
       {/* 导航栏 */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: '0 var(--space-4)', height: 'var(--header-height)',
@@ -67,6 +82,10 @@ export default function EHentai() {
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
+          <span style={{ fontSize: '0.72rem', color: cookieStatus.color, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: cookieStatus.color, display: 'inline-block' }} />
+            {cookieStatus.text}
+          </span>
           <button className="btn-sm" onClick={() => setShowCookie(!showCookie)}
             style={{ borderColor: showCookie ? 'var(--accent-teal-bg)' : 'var(--border-input)', color: showCookie ? 'var(--accent-teal)' : 'var(--text-secondary)' }}>Cookie</button>
           <button className="btn-sm" onClick={handleValidate} disabled={cookieValidating}
@@ -84,7 +103,29 @@ export default function EHentai() {
             <span style={{ fontWeight: 600 }}>Cookie</span>
           </div>
           {cookieInfo && <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: 10 }}>当前: {cookieInfo.ipbMemberId} {cookieInfo.ipbPassHash} [{cookieInfo.label}]</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+          {/* 快速导入 */}
+          <div style={{ marginBottom: 10, padding: 10, background: '#14142a', border: '1px solid #2a2a4a', borderRadius: 8 }}>
+            <div style={{ fontSize: '0.78rem', color: '#aaa', marginBottom: 6 }}>⚡ 快速导入（自动识别 Cookie 串 / Netscape 导出 / JSON）</div>
+            <textarea rows={2} value={rawCookie} onChange={e => setRawCookie(e.target.value)}
+              placeholder={'例如：ipb_member_id=xxxx; ipb_pass_hash=yyyy; igneous=zzzz'}
+              style={{ width: '100%', background: '#0f0f22', color: '#ddd', border: '1px solid #333', borderRadius: 6, padding: 6, fontSize: '0.75rem', fontFamily: 'monospace', boxSizing: 'border-box' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="btn-sm" onClick={handleImportClipboard}>📋 从剪贴板导入</button>
+              <button className="btn-sm" onClick={handleImportRaw}>解析导入</button>
+            </div>
+          </div>
+          {/* 一键导出书签 */}
+          <details style={{ marginBottom: 10, fontSize: '0.78rem', color: '#999' }}>
+            <summary style={{ cursor: 'pointer' }}>🔑 一键导出书签（推荐）</summary>
+            <div style={{ marginTop: 8, background: '#14142a', border: '1px solid #2a2a4a', borderRadius: 8, padding: 10 }}>
+              <div style={{ marginBottom: 6 }}>1. 浏览器登录 <b>e-hentai.org</b>；2. 新建书签，网址粘贴下方代码；3. 在 EH 页面点击书签 → 自动复制；4. 回本页点「从剪贴板导入」→ 保存。</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <code style={{ flex: 1, fontSize: '0.65rem', wordBreak: 'break-all', background: '#0f0f22', padding: 6, borderRadius: 6, color: '#7dd3fc', lineHeight: 1.5 }}>{BOOKMARKLET}</code>
+                <button className="btn-sm" onClick={copyBookmarklet}>复制</button>
+              </div>
+            </div>
+          </details>
+          <div className="eh-cookie-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
             {['ipbMemberId','ipbPassHash','igneous','label'].map(k => (
               <div key={k}>
                 <label style={{ fontSize: '0.75rem', color: '#888' }}>{k === 'ipbMemberId' ? 'ipb_member_id *' : k === 'ipbPassHash' ? 'ipb_pass_hash *' : k}</label>
@@ -134,7 +175,7 @@ export default function EHentai() {
       )}
 
       {/* 智能搜索栏 */}
-      <div style={{ position: 'relative', display: 'flex', gap: 8, marginBottom: 8, width: '100%' }}>
+      <div className="eh-searchbar" style={{ position: 'relative', display: 'flex', gap: 8, marginBottom: 8, width: '100%' }}>
         <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
           <input ref={searchInputRef} value={search} onChange={handleSearchInput} onKeyDown={handleSearchKey}
             placeholder="搜索... 输入中文标签会自动提示 (Enter搜索, Esc关闭提示)"
