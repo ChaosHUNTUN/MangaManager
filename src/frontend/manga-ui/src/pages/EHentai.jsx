@@ -170,7 +170,7 @@ export default function EHentai() {
       {/* 网络状态 */}
       {connectivity && !connectivity.reachable && (
         <div style={{ background: '#7f1d1d20', border: '1px solid #ef444440', borderRadius: 8, padding: 10, marginBottom: 14, fontSize: '0.8rem', color: '#fca5a5' }}>
-          ⚠ 无法直接访问 E-Hentai。请在 appsettings.json 中配置代理: "Ehentai": {"{"}"Proxy": "http://127.0.0.1:7890"{"}"}
+          ⚠ 无法访问 E-Hentai（已按配置的代理检测）。请检查 appsettings.json 的 "Ehentai": {"{"}"Proxy"{"}"} 配置与代理是否在运行
         </div>
       )}
 

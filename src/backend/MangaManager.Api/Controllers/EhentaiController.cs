@@ -65,16 +65,9 @@ public class EhentaiController : ControllerBase
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            
-            bool eReachable = false;
-            try { var r = await client.GetAsync("https://e-hentai.org/", cts.Token); eReachable = r.IsSuccessStatusCode; } catch { /* network check timeout */ }
-            
-            bool exReachable = false;
-            try { var r = await client.GetAsync("https://exhentai.org/", cts.Token); exReachable = r.IsSuccessStatusCode; } catch { /* network check timeout */ }
-            
-            return Ok(new ApiResponse<object>(true, new { reachable = eReachable || exReachable, eReachable, exReachable }));
+            // 走配置的代理/共享客户端检测（与真实请求一致），避免"直连被墙误报不可用"
+            var (reachable, eReachable, exReachable) = await _svc.CheckConnectivityAsync();
+            return Ok(new ApiResponse<object>(true, new { reachable, eReachable, exReachable }));
         }
         catch (TaskCanceledException)
         {

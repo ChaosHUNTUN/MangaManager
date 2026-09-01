@@ -48,6 +48,17 @@ public class EhentaiService
     public bool HasCookie() => _auth.HasCookie();
     public async Task<ValidateResult> ValidateAsync() => await _auth.ValidateAsync(_httpClientFactory);
 
+    /// <summary>连通性检测：走与真实请求相同的代理/客户端（而非直连），反映实际可用性</summary>
+    public async Task<(bool Reachable, bool EReachable, bool ExReachable)> CheckConnectivityAsync()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+        var http = _http;   // 共享 ehentai 客户端：带代理与 Cookie
+        bool e = false, ex = false;
+        try { var r = await http.GetAsync(HOST_E + "/", cts.Token); e = r.IsSuccessStatusCode; } catch { }
+        try { var r = await http.GetAsync(HOST_EX + "/", cts.Token); ex = r.IsSuccessStatusCode; } catch { }
+        return (e || ex, e, ex);
+    }
+
     #region 画廊浏览/搜索
 
     public async Task<GalleryListResult> GetGalleriesAsync(string? search = null, int page = 0, bool exhentai = false, string? nextCursor = null,
