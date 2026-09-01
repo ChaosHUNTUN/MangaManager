@@ -61,7 +61,16 @@ public class DownloadMonitor : IDownloadMonitor
                 var copy = _snapshot.ToList();
                 _dispatcher.Invoke(() => TasksUpdated?.Invoke(this, copy));
             }
-            catch (OperationCanceledException) { break; }
+            // 仅自身令牌取消才算终止；HTTP 超时（TaskCanceledException）按瞬时失败退避重试，
+            // 否则 API 重启/慢响应会导致监控线程永久退出、列表一直为空
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (OperationCanceledException ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures == 1 || _consecutiveFailures % 6 == 0)
+                    _log.Log($"[DownloadMonitor] 拉取下载任务超时 x{_consecutiveFailures}: {ex.Message}");
+                delay = GetBackoffDelay();
+            }
             catch (Exception ex)
             {
                 // API 未运行等场景：指数退避，避免日志刷屏；
