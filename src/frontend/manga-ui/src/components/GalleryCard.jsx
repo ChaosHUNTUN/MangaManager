@@ -1,6 +1,6 @@
-import { memo, useState } from 'react'
+import { memo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, Eye, FileText, Check } from 'lucide-react'
+import { BookOpen, Eye, FileText, Check, Trash2 } from 'lucide-react'
 import { getLocalCoverUrl } from '../api'
 import { getCategoryColor, CATEGORY_COLORS_CARD as CATEGORY_COLORS } from '../constants/colors'
 import { formatSize, formatCount } from '../utils/format'
@@ -16,11 +16,54 @@ import { formatSize, formatCount } from '../utils/format'
  */
 const GalleryCard = memo(({
   g, isSel, isHovered, dragGid, albumInfo, ribbonText,
-  batchMode, onCardClick, onDragMouseDown, onOpenDetail, onOpenReader
+  batchMode, onCardClick, onDragMouseDown, onOpenDetail, onOpenReader, onDelete
 }) => {
   const [coverLoaded, setCoverLoaded] = useState(false)
   const [coverError, setCoverError] = useState(false)
   const showOverlay = isHovered && !batchMode
+
+  // ── 移动端左滑操作（阅读/删除）：触摸跟踪 + 吸附展开/收起 ──
+  const ACTION_W = 72
+  const openX = -ACTION_W * 2
+  const [swipeX, setSwipeX] = useState(0)
+  const [swiping, setSwiping] = useState(false)
+  const [open, setOpen] = useState(false)
+  const touchRef = useRef({ startX: 0, startY: 0, active: false, panning: false, dx: 0 })
+  const suppressClickRef = useRef(false)
+
+  const closeSwipe = () => { setOpen(false); setSwipeX(0) }
+
+  const onTouchStart = (e) => {
+    if (batchMode) return
+    const t = e.touches[0]
+    touchRef.current = { startX: t.clientX, startY: t.clientY, active: true, panning: false, dx: 0 }
+  }
+  const onTouchMove = (e) => {
+    const s = touchRef.current
+    if (!s.active || batchMode) return
+    const t = e.touches[0]
+    const dx = t.clientX - s.startX
+    const dy = t.clientY - s.startY
+    s.dx = dx
+    if (!s.panning) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      if (Math.abs(dx) > Math.abs(dy)) s.panning = true   // 水平手势接管
+      else { s.active = false; return }                    // 纵向滚动交给页面
+    }
+    const base = open ? openX : 0
+    setSwipeX(Math.min(0, Math.max(openX, base + dx)))
+    setSwiping(true)
+    suppressClickRef.current = true
+  }
+  const onTouchEnd = () => {
+    const s = touchRef.current
+    if (!s.active) return
+    s.active = false
+    setSwiping(false)
+    const shouldOpen = open ? s.dx <= 40 : s.dx < -30
+    setOpen(shouldOpen)
+    setSwipeX(shouldOpen ? openX : 0)
+  }
 
   return (
     <motion.div
@@ -28,7 +71,11 @@ const GalleryCard = memo(({
       whileHover={!batchMode ? { y: -1, scale: 1.005 } : {}}
       whileTap={!batchMode ? { scale: 0.995 } : {}}
       onMouseDown={!batchMode ? e => onDragMouseDown(g.gid, e) : undefined}
-      onClick={onCardClick}
+      onClick={(e) => {
+        // 滑动后吞掉随后的 click，避免误触打开详情
+        if (suppressClickRef.current) { suppressClickRef.current = false; e.stopPropagation(); return }
+        onCardClick()
+      }}
       style={{
         background: 'var(--surface-card)',
         borderRadius: 'var(--radius-md)',
@@ -38,6 +85,30 @@ const GalleryCard = memo(({
         position: 'relative',
         opacity: dragGid === g.gid ? 0.5 : 1,
       }}>
+      {/* 左滑操作层（移动端；阅读 / 删除） */}
+      {!batchMode && (
+        <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: -openX, display: 'flex', zIndex: 1 }}>
+          <button onClick={(e) => { e.stopPropagation(); closeSwipe(); onOpenReader?.(g.gid) }}
+            style={{ flex: 1, border: 'none', background: 'var(--accent-teal)', color: '#fff', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <BookOpen size={14} /> 阅读
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); closeSwipe(); onDelete?.(g) }}
+            style={{ flex: 1, border: 'none', background: 'var(--error)', color: '#fff', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <Trash2 size={14} /> 删除
+          </button>
+        </div>
+      )}
+      {/* 可滑动内容层 */}
+      <div
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
+        style={{
+          position: 'relative', zIndex: 2, background: 'var(--surface-card)',
+          transform: `translateX(${swipeX}px)`,
+          transition: swiping ? 'none' : 'transform 0.2s ease-out',
+          touchAction: 'pan-y',
+        }}>
+
       {/* 批量模式选中标记 */}
       {batchMode && (
         <div style={{
@@ -179,6 +250,7 @@ const GalleryCard = memo(({
             </span>
           )}
         </div>
+      </div>
       </div>
     </motion.div>
   )

@@ -474,7 +474,8 @@ export default function LocalGallery() {
                         onCardClick={() => handleCardClick(g)}
                         onDragMouseDown={handleDragMouseDown}
                         onOpenDetail={handleOpenDetail}
-                        onOpenReader={handleOpenReader} />
+                        onOpenReader={handleOpenReader}
+                        onDelete={(card) => setDeleteConfirm({ gid: card.gid, title: card.title })} />
                     ))}
                   </div>
                 </SortableContext>
@@ -493,7 +494,8 @@ export default function LocalGallery() {
                     onCardClick={() => handleCardClick(g)}
                     onDragMouseDown={handleDragMouseDown}
                     onOpenDetail={handleOpenDetail}
-                    onOpenReader={handleOpenReader} />
+                    onOpenReader={handleOpenReader}
+                    onDelete={(card) => setDeleteConfirm({ gid: card.gid, title: card.title })} />
                 ))}
               </div>
             )
