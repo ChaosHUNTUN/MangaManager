@@ -203,31 +203,32 @@ public class LocalGalleryService
             }
             else
             {
-                query = query.Where(g => g.AlbumKey == null);
-
                 if (group == "multi")
                 {
-                    query = query.Where(g =>
-                        (g.Artists != null && g.Artists.Contains(",")) ||
-                        (g.Groups != null && g.Groups.Contains(",")));
+                    // 多作者：artist+group 标签 ≥2 个（JOIN work_tag，不再依赖 JSON 序列化格式）
+                    query = query.Where(g => db.WorkTags.Count(wt =>
+                        wt.WorkId == g.Gid &&
+                        (wt.Tag!.Namespace == "artist" || wt.Tag!.Namespace == "group")) > 1);
                 }
                 else if (group == "unknown")
                 {
-                    query = query.Where(g =>
-                        (g.Artists == null || g.Artists == "[]") &&
-                        (g.Groups == null || g.Groups == "[]"));
+                    // 未分类：无 artist/group 标签
+                    query = query.Where(g => !db.WorkTags.Any(wt =>
+                        wt.WorkId == g.Gid &&
+                        (wt.Tag!.Namespace == "artist" || wt.Tag!.Namespace == "group")));
                 }
                 else if (group.StartsWith("artist:"))
                 {
-                    // TODO: Artists/Groups 存为 JSON 字符串，用 StartsWith 筛选依赖序列化格式（如 ["name"...]）。
-                    // 任何 JsonSerializerOptions 变更会导致静默失败。应启用 EF Core JSON 列映射或 value converter。
-                    var namePattern = $"[\"{group[7..]}\"";
-                    query = query.Where(g => g.Artists != null && g.Artists.StartsWith(namePattern));
+                    // 精确匹配作者标签（任意位置，修复多作者作品只匹配数组首元素的问题）
+                    var name = group[7..];
+                    query = query.Where(g => db.WorkTags.Any(wt =>
+                        wt.WorkId == g.Gid && wt.Tag!.Namespace == "artist" && wt.Tag.Name == name));
                 }
                 else if (group.StartsWith("group:"))
                 {
-                    var namePattern = $"[\"{group[6..]}\"";
-                    query = query.Where(g => g.Groups != null && g.Groups.StartsWith(namePattern));
+                    var name = group[6..];
+                    query = query.Where(g => db.WorkTags.Any(wt =>
+                        wt.WorkId == g.Gid && wt.Tag!.Namespace == "group" && wt.Tag.Name == name));
                 }
             }
         }
@@ -247,10 +248,12 @@ public class LocalGalleryService
                     switch (prefix)
                     {
                         case "artist":
-                            query = query.Where(g => g.Artists != null && g.Artists.ToLower().Contains(value));
+                            query = query.Where(g => db.WorkTags.Any(wt =>
+                                wt.WorkId == g.Gid && wt.Tag!.Namespace == "artist" && wt.Tag.Name.ToLower().Contains(value)));
                             break;
                         case "group":
-                            query = query.Where(g => g.Groups != null && g.Groups.ToLower().Contains(value));
+                            query = query.Where(g => db.WorkTags.Any(wt =>
+                                wt.WorkId == g.Gid && wt.Tag!.Namespace == "group" && wt.Tag.Name.ToLower().Contains(value)));
                             break;
                         case "category":
                             query = query.Where(g => g.Category != null && g.Category.ToLower().Contains(value));

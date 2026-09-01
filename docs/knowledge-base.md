@@ -183,6 +183,7 @@ MangaManager/
 - **移动端横屏适配（2026-09-01）**：`useIsMobile` 与 `mobile.css` 媒体查询从仅 `≤768px` 改为 `(≤768px), (≤1024px and ≤500px 高)`——横屏手机（844~932px 宽）不再误判桌面端；横屏作用域下 EH 网格 `auto-fill minmax(140px,1fr)`、本地卡片最小宽 150px、标签栏 44px、底部留白 48px、缩略图收窄。构建产物验证：LightningCSS 将查询改写为区间语法 `(width<=768px),(width<=1024px) and (height<=500px)`，两处均正确编译
 - **画廊卡片左滑手势（2026-09-01）**：`GalleryCard` 内容包一层可滑动层（`touch-action: pan-y` 纵向滚动让位），左滑露出「阅读/删除」操作（72px×2 吸附展开），右滑/点击空白收起；滑动距离阈值 30px 吸附、40px 回弹；滑动后吞掉合成 click 防误触；`onDelete` 复用本地页确认弹窗；批量模式禁用。SortableGalleryCard 透传
 - **下载监控移动端修复（2026-09-01）**：任务行操作按钮加 `dl-task-btn` 类、移动端 28px → 38px 触控目标；元数据行 `dl-task-meta` 允许换行（状态/页数/速度/错误信息不再横向挤压）；折叠迷你栏 `dl-minibar` 可换行；下载页重试/全部重试此前已接好
+- **本地画廊分组筛选重构（2026-09-01）**：`BuildFilteredQuery` 的 `artist:`/`group:` 分组与搜索前缀从 JSON 字符串匹配改为 **work_tag JOIN**——修复「多作者作品只匹配数组首元素」（实测 artist:8000 旧 2 → 新 3）与子串误伤；`multi`/`unknown` 改为标签计数（≥2 个 artist/group 标签 / 无 artist/group 标签）；**移除遗留的 `AlbumKey==null` 门控**——专辑废弃后该门控让非专辑分组漏掉大量带历史 AlbumKey 的作品（实测 multi 2→794、unknown 36→822，与前端工具栏计数对齐）
 
 ### 环境
 - 新增根目录 `NuGet.Config`：`<clear/>` 清空继承的 fallback 包目录，修复本机（VS 机器级配置残留旧机路径）导致的 restore/构建 NU1301
