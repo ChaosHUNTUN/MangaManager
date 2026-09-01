@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { fetchAlbumConfig, saveAlbumConfig } from '../api'
+import { FEATURES } from '../config'
 
 const ALBUM_PALETTE = ['#c06060', '#c08050', '#b0a050', '#60a060', '#70a050', '#5070a0', '#8050a0', '#c06080', '#907050', '#607080', '#50a0a0', '#70a0a0']
 
@@ -20,6 +21,7 @@ export default function useAlbumConfig({ galleryMetas }) {
 
   // ── 专辑加载 ──
   useEffect(() => {
+    if (!FEATURES.enableAlbums) { setAlbumsLoaded(true); return } // 专辑方案已废弃：保留数据但不再加载/使用
     (async () => {
       const data = await fetchAlbumConfig()
       if (data && Object.keys(data).length > 0) { setAlbumConfig(data) } else {
@@ -59,6 +61,7 @@ export default function useAlbumConfig({ galleryMetas }) {
   // ── 自动匹配 ──
   const autoMatchGuardRef = useRef(false)
   useEffect(() => {
+    if (!FEATURES.enableAlbums) return // 专辑方案已废弃：新作品不再自动匹配进专辑
     if (!albumsLoaded || galleryMetas.length === 0 || Object.keys(albumConfig).length === 0 || autoMatchGuardRef.current) return
     autoMatchGuardRef.current = true
     const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))

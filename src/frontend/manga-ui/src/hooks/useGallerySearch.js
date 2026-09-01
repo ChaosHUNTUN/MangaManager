@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import { translateEHTags } from '../api'
+import { searchTags } from '../api/work'
 
 /**
  * 本地画廊搜索 Hook
@@ -63,8 +64,32 @@ export default function useGallerySearch({ galleryMetas, albumConfig, search, se
           }
           return false
         })
-        if (matched.length > 0) setSearchSuggestions(matched.slice(0, 8))
-        else setSearchSuggestions([])
+        // 无前缀词时补查标签库：任何标签（原文/中文）都可作为 tag:xxx 语法补全
+        const hasPrefix = /^(artist|group|category|language|tag|album):/.test(currentWord.toLowerCase())
+        if (!hasPrefix) {
+          searchTags({ q: currentWord, limit: 8 })
+            .then(tagRows => {
+              const seen = new Set(matched.map(p => p.key.toLowerCase()))
+              const tagMatches = (tagRows || [])
+                .filter(t => {
+                  const syntax = `tag:${t.name}`.toLowerCase()
+                  if (s.includes(syntax) || seen.has(syntax)) return false
+                  seen.add(syntax)
+                  return true
+                })
+                .map(t => ({
+                  key: `tag:${t.name}`,
+                  label: t.nameCn ? `${t.nameCn}（${t.name}）` : t.name,
+                  prefix: 'tag',
+                  syntax: `tag:${t.name}`,
+                  count: t.count,
+                }))
+              setSearchSuggestions([...matched.slice(0, 6), ...tagMatches].slice(0, 8))
+            })
+            .catch(() => setSearchSuggestions(matched.slice(0, 8)))
+        } else {
+          setSearchSuggestions(matched.slice(0, 8))
+        }
       }, 300)
     } else setSearchSuggestions([])
   }, [search, setSearch, searchTagPool, searchTagTransMap, setCursorPos])

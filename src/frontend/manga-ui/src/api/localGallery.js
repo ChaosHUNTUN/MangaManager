@@ -12,11 +12,11 @@ export async function fetchLocalGalleryMetas() {
   return json.data || []
 }
 
-export async function fetchLocalGalleriesPaged({ group, search, sort, page = 1, pageSize = 20, albumGids, albumOrder, signal } = {}) {
+export async function fetchLocalGalleriesPaged({ group, search, sort, page = 1, pageSize = 20, albumGids, albumOrder, tagIds, signal } = {}) {
   const json = await request('/api/local/galleries/paged', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ group, search, sort, page, pageSize, albumGids, albumOrder }),
+    body: JSON.stringify({ group, search, sort, page, pageSize, albumGids, albumOrder, tagIds }),
     signal
   })
   return json.data || { items: [], total: 0, totalPages: 0, page: 1, pageSize: 20 }
@@ -122,11 +122,11 @@ export async function batchImportGalleries(parentDir, copyFiles = true) {
   return json.data
 }
 
-export async function fetchLocalGalleryGids({ group, search, sort, albumGids, albumOrder } = {}) {
+export async function fetchLocalGalleryGids({ group, search, sort, albumGids, albumOrder, tagIds } = {}) {
   const json = await request('/api/local/galleries/gids', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ group, search, sort, albumGids, albumOrder })
+    body: JSON.stringify({ group, search, sort, albumGids, albumOrder, tagIds })
   })
   return json.data || []
 }

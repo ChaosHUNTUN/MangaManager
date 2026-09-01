@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryMetas, fetchLocalGalleryGids } from '../api'
 
@@ -15,6 +15,10 @@ export default function usePagedGallery({ albumConfig, albumConfigRef, albumsLoa
   const page = parseInt(searchParams.get('p') || '1', 10)
   const activeGroup = searchParams.get('group') || 'all'
   const randomMode = searchParams.get('random') === 'true'
+  const tagIdsParam = searchParams.get('tags')
+  const tagIds = useMemo(() => tagIdsParam
+    ? tagIdsParam.split(',').map(Number).filter(Boolean)
+    : null, [tagIdsParam])
 
   const updateParams = useCallback((updates) => {
     setSearchParams(prev => {
@@ -61,7 +65,7 @@ export default function usePagedGallery({ albumConfig, albumConfigRef, albumsLoa
         const album = cfg[activeGroup.slice(6)]
         if (album) { albumGids = album.gids || []; albumOrder = sortBy === 'custom' ? (album.order || album.gids) : null }
       }
-      const result = await fetchLocalGalleriesPaged({ group: activeGroup, search, sort: sortBy, page: p, pageSize, albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids, albumOrder, signal: ctrl.signal })
+      const result = await fetchLocalGalleriesPaged({ group: activeGroup, search, sort: sortBy, page: p, pageSize, albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids, albumOrder, tagIds, signal: ctrl.signal })
       if (!ctrl.signal.aborted) {
         setPageItems(result.items || [])
         setPageTotal(result.total || 0)
@@ -69,7 +73,7 @@ export default function usePagedGallery({ albumConfig, albumConfigRef, albumsLoa
       }
     } catch (e) { if (e.name !== 'AbortError') setError(e.message) }
     if (!ctrl.signal.aborted) setPageLoading(false)
-  }, [activeGroup, search, sortBy, pageSize, page])
+  }, [activeGroup, search, sortBy, pageSize, page, tagIdsParam])
 
   const RANDOM_CACHE_KEY = 'local-random-cache'
   const loadRandom = useCallback(async (forceRefresh = false) => {
@@ -120,16 +124,16 @@ export default function usePagedGallery({ albumConfig, albumConfigRef, albumsLoa
     if (isRandom) sessionStorage.removeItem('reader-local-full-gids')
     if (!isRandom) {
       try {
-        const fg = await fetchLocalGalleryGids({ group: activeGroup === 'all' ? null : activeGroup, search: search || null, sort: sortBy || null, albumGids: activeGroup.startsWith('album:') ? ag : allGids.length > 0 ? allGids : null, albumOrder: ao })
+        const fg = await fetchLocalGalleryGids({ group: activeGroup === 'all' ? null : activeGroup, search: search || null, sort: sortBy || null, albumGids: activeGroup.startsWith('album:') ? ag : allGids.length > 0 ? allGids : null, albumOrder: ao, tagIds })
         if (fg?.length) { sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fg)); window.dispatchEvent(new CustomEvent('reader-gids-updated', { detail: fg })) }
       } catch { }
     }
-  }, [activeGroup, search, sortBy, pageTotal])
+  }, [activeGroup, search, sortBy, pageTotal, tagIds])
 
   return {
     galleryMetas, setGalleryMetas, metaLoading,
     pageItems, pageTotal, pageTotalPages, pageLoading,
-    search, sortBy, pageSize, page, activeGroup, randomMode,
+    search, sortBy, pageSize, page, activeGroup, randomMode, tagIds,
     searchParams, setSearch, setPage, updateParams,
     loadMetas, loadPaged, loadRandom, handleOpenReader,
   }

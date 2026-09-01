@@ -35,6 +35,14 @@ export async function deleteTag(id) {
   return request(`/api/tag/${id}`, { method: 'DELETE' })
 }
 
+export async function mergeTags(fromId, intoId) {
+  return request('/api/tag/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fromId, intoId })
+  })
+}
+
 export async function fetchMangaTags(mangaId) {
   const json = await request(`/api/manga/${mangaId}/tags`)
   return json.data || []

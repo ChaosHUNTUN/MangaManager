@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { FolderOpen } from 'lucide-react'
 import ScrollToTop from './ScrollToTop'
+import TagCloud from './TagCloud'
 
 const MIN_CORE_COUNT = 3
 
@@ -34,6 +35,7 @@ function MinorAlbumsGroup({ items, renderItem }) {
 export default function AlbumSidebar({
   sidebarOpen, pinned, groups, activeGroup, albumConfig, dragGid,
   albumSearch, albumSort,
+  tagStats, activeTagIds, onToggleTag, enableAlbums = true,
   onSelectGroup, onCreateAlbum, onEditAlbum, onDeleteAlbum,
   onConvertToAlbum, onAlbumSearchChange, onAlbumSortChange,
   onMouseEnter, onMouseLeave, onDragOver, onClose, onTogglePin
@@ -175,8 +177,13 @@ export default function AlbumSidebar({
     }).filter(Boolean)
   }, [albumConfig])
 
-  const sidebarContent = (
+  const sidebarContent = !enableAlbums ? (
     <div ref={sidebarScrollRef} style={{ padding: 'var(--space-2) 0 var(--space-3)', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <TagCloud tagStats={tagStats} activeTagIds={activeTagIds} onToggleTag={onToggleTag} />
+    </div>
+  ) : (
+    <div ref={sidebarScrollRef} style={{ padding: 'var(--space-2) 0 var(--space-3)', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <TagCloud tagStats={tagStats} activeTagIds={activeTagIds} onToggleTag={onToggleTag} />
       {/* 标题行 */}
       <div style={{
         padding: '0 var(--space-3) var(--space-2)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)',
@@ -307,7 +314,7 @@ export default function AlbumSidebar({
   const effectiveOpen = sidebarOpen || pinned
 
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
+    <div className={`album-sidebar${effectiveOpen ? ' open' : ''}`} style={{ position: 'relative', flexShrink: 0 }}>
       <div
         onMouseEnter={pinned ? undefined : onMouseEnter}
         onMouseLeave={pinned ? undefined : onMouseLeave}
@@ -352,7 +359,7 @@ export default function AlbumSidebar({
             fontSize: 'var(--text-3xs)', cursor: 'pointer', letterSpacing: 1.5,
             border: '1px solid var(--border-subtle)', borderLeft: 'none'
           }}>
-            专辑
+            {enableAlbums ? '专辑' : '标签'}
           </div>
         )}
       </div>

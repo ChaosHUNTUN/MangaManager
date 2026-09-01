@@ -10,13 +10,16 @@ import useAlbumConfig from '../hooks/useAlbumConfig'
 import GalleryDetail from '../components/GalleryDetail'
 import AlbumSidebar from '../components/AlbumSidebar'
 import AlbumEditModal from '../components/AlbumEditModal'
+import TagLibraryModal from '../components/TagLibraryModal'
 import GalleryCard from '../components/GalleryCard'
 import GalleryRow from '../components/GalleryRow'
 import SortableGalleryCard from '../components/SortableGalleryCard'
 import ScrollToTop from '../components/ScrollToTop'
 import { IconGlobe, IconImport, IconBatch, IconRandom, IconTrash, IconRedownload, IconGrid, IconList, IconChevronLeft, IconChevronRight, IconSearch, IconFolder, IconEdit, IconEye, IconBook, IconClose, IconAlbum, IconDownload, IconGripDots } from '../components/Icons'
-import { User, Users, FolderOpen, Save, Hash, CheckCircle, XCircle, Rocket } from 'lucide-react'
+import { User, Users, FolderOpen, Save, Hash, CheckCircle, XCircle, Rocket, Tag } from 'lucide-react'
 import { CATEGORY_COLORS } from '../components/GalleryCard'
+import { FEATURES } from '../config'
+import { fetchTagStats } from '../api/work'
 
 const PAGE_OPTIONS = [20, 40, 60]
 const SORT_OPTIONS = [
@@ -56,8 +59,17 @@ export default function LocalGallery() {
   const pageSize = parseInt(searchParams.get('size') || '20', 10)
   const page = parseInt(searchParams.get('p') || '1', 10)
   const viewMode = searchParams.get('view') || 'grid'
-  const activeGroup = searchParams.get('group') || 'all'
+  const rawGroup = searchParams.get('group') || 'all'
+  // 专辑方案已废弃：即使 URL 残留 album: 分组也回退到"全部"
+  const activeGroup = rawGroup.startsWith('album:') && !FEATURES.enableAlbums ? 'all' : rawGroup
   const randomMode = searchParams.get('random') === 'true'
+  const tagIdsParam = searchParams.get('tags')
+  const tagIds = useMemo(() => tagIdsParam
+    ? tagIdsParam.split(',').map(Number).filter(Boolean)
+    : null, [tagIdsParam])
+
+  const [tagStats, setTagStats] = useState([])
+  useEffect(() => { fetchTagStats().then(setTagStats).catch(() => {}) }, [])
 
   const updateParams = useCallback((updates) => {
     setSearchParams(prev => {
@@ -92,6 +104,7 @@ export default function LocalGallery() {
   const [editingAlbumKey, setEditingAlbumKey] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
+  const [tagLibOpen, setTagLibOpen] = useState(false)
 
   // 拖拽状态
   const sensors = useSensors(
@@ -130,7 +143,7 @@ export default function LocalGallery() {
         const album = cfg[activeGroup.slice(6)]
         if (album) { albumGids = album.gids || []; albumOrder = sortBy === 'custom' ? (album.order || album.gids) : null }
       }
-      const result = await fetchLocalGalleriesPaged({ group: activeGroup, search, sort: sortBy, page: p, pageSize, albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids, albumOrder, signal: ctrl.signal })
+      const result = await fetchLocalGalleriesPaged({ group: activeGroup, search, sort: sortBy, page: p, pageSize, albumGids: activeGroup.startsWith('album:') ? albumGids : allAlbumGids, albumOrder, tagIds, signal: ctrl.signal })
       if (!ctrl.signal.aborted) {
         setPageItems(result.items || [])
         setPageTotal(result.total || 0)
@@ -138,7 +151,7 @@ export default function LocalGallery() {
       }
     } catch (e) { if (e.name !== 'AbortError') setError(e.message) }
     if (!ctrl.signal.aborted) setPageLoading(false)
-  }, [activeGroup, search, sortBy, pageSize, page])
+  }, [activeGroup, search, sortBy, pageSize, page, tagIdsParam])
 
   const RANDOM_CACHE_KEY = 'local-random-cache'
   const loadRandom = useCallback(async (forceRefresh = false) => {
@@ -183,7 +196,7 @@ export default function LocalGallery() {
   const paged = pageItems; const isAlbumSortMode = activeGroup.startsWith('album:') && sortBy === 'custom'
 
   // ── 增删改操作（Hook 封装） ──
-  const ops = useGalleryOperations({ galleryMetas, albumConfig, paged, pageTotal, activeGroup, search, sortBy, randomMode, loadMetas, loadPaged, setError, setToast })
+  const ops = useGalleryOperations({ galleryMetas, albumConfig, paged, pageTotal, activeGroup, search, sortBy, randomMode, tagIds, loadMetas, loadPaged, setError, setToast })
   const { deleting, deleteConfirm, setDeleteConfirm, handleDelete,
     batchMode, setBatchMode, selected, setSelected,
     batchDeleteConfirm, setBatchDeleteConfirm, handleBatchDelete,
@@ -249,7 +262,7 @@ export default function LocalGallery() {
     const pages = []; const s = Math.max(1, safePage - 2); const e = Math.min(totalPages, safePage + 2)
     for (let i = s; i <= e; i++) pages.push(i)
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 'var(--space-1)', marginTop: 'var(--space-5)' }}>
+      <div className="gallery-pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 'var(--space-1)', marginTop: 'var(--space-5)' }}>
         <button className="btn-sm" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>«</button>
         {s > 1 && <><button className="btn-sm" onClick={() => setPage(1)}>1</button><span style={{ color: 'var(--text-muted)' }}>…</span></>}
         {pages.map(p => <button key={p} className="btn-sm" onClick={() => setPage(p)} style={p === safePage ? { borderColor: 'var(--accent-border)', color: 'var(--accent)', background: 'var(--accent-bg)' } : {}}>{p}</button>)}
@@ -280,7 +293,15 @@ export default function LocalGallery() {
   const handleCreateAlbumWithNav = (name) => {
     handleCreateAlbum(name); updateParams({ group: `album:${name}`, p: null, sort: 'custom' })
   }
-  const handleSelectGroup = (key) => { updateParams({ group: key === 'all' ? null : key, p: null, sort: key.startsWith('album:') ? 'custom' : null }) }
+  const handleSelectGroup = (key) => { updateParams({ group: key === 'all' ? null : key, p: null, sort: key.startsWith('album:') ? 'custom' : null, tags: null }) }
+
+  const handleToggleTag = useCallback((tagId) => {
+    const current = tagIds || []
+    const next = current.includes(tagId)
+      ? current.filter(x => x !== tagId)
+      : [...current, tagId]
+    updateParams({ tags: next.length > 0 ? next.join(',') : null, group: null, p: null, sort: null })
+  }, [tagIds, updateParams])
 
   // ═══════════════════════════════════════════
   // 渲染
@@ -291,6 +312,8 @@ export default function LocalGallery() {
       <AlbumSidebar
         sidebarOpen={sidebarOpen} groups={groups} activeGroup={activeGroup}
         albumConfig={albumConfig} dragGid={dragGid}
+        tagStats={tagStats} activeTagIds={tagIds || []} onToggleTag={handleToggleTag}
+        enableAlbums={FEATURES.enableAlbums}
         albumSearch={albumSearch} albumSort={albumSort}
         onSelectGroup={handleSelectGroup} onCreateAlbum={handleCreateAlbumWithNav}
         onEditAlbum={setEditingAlbumKey} onDeleteAlbum={handleDeleteAlbum}
@@ -303,9 +326,9 @@ export default function LocalGallery() {
       />
 
       {/* 主内容区 */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+      <div className="main-area" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
         {/* ── 紧凑顶栏 ── */}
-        <div style={{
+        <div className="gallery-topbar" style={{
           display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
           padding: '0 var(--space-4)', height: 'var(--header-height)',
           background: 'var(--surface)', borderBottom: '1px solid var(--divider)',
@@ -313,6 +336,8 @@ export default function LocalGallery() {
         }}>
           {/* 左侧：Logo + 标题 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+            <button className="btn-sm sidebar-toggle" onClick={() => setSidebarOpen(true)}
+              style={{ borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>☰ {FEATURES.enableAlbums ? '专辑' : '标签'}</button>
             <Link to="/ehentai" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}><IconGlobe size={14} /> 在线</Link>
             <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>
             <span className="badge badge-teal">{pageTotal}</span>
@@ -320,7 +345,7 @@ export default function LocalGallery() {
 
           {/* 中间：搜索框 */}
           <div style={{ flex: 1, minWidth: 0, maxWidth: 480, position: 'relative', margin: '0 auto' }}>
-            <input ref={searchInputRef} type="text" placeholder="搜索标题 / GID / artist:xxx …"
+            <input ref={searchInputRef} type="text" placeholder="搜索标题 / GID / artist:xxx / tag:xxx …"
               value={search} onChange={handleSearchInput}
               onKeyDown={e => { if (e.key === 'Escape') setShowSearchSuggestions(false) }}
               onFocus={() => { if (search && searchSuggestions.length > 0) setShowSearchSuggestions(true) }}
@@ -350,22 +375,25 @@ export default function LocalGallery() {
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchRedownloadConfirm(true)} style={{ color: 'var(--warning)' }}>重新下载</button>
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchDeleteConfirm(true)} style={{ color: 'var(--error)' }}>删除</button>
             </> : <>
-              <button className="btn-sm" onClick={() => setImportModal(true)} style={{ color: 'var(--accent-teal)' }}><IconImport size={14} /> 导入</button>
-              <button className="btn-sm" onClick={() => setBatchImportModal(true)} style={{ color: 'var(--warning)' }}><IconBatch size={14} /> 批量导入</button>
+              {FEATURES.enableLocalImport && <>
+                <button className="btn-sm" onClick={() => setImportModal(true)} style={{ color: 'var(--accent-teal)' }}><IconImport size={14} /> 导入</button>
+                <button className="btn-sm" onClick={() => setBatchImportModal(true)} style={{ color: 'var(--warning)' }}><IconBatch size={14} /> 批量导入</button>
+              </>}
               <button className="btn-sm" onClick={() => loadRandom(true)}><IconRandom size={14} /></button>
+              <button className="btn-sm" onClick={() => setTagLibOpen(true)} style={{ color: 'var(--accent)' }}><Tag size={14} /> 标签管理</button>
               <button className="btn-sm" onClick={() => setBatchMode(true)} style={{ color: 'var(--error)' }}><IconTrash size={14} /> 批量</button>
             </>}
           </div>
         </div>
 
         {/* ── 工具栏 ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-4)', borderBottom: '1px solid var(--divider)', flexShrink: 0, overflowX: 'auto', height: 'var(--toolbar-height)' }}>
+        <div className="gallery-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-4)', borderBottom: '1px solid var(--divider)', flexShrink: 0, overflowX: 'auto', height: 'var(--toolbar-height)' }}>
           {/* 分组标签 */}
           <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
             <button className="btn-sm" onClick={() => updateParams({ group: null, p: null })}
               style={{ borderColor: activeGroup === 'all' ? 'var(--accent-border)' : 'var(--border-input)', color: activeGroup === 'all' ? 'var(--accent)' : 'var(--text-secondary)', background: activeGroup === 'all' ? 'var(--accent-bg)' : 'transparent' }}>全部</button>
             {groups.filter(g => g.type !== 'album').slice(0, 8).map(grp => renderGroupTag(grp))}
-            {(() => {
+            {FEATURES.enableAlbums && (() => {
               const activeAuto = groups.find(g => g.key === activeGroup && g.type !== 'album')
               if (!activeAuto || activeAuto.type === 'multi' || activeAuto.type === 'unknown') return null
               return (
@@ -376,6 +404,18 @@ export default function LocalGallery() {
                 </button>
               )
             })()}
+            {/* 激活的标签筛选 chips */}
+            {(tagIds || []).map(id => {
+              const t = tagStats.find(x => x.id === id)
+              if (!t) return null
+              return (
+                <button key={id} className="btn-sm" onClick={() => handleToggleTag(id)}
+                  title={`${t.namespace}:${t.name}`}
+                  style={{ borderColor: 'var(--accent-border)', color: 'var(--accent)', background: 'var(--accent-bg)', whiteSpace: 'nowrap' }}>
+                  ✕ {t.nameCn || t.name}
+                </button>
+              )
+            })}
           </div>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
@@ -490,7 +530,7 @@ export default function LocalGallery() {
 
       {batchRedownloadConfirm && <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setBatchRedownloadConfirm(false) }}><div className="modal" style={{ maxWidth: 380 }}><h3>批量重新下载</h3><p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-xs)' }}>重新下载 <strong style={{ color: 'var(--warning)' }}>{selected.size}</strong> 部画廊</p><div className="modal-actions" style={{ justifyContent: 'flex-end' }}><button className="btn-sm" onClick={() => setBatchRedownloadConfirm(false)}>取消</button><button className="btn-sm" onClick={handleBatchRedownload} disabled={deleting} style={{ color: 'var(--warning)' }}>确认</button></div></div></div>}
 
-      {albumModal && (() => {
+      {FEATURES.enableAlbums && albumModal && (() => {
         const matched = albumModal.matchedAlbums || []; const gTags = albumModal.tags || []; const kt = gTags.filter(t => t.ns === 'artist' || t.ns === 'group')
         return <div className="modal-overlay" onClick={() => setAlbumModal(null)}><div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}><h3><FolderOpen size={14} /> 添加到专辑</h3><p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumModal.title}</p>
           {matched.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--warning)' }}>匹配的专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{matched.map(({ key, name, count }) => <button key={key} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; if (!cfg[key]) cfg[key] = { name: key, gids: [] }; cfg[key].gids = [...cfg[key].gids.filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${name}"`) }} style={{ borderColor: 'var(--accent-border)', color: 'var(--warning)' }}><FolderOpen size={12} /> {name} ({count})</button>)}</div></div>}
@@ -500,7 +540,13 @@ export default function LocalGallery() {
         </div></div>
       })()}
 
-      {editingAlbumKey && <AlbumEditModal albumKey={editingAlbumKey} albumConfig={albumConfig} onClose={() => setEditingAlbumKey(null)} onUpdated={handleAlbumUpdated} />}
+      {FEATURES.enableAlbums && editingAlbumKey && <AlbumEditModal albumKey={editingAlbumKey} albumConfig={albumConfig} onClose={() => setEditingAlbumKey(null)} onUpdated={handleAlbumUpdated} />}
+
+      {/* 标签库管理 */}
+      {tagLibOpen && (
+        <TagLibraryModal onClose={() => setTagLibOpen(false)}
+          onChanged={() => { fetchTagStats().then(setTagStats).catch(() => {}); loadMetas() }} />
+      )}
 
       {/* 编辑标签 */}
       {editTagsModal && (

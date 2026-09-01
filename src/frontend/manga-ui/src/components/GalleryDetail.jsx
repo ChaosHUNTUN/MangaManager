@@ -1,15 +1,31 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, BookOpen, Globe, FolderOpen, Edit3 } from 'lucide-react'
 import { getLocalCoverUrl, fetchGalleryMetaTags, translateEHTags } from '../api'
 import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
 import { formatSize } from '../utils/format'
+import { fetchWorkTags, removeWorkTag } from '../api/work'
+import TagPicker from './TagPicker'
+import { FEATURES } from '../config'
 const getCategoryColor = getCategoryColorDetail
 
 /**
  * 画廊详情弹窗
  */
 export default function GalleryDetail({ detail, tagTranslations, nsTranslations, filtered, albumConfig, galleries, onClose, onEditTags, onAddToAlbum, onOpenReader }) {
+  const [workTags, setWorkTags] = useState(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const loadWorkTags = useCallback(async (gid) => {
+    try { setWorkTags(await fetchWorkTags(gid)) } catch { }
+  }, [])
+
+  useEffect(() => {
+    if (!detail?.gid) return
+    setWorkTags(null)
+    loadWorkTags(detail.gid)
+  }, [detail?.gid, loadWorkTags])
+
   if (!detail) return null
 
   const inCustomAlbum = useMemo(() => {
@@ -51,6 +67,13 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
     onAddToAlbum?.({ gid: detail.gid, title: detail.title, tags: detail.tags || [], matchedAlbums: matchedAlbums })
   }, [detail, onAddToAlbum, matchedAlbums])
 
+  const handleRemoveTag = async (tagId) => {
+    try {
+      await removeWorkTag(detail.gid, tagId)
+      await loadWorkTags(detail.gid)
+    } catch { }
+  }
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal" style={{ maxWidth: 'min(640px, 90vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
@@ -88,11 +111,32 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
             ))}
           </div>
         )}
+        {/* 作品标签（work_tag 系统，可管理） */}
+        <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border-section)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>标签</span>
+            <button className="btn-sm" onClick={() => setPickerOpen(true)}
+              style={{ borderColor: 'var(--accent-border)', color: 'var(--accent)' }}>+ 添加</button>
+          </div>
+          {workTags && workTags.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {workTags.map(t => (
+                <span key={t.id} title={`${t.namespace}:${t.name}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', background: 'var(--accent-bg)', border: '1px solid var(--accent-border)', color: 'var(--text-secondary)' }}>
+                  {t.nameCn || t.name}
+                  <span onClick={() => handleRemoveTag(t.id)} style={{ cursor: 'pointer', opacity: 0.6, fontSize: '0.68rem' }}>✕</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>暂无标签</span>
+          )}
+        </div>
         <div style={{ padding: '14px 24px', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Link to={`/reader-local/${detail.gid}`} onClick={handleOpenReader} className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--success)', color: 'var(--success)' }}><BookOpen size={13} /> 在线阅读</Link>
             {detail.token && <a href={`https://${detail.isExhentai ? 'exhentai' : 'e-hentai'}.org/g/${detail.gid}/${detail.token}/`} target="_blank" rel="noreferrer" className="btn-sm" style={{ textDecoration: 'none', color: 'var(--accent)', borderColor: 'var(--accent)' }}><Globe size={13} /> 在 {detail.isExhentai ? 'ExHentai' : 'E-Hentai'} 查看</a>}
-            {!inCustomAlbum && (
+            {FEATURES.enableAlbums && !inCustomAlbum && (
               <button className="btn-sm" onClick={handleAddToAlbum} style={{ borderColor: 'var(--accent-border)', color: 'var(--accent)' }}>
                 <FolderOpen size={13} /> 添加到专辑
                 {matchedAlbums.length > 0 && <span style={{ marginLeft: 4, fontSize: '0.65rem', color: 'var(--warning)' }}>({matchedAlbums.length} 个匹配)</span>}
@@ -104,6 +148,9 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
           </div>
         </div>
       </div>
+      {pickerOpen && (
+        <TagPicker gid={detail.gid} onClose={() => { setPickerOpen(false); loadWorkTags(detail.gid) }} />
+      )}
     </div>
   )
 }

@@ -11,7 +11,7 @@ import {
  * 本地画廊操作 Hook — 所有增删改操作，与 UI 完全解耦
  */
 export default function useGalleryOperations({ galleryMetas, albumConfig, paged, pageTotal,
-  activeGroup, search, sortBy, randomMode, loadMetas, loadPaged, setError, setToast
+  activeGroup, search, sortBy, randomMode, tagIds, loadMetas, loadPaged, setError, setToast
 }) {
   const navigate = useNavigate()
 
@@ -106,7 +106,7 @@ export default function useGalleryOperations({ galleryMetas, albumConfig, paged,
           group: activeGroup === 'all' ? null : activeGroup,
           search: search || null, sort: sortBy || null,
           albumGids: activeGroup.startsWith('album:') ? ag : allGids.length > 0 ? allGids : null,
-          albumOrder: ao,
+          albumOrder: ao, tagIds,
         })
         if (fg?.length) {
           sessionStorage.setItem('reader-local-full-gids', JSON.stringify(fg))
@@ -114,7 +114,7 @@ export default function useGalleryOperations({ galleryMetas, albumConfig, paged,
         }
       } catch { }
     }
-  }, [activeGroup, search, sortBy, pageTotal, paged, albumConfig, navigate, randomMode])
+  }, [activeGroup, search, sortBy, pageTotal, paged, albumConfig, navigate, randomMode, tagIds])
 
   // ── 导入 ──
   const [importModal, setImportModal] = useState(false)
