@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { fetchReaderSettings, saveReaderSettings } from '../../api/reader';
 
 /**
  * 阅读器核心状态机 (单页模式, 移除双页)
@@ -10,6 +11,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 const DEFAULTS = {
   direction: 'vertical',
   flow: 'paginated',
+  readingOrder: 'ltr',   // 横向阅读顺序：ltr=左→右，rtl=右→左（漫画）
   fit: 'both',
   zoom: 1.0,
   background: 0,
@@ -23,7 +25,7 @@ const BGS = ['var(--canvas)', '#000000', '#f5eddc'];
 
 // 阅读偏好本地持久化：记住方向/模式/缩放/背景等，跨会话保持
 const STORAGE_KEY = 'manga-reader-settings-v1';
-const PERSISTED_KEYS = ['direction', 'flow', 'fit', 'zoom', 'background', 'padding', 'slideshowInterval', 'scrollSpeed'];
+const PERSISTED_KEYS = ['direction', 'flow', 'readingOrder', 'fit', 'zoom', 'background', 'padding', 'slideshowInterval', 'scrollSpeed'];
 
 function loadSettings() {
   try {
@@ -48,16 +50,18 @@ function persistSettings(s) {
   } catch { /* ignore quota/private-mode errors */ }
 }
 
-function getAvailableArea(viewportW, viewportH, padding) {
-  const h = viewportH - 44 - 36;
+function getAvailableArea(viewportW, viewportH, padding, chrome) {
+  const top = chrome?.top ?? 44;
+  const bottom = chrome?.bottom ?? 36;
+  const h = viewportH - top - bottom;
   const p = Math.round(h * padding / 100);
   return { width: viewportW - p * 2, height: h - p * 2 };
 }
 
 /** 零扭曲 — 宽高使用同一个 scale */
-export function getImageLayout(imgW, imgH, viewportW, viewportH, fit, zoom, padding = 0) {
+export function getImageLayout(imgW, imgH, viewportW, viewportH, fit, zoom, padding = 0, chrome) {
   if (!imgW || !imgH) return { width: 0, height: 0, scale: 1, overflowX: false, overflowY: false };
-  const avail = getAvailableArea(viewportW, viewportH, padding);
+  const avail = getAvailableArea(viewportW, viewportH, padding, chrome);
   let fitScale = 1;
   switch (fit) {
     case 'both':    fitScale = Math.min(avail.width / imgW, avail.height / imgH); break;
@@ -84,6 +88,7 @@ export function useReaderEngine(totalPages) {
   const [currentPage, setCurrentPage] = useState(0);
   const [direction, setDirection] = useState(initial.direction);
   const [flow, setFlow] = useState(initial.flow);
+  const [readingOrder, setReadingOrder] = useState(initial.readingOrder === 'rtl' ? 'rtl' : 'ltr');
   const [fit, setFit] = useState(initial.fit);
   const [zoom, setZoom] = useState(initial.zoom);
   const [background, setBackground] = useState(initial.background);
@@ -94,15 +99,48 @@ export function useReaderEngine(totalPages) {
   const [scrollSpeed, setScrollSpeed] = useState(initial.scrollSpeed);
 
   // 偏好变更即持久化（不含瞬态 currentPage / uiVisible / slideshowActive）
+  const serverReadyRef = useRef(false);   // 后端首轮读取完成后才允许写回，避免挂载瞬间用本地值覆盖服务端
   useEffect(() => {
-    persistSettings({ direction, flow, fit, zoom, background, padding, slideshowInterval, scrollSpeed });
-  }, [direction, flow, fit, zoom, background, padding, slideshowInterval, scrollSpeed]);
+    const snapshot = { direction, flow, readingOrder, fit, zoom, background, padding, slideshowInterval, scrollSpeed };
+    persistSettings(snapshot);
+    if (serverReadyRef.current) saveReaderSettings(snapshot);   // 写透后端（静默失败）
+  }, [direction, flow, readingOrder, fit, zoom, background, padding, slideshowInterval, scrollSpeed]);
+
+  // 挂载时从后端读取设置并应用（覆盖本地，实现跨浏览器/跨会话同步）；localStorage 仍是首帧快速路径
+  useEffect(() => {
+    let cancelled = false;
+    fetchReaderSettings()
+      .then(srv => {
+        if (cancelled || !srv || typeof srv !== 'object') return;
+        if (typeof srv.direction === 'string') setDirection(srv.direction);
+        if (srv.flow === 'paginated' || srv.flow === 'continuous') setFlow(srv.flow);
+        if (srv.readingOrder === 'ltr' || srv.readingOrder === 'rtl') setReadingOrder(srv.readingOrder);
+        if (['both', 'width', 'height', 'original'].includes(srv.fit)) setFit(srv.fit);
+        if (typeof srv.zoom === 'number' && srv.zoom >= 0.25 && srv.zoom <= 3) setZoom(srv.zoom);
+        if (typeof srv.background === 'number') setBackground(srv.background);
+        if (typeof srv.padding === 'number') setPadding(srv.padding);
+        if (typeof srv.slideshowInterval === 'number' && srv.slideshowInterval >= 1) setSlideshowInterval(srv.slideshowInterval);
+        if (typeof srv.scrollSpeed === 'number' && srv.scrollSpeed >= 20) setScrollSpeed(srv.scrollSpeed);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) serverReadyRef.current = true; });
+    return () => { cancelled = true; };
+  }, []);
 
   const flipDirRef = useRef(0);
-  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight, top: 44, bottom: 36 });
+
+  /** 运行时测量 HUD/底部栏实际高度，替代硬编码 44/36 */
+  const updateChrome = useCallback((top, bottom) => {
+    setViewport(v => ({
+      ...v,
+      top: Math.max(0, Math.round(top ?? 44)),
+      bottom: Math.max(0, Math.round(bottom ?? 36)),
+    }));
+  }, []);
 
   useEffect(() => {
-    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    const onResize = () => setViewport(v => ({ ...v, w: window.innerWidth, h: window.innerHeight }));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -171,6 +209,7 @@ export function useReaderEngine(totalPages) {
       const isHoriz = directionRef.current === 'horizontal';
       if (isHoriz) {
         const max = el.scrollWidth - el.clientWidth;
+        // row-reverse 布局下前进语义已由布局反转承载：向后读仍是 scrollLeft 增大
         if (el.scrollLeft >= max - 1) { setSlideshowActive(false); return; }
         el.scrollLeft += px;
       } else {
@@ -189,15 +228,16 @@ export function useReaderEngine(totalPages) {
 
   return {
     currentPage, totalPages: N, direction, flow, fit, zoom,
+    readingOrder,
     background, bgValue: BGS[background], padding, uiVisible,
     slideshowActive, slideshowInterval, scrollSpeed,
     pageStep, canBack, canForward, flipDirRef, viewport,
-    setCurrentPage, setDirection, setFlow, setFit, setZoom,
+    setCurrentPage, setDirection, setFlow, setReadingOrder, setFit, setZoom,
     setBackground, setPadding, setUiVisible,
     setSlideshowInterval, setScrollSpeed,
     goForward, goBack, goFirst, goLast,
     setFitCycled, zoomIn, zoomOut, zoomReset, setBgCycled,
     toggleSlideshow, setSlideshowActive,
-    scrollerRef,
+    scrollerRef, updateChrome,
   };
 }

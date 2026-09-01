@@ -9,7 +9,7 @@
  *   拖拽移动 scrollLeft/scrollTop
  */
 
-export function createSwipeDetector(onSwipeNext, onSwipePrev) {
+export function createSwipeDetector() {
   let startX = 0, startY = 0, startTime = 0;
   let locked = false;      // 锁定了翻页方向
   let lockedAxis = null;   // 'x' | 'y'
@@ -42,15 +42,15 @@ export function createSwipeDetector(onSwipeNext, onSwipePrev) {
     const dist = Math.abs(dx) + Math.abs(dy);
     const velocity = dist / Math.max(elapsed, 1);
 
-    if (dist < 5) return 'click';
+    if (dist < 5) return { action: 'click', axis: null };
 
     if (lockedAxis === 'x' && (Math.abs(dx) > THRESHOLD || velocity > VELOCITY_THRESHOLD)) {
-      return dx > 0 ? 'prev' : 'next';
+      return { action: dx > 0 ? 'prev' : 'next', axis: 'x' };
     }
     if (lockedAxis === 'y' && (Math.abs(dy) > THRESHOLD || velocity > VELOCITY_THRESHOLD)) {
-      return dy > 0 ? 'prev' : 'next';
+      return { action: dy > 0 ? 'prev' : 'next', axis: 'y' };
     }
-    return 'cancel';
+    return { action: 'cancel', axis: lockedAxis };
   };
 
   return { onDown, onMove, onUp };

@@ -155,14 +155,17 @@ export default function ReaderShowcase() {
           images={images} currentPage={currentPage}
           totalPages={totalPages}
           flipDirRef={flipDirRef} viewport={viewport} padding={padding}
+          direction={direction} fit={fit} zoom={zoom}
           goForward={goForward} goBack={goBack}
+          onPrevGallery={onPrevGallery} onNextGallery={onNextGallery}
           setUiVisible={setUiVisible} uiVisible={uiVisible}
         />
       ) : (
         <ContinuousView
-          images={images} direction={direction} zoom={zoom}
+          images={images} direction={direction} fit={fit} zoom={zoom}
           padding={padding} viewport={viewport}
           scrollerRef={scrollerRef}
+          currentPage={currentPage} onPageChange={setCurrentPage}
           uiVisible={uiVisible} setUiVisible={setUiVisible}
         />
       )}

@@ -1,14 +1,15 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ArrowLeftRight, ArrowUpDown,
-  BookOpen, GripHorizontal, Sun, ZoomIn, ZoomOut, Maximize, Play, Pause, HelpCircle,
+  ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, ArrowDown, ArrowUpDown,
+  BookOpen, GripHorizontal, Sun, ZoomIn, ZoomOut, Play, Pause, HelpCircle,
 } from 'lucide-react';
 import ThumbnailStrip from './ThumbnailStrip';
 
-const Btn = React.memo(({ active, onClick, title, icon, compact }) => (
-  <motion.button whileTap={{ scale: 0.9 }} onClick={onClick} title={title}
-    className={`r-btn ${active ? 'active' : ''} ${compact ? 'compact' : ''}`}>
+const Btn = React.memo(({ active, onClick, title, icon, compact, disabled }) => (
+  <motion.button whileTap={disabled ? undefined : { scale: 0.9 }} onClick={onClick} title={title}
+    disabled={disabled}
+    className={`r-btn ${active ? 'active' : ''} ${compact ? 'compact' : ''} ${disabled ? 'disabled' : ''}`}>
     {icon}
   </motion.button>
 ));
@@ -20,14 +21,15 @@ export default function ReaderToolbar({
   uiVisible, showThumbs,
   title, currentPage, totalPages,
   direction, flow, fit, zoom, background, padding,
+  readingOrder,
   slideshowActive, slideshowInterval,
   // 操作
   setUiVisible, setShowThumbs,
-  setDirection, setFlow,
+  setDirection, setFlow, setReadingOrder,
   setBgCycled, setPadding, setFitCycled,
-  zoomIn, zoomOut, zoomReset,
+  zoomIn, zoomOut,
   toggleSlideshow, setSlideshowInterval, scrollSpeed, setScrollSpeed,
-  goBack: _goBack, goForward: _goForward,
+  onPrevGallery, onNextGallery, canPrevGallery, canNextGallery,
   // 图片
   images, pageStep, setCurrentPage,
   onBack,
@@ -36,6 +38,7 @@ export default function ReaderToolbar({
   const fitLabel = fit === 'both' ? '⊡' : fit === 'width' ? '⊡W' : fit === 'height' ? '⊡H' : '1:1';
   const bgName = ['暗色', '纯黑', '纸色'][background];
   const isPaginated = flow === 'paginated';
+  const isVertical = direction === 'vertical';
 
   return (
     <>
@@ -87,23 +90,37 @@ export default function ReaderToolbar({
               currentPage={currentPage} pageStep={pageStep}
               isCoverAlone={false}
               onJump={setCurrentPage} />
-            {/* 进度条 (仅翻页模式, 连续模式由滚动条承担) */}
-            {isPaginated && (
-              <div className="r-progress-row" onPointerDown={e => e.stopPropagation()}>
-                <input type="range" min={0} max={Math.max(0, totalPages - 1)} step={1}
-                  value={Math.min(currentPage, Math.max(0, totalPages - 1))}
-                  onChange={e => setCurrentPage(Number(e.target.value))}
-                  className="r-progress-slider" title="拖拽快速跳页" />
-                <span className="r-progress-label">{currentPage + 1} / {totalPages}</span>
-              </div>
-            )}
+            {/* 进度条（翻页/滚动模式均显示；滚动模式点击滑块跳页） */}
+            <div className="r-progress-row" onPointerDown={e => e.stopPropagation()}>
+              <input type="range" min={0} max={Math.max(0, totalPages - 1)} step={1}
+                value={Math.min(currentPage, Math.max(0, totalPages - 1))}
+                onChange={e => setCurrentPage(Number(e.target.value))}
+                className="r-progress-slider" title="拖拽快速跳页" />
+              <span className="r-progress-label">{currentPage + 1} / {totalPages}</span>
+            </div>
             {/* 工具行 */}
             <div className="r-bar-row" onPointerDown={e => e.stopPropagation()}>
+              {/* 作品导航（交叉轴图标随方向） */}
+              <BtnGroup>
+                <Btn compact disabled={!canPrevGallery} onClick={onPrevGallery}
+                  title="上一部" icon={isVertical ? <ArrowLeft size={14} /> : <ArrowUp size={14} />} />
+                <Btn compact disabled={!canNextGallery} onClick={onNextGallery}
+                  title="下一部" icon={isVertical ? <ArrowRight size={14} /> : <ArrowDown size={14} />} />
+              </BtnGroup>
+              <Sep />
               <BtnGroup>
                 <Btn compact active={direction === 'horizontal'} onClick={() => setDirection('horizontal')}
                   title="横向" icon={<ArrowLeftRight size={14} />} />
                 <Btn compact active={direction === 'vertical'} onClick={() => setDirection('vertical')}
                   title="纵向" icon={<ArrowUpDown size={14} />} />
+                {direction === 'horizontal' && (
+                  <motion.button whileTap={{ scale: 0.9 }}
+                    className={`r-btn compact ${readingOrder === 'rtl' ? 'active' : ''}`}
+                    onClick={() => setReadingOrder(o => o === 'rtl' ? 'ltr' : 'rtl')}
+                    title={readingOrder === 'rtl' ? '阅读顺序：右→左（漫画）' : '阅读顺序：左→右'}>
+                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 600 }}>{readingOrder === 'rtl' ? '右→左' : '左→右'}</span>
+                  </motion.button>
+                )}
               </BtnGroup>
               <Sep />
               <BtnGroup>
@@ -128,26 +145,18 @@ export default function ReaderToolbar({
                 icon={slideshowActive ? <Pause size={14} /> : <Play size={14} />} />
               {slideshowActive && (
                 isPaginated ? (
-                  <span className="r-speed-ctrl" title="切换间隔">
-                    {[2,3,5,10,15,30].map(s => (
-                      <button key={s}
-                        className={`r-btn compact ${slideshowInterval===s?'active':''}`}
-                        onClick={() => setSlideshowInterval(s)}
-                        style={{ fontSize: 9, fontFamily: 'var(--font-mono)', width: 26, height: 22 }}>
-                        {s}s
-                      </button>
-                    ))}
+                  <span className="r-speed-ctrl" title="翻页间隔">
+                    <input type="range" min={1} max={60} step={1} value={slideshowInterval}
+                      onChange={e => setSlideshowInterval(Number(e.target.value))}
+                      className="r-speed-slider" />
+                    <span className="r-speed-label">{slideshowInterval}s</span>
                   </span>
                 ) : (
-                  <span className="r-speed-ctrl" title="切换速率">
-                    {[{v:60,l:'慢'},{v:120,l:'中'},{v:240,l:'快'}].map(s => (
-                      <button key={s.v}
-                        className={`r-btn compact ${scrollSpeed===s.v?'active':''}`}
-                        onClick={() => setScrollSpeed(s.v)}
-                        style={{ fontSize: 9, fontFamily: 'var(--font-mono)', width: 26, height: 22 }}>
-                        {s.l}
-                      </button>
-                    ))}
+                  <span className="r-speed-ctrl" title="滚动速度">
+                    <input type="range" min={20} max={1600} step={10} value={scrollSpeed}
+                      onChange={e => setScrollSpeed(Number(e.target.value))}
+                      className="r-speed-slider" />
+                    <span className="r-speed-label">{scrollSpeed}px/s</span>
                   </span>
                 )
               )}

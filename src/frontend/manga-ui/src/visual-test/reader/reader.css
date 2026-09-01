@@ -121,6 +121,10 @@
 .r-btn.active { color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-border); }
 .r-btn.compact { width: 28px; height: 28px; border-radius: 0; }
 .r-btn.compact.active { border: none; background: var(--accent-bg); }
+.r-btn:disabled {
+  opacity: 0.35; cursor: default; pointer-events: none;
+}
+.r-btn:disabled:hover { color: var(--text-muted); background: transparent; }
 
 .r-sep { width: 1px; height: 18px; background: var(--divider); margin: 0 2px; flex-shrink: 0; }
 
@@ -150,8 +154,17 @@
 
 /* ── Slideshow 速度 ── */
 .r-speed-ctrl {
-  display: flex; gap: 1px; border: 1px solid var(--divider);
-  border-radius: var(--radius-sm); overflow: hidden;
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  padding: 0 6px; height: 30px;
+}
+.r-speed-slider {
+  width: 110px; accent-color: var(--accent); height: 4px; cursor: pointer;
+}
+.r-speed-label {
+  font-size: var(--text-2xs); font-family: var(--font-mono);
+  color: var(--text-primary); min-width: 56px; text-align: center;
 }
 .r-pad-input {
   width: 30px; text-align: center; background: transparent;
@@ -177,12 +190,20 @@
 /* ── 滚动画廊 — 纯 scroller ── */
 .r-scroller-gallery {
   box-sizing: border-box;
+  position: relative;          /* 子帧 offsetTop/offsetLeft 以滚动容器为基准 */
+  overflow-anchor: none;       /* 图片加载导致帧尺寸变化时不触发滚动锚定跳动 */
+  cursor: grab;
+}
+.r-scroller-gallery.dragging {
+  cursor: grabbing;
 }
 
 /* ── 画框 (Frame) — 每个图片的容器 ── */
 .r-frame {
   box-sizing: border-box;
   overflow: hidden;
+  content-visibility: auto;                 /* 窗口化：离屏帧跳过渲染 */
+  contain-intrinsic-size: auto 800px 1200px; /* 占位尺寸兜底（内联按方向更精确覆盖） */
 }
 .r-viewport.scroll {
   display: flex; overflow: auto;
@@ -196,6 +217,17 @@
 }
 .r-flip-area.prev { left: 0; cursor: w-resize; }
 .r-flip-area.next { right: 0; cursor: e-resize; }
+
+/* 纵向翻页模式：热区改为上/下 30% */
+.r-flip-area.vertical {
+  left: 0; right: 0; width: auto; height: 30%;
+}
+.r-flip-area.vertical.prev {
+  top: 0; bottom: auto; cursor: n-resize;
+}
+.r-flip-area.vertical.next {
+  bottom: 0; top: auto; cursor: s-resize;
+}
 
 /* ── Slideshow 指示器 ── */
 .r-sso-indicator {
@@ -216,3 +248,20 @@
   pointer-events: none; opacity: 0; transition: opacity 0.3s;
 }
 .r-nav-hint.visible { opacity: 1; }
+
+/* ── 作品边界提示 ── */
+.r-edge-hint {
+  position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+  z-index: 45; padding: 6px 14px; border-radius: var(--radius-md);
+  background: var(--glass-bg); backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary); font-size: var(--text-xs);
+  pointer-events: none; white-space: nowrap;
+  animation: r-edge-fade 1.4s ease forwards;
+}
+@keyframes r-edge-fade {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  12%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; }
+}

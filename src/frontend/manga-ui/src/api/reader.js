@@ -15,17 +15,17 @@ export function getPageUrl(mangaId, pageIndex) {
 export async function fetchReadingProgress(gid) {
   try {
     const json = await request(`/api/readingprogress/${gid}`)
-    return json.data?.pageIndex ?? 0
-  } catch { return 0 }
+    return json.data || { gid, pageIndex: 0, scrollOffset: null }
+  } catch { return { gid, pageIndex: 0, scrollOffset: null } }
 }
 
 export async function fetchReadingProgressAbortable(gid, signal) {
   try {
     const json = await request(`/api/readingprogress/${gid}`, { signal })
-    return json.data?.pageIndex ?? 0
+    return json.data || { gid, pageIndex: 0, scrollOffset: null }
   } catch (e) {
     if (signal?.aborted || e?.name === 'AbortError') throw e
-    return 0
+    return { gid, pageIndex: 0, scrollOffset: null }
   }
 }
 
@@ -44,16 +44,16 @@ export async function saveReadingProgress(items) {
 export async function fetchReaderSettings() {
   try {
     const json = await request('/api/settings/reader')
-    return json.data || null
+    return json.data?.data || null   // { data: { direction, flow, ... } }
   } catch { return null }
 }
 
-export async function saveReaderSettings(settings) {
+export async function saveReaderSettings(data) {
   try {
     await request('/api/settings/reader', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
+      body: JSON.stringify({ data })
     })
   } catch { /* 静默失败 */ }
 }
