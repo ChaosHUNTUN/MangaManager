@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   fetchDownloadTasks, fetchActiveDownloadTasks,
   pauseDownloadTask, resumeDownloadTask, removeDownloadTask,
@@ -21,6 +21,7 @@ const formatSpeed = (s) => s || '--'
 export default function DownloadMonitor() {
   const [tasks, setTasks] = useState([])
   const [expanded, setExpanded] = useState(true)   // 独立页面默认展开
+  const [statusFilter, setStatusFilter] = useState('all')
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
   const eventSourceRef = useRef(null)
@@ -85,7 +86,11 @@ export default function DownloadMonitor() {
   const pendingCount = tasks.filter(t => t.status === 'pending').length
   const failedCount = tasks.filter(t => t.status === 'failed').length
   const pausedCount = tasks.filter(t => t.status === 'paused').length
+  const completedCount = tasks.filter(t => t.status === 'completed').length
   const totalActive = activeCount + pendingCount
+  const filteredTasks = useMemo(() =>
+    statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter),
+  [tasks, statusFilter])
 
   if (!expanded) {
     // 折叠状态：底部迷你栏
@@ -143,7 +148,7 @@ export default function DownloadMonitor() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#e0e0e0' }}>📥 下载管理</span>
             <span style={{ fontSize: '0.7rem', color: '#888' }}>
-              {tasks.filter(t => t.status !== 'completed').length} 个任务
+              {tasks.filter(t => t.status !== 'completed').length} 个任务 · 已完成 {completedCount}
               {activeCount > 0 && ` · ${activeCount} 下载中`}
             </span>
           </div>
@@ -179,16 +184,26 @@ export default function DownloadMonitor() {
           </div>
         </div>
 
+        {/* 状态筛选 */}
+        <div style={{ display: 'flex', gap: 6, padding: '8px 20px', borderBottom: '1px solid #2a2a4a', background: '#10102a', position: 'sticky', top: 0, zIndex: 1, flexWrap: 'wrap' }}>
+          {[['all', '全部'], ['downloading', '下载中'], ['pending', '等待'], ['paused', '暂停'], ['failed', '失败'], ['completed', '已完成']].map(([key, label]) => (
+            <button key={key} className="btn-sm" onClick={() => setStatusFilter(key)}
+              style={{ borderColor: statusFilter === key ? '#7c3aed' : '#444', color: statusFilter === key ? '#c4b5fd' : '#888', fontSize: '0.7rem' }}>
+              {label}{key !== 'all' ? ` (${tasks.filter(t => t.status === key).length})` : ''}
+            </button>
+          ))}
+        </div>
+
         {/* 任务列表 */}
-        {tasks.length === 0 ? (
+        {filteredTasks.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#666', fontSize: '0.85rem' }}>
-            暂无下载任务
+            {statusFilter === 'all' ? '暂无下载任务' : '该状态下暂无任务'}
           </div>
         ) : (
           <div style={{ padding: '8px 12px' }}>
-            {tasks.map(task => {
+            {filteredTasks.map(task => {
               // 队列位置：pending 任务按入队时间（CreatedAt 升序）排位
-              const pendingOrdered = tasks
+              const pendingOrdered = filteredTasks
                 .filter(t => t.status === 'pending')
                 .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
               const queuePos = pendingOrdered.findIndex(t => t.gid === task.gid) + 1

@@ -46,7 +46,10 @@ public class DownloadManager
     // ==================== 公开 API ====================
 
     /// <summary>获取所有任务（含已完成）</summary>
-    public List<DownloadTask> GetAllTasks() => _tasks.Values.OrderByDescending(t => t.CreatedAt).ToList();
+    public List<DownloadTask> GetAllTasks() => _tasks.Values
+        .OrderBy(t => t.Status == "completed" ? 1 : 0)   // 活跃任务在前，已完成在后
+        .ThenByDescending(t => t.Status == "completed" ? (t.CompletedAt ?? t.UpdatedAt) : t.CreatedAt)
+        .ToList();
 
     /// <summary>获取活跃任务（pending + downloading + paused）</summary>
     public List<DownloadTask> GetActiveTasks() =>
@@ -673,9 +676,15 @@ public class DownloadManager
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
+            // 活跃任务全量 + 最近 100 条已完成（历史完成记录不在重启后消失；全量 2000+ 条会撑爆列表）
             var tasks = db.DownloadTasks
                 .Where(t => t.Status != "completed")
                 .ToList();
+            tasks.AddRange(db.DownloadTasks
+                .Where(t => t.Status == "completed")
+                .OrderByDescending(t => t.CompletedAt ?? t.UpdatedAt)
+                .Take(100)
+                .ToList());
 
             foreach (var t in tasks)
             {
