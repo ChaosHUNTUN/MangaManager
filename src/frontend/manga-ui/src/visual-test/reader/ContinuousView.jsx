@@ -54,11 +54,28 @@ export default function ContinuousView({
 }) {
   const isHoriz = direction === 'horizontal';
   const rtl = isHoriz && readingOrder === 'rtl';
-  const fullH = viewport?.h || window.innerHeight;
-  const fullW = viewport?.w || window.innerWidth;
-  const marginPx = Math.round(fullH * padding / 100);
+  const chromeTop = viewport?.top ?? 44;
+  const chromeBottom = viewport?.bottom ?? 36;
+
+  // 实测滚动容器尺寸：clientWidth 会排除竖向滚动条占位，
+  // 否则"适应宽度"会按窗口宽渲染，多出滚动条宽度的假横向溢出
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = scrollerRef?.current;
+    if (!el) return;
+    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [scrollerRef]);
+
+  const fullH = box.h || viewport?.h || window.innerHeight;
+  const fullW = box.w || viewport?.w || window.innerWidth;
   // 滚动区域高度 ≈ 视口 - HUD - 底部栏（与 getImageLayout 同口径）；纵向帧宽=容器宽，横向帧高=容器高
-  const scrollerH = Math.max(100, fullH - (viewport?.top ?? 44) - (viewport?.bottom ?? 36));
+  const scrollerH = Math.max(100, fullH - chromeTop - chromeBottom);
+  const marginPx = Math.round(scrollerH * padding / 100);
   const intrinsic = useMemo(() => ({
     w: Math.round(isHoriz ? scrollerH * 0.7 : fullW),
     h: Math.round(scrollerH),
@@ -81,8 +98,8 @@ export default function ContinuousView({
   const layouts = useMemo(() => images.map((name, i) => {
     const d = dimsMap[i];
     if (!d?.w || !d?.h) return null;
-    return getImageLayout(d.w, d.h, fullW, fullH, fit, zoom, padding, { top: viewport?.top ?? 44, bottom: viewport?.bottom ?? 36 });
-  }), [images, dimsMap, fit, zoom, fullW, fullH, padding, viewport?.top, viewport?.bottom]);
+    return getImageLayout(d.w, d.h, fullW, fullH, fit, zoom, padding, { top: chromeTop, bottom: chromeBottom });
+  }), [images, dimsMap, fit, zoom, fullW, fullH, padding, chromeTop, chromeBottom]);
 
   // 滚动 → 上报当前页（首个结束位置越过视口中线的帧）
   const handleScroll = useCallback(() => {

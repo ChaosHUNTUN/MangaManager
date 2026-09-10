@@ -349,8 +349,11 @@ export default function ReaderLocal() {
     const crossAxis = (key, prev, next) => (e) => {
       e.preventDefault()
       const el = scroller()
-      const canPanX = el && el.scrollWidth > el.clientWidth
-      const canPanY = el && el.scrollHeight > el.clientHeight
+      // 容差：忽略亚像素/滚动条舍入造成的假溢出，
+      // 否则"适应宽度"下方向键会被判定为可平移，作品间导航失效
+      const PAN_TOLERANCE = 4
+      const canPanX = el && (el.scrollWidth - el.clientWidth) > PAN_TOLERANCE
+      const canPanY = el && (el.scrollHeight - el.clientHeight) > PAN_TOLERANCE
       if (key === 'ArrowLeft' && canPanX) { el.scrollLeft -= 300; return }
       if (key === 'ArrowRight' && canPanX) { el.scrollLeft += 300; return }
       if (key === 'ArrowUp' && canPanY) { el.scrollTop -= 300; return }

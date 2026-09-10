@@ -4,6 +4,9 @@ import { PageCanvas } from './PageCanvas';
 import { createSwipeDetector } from './gestureUtils';
 import { getImageLayout } from './useReaderEngine';
 
+/** 画廊容器内边距（与下方 .r-gallery 的 padding 保持一致） */
+const GALLERY_PAD = 8
+
 /** PaginatedView — 翻页模式 (纯单页) */
 export default function PaginatedView({
   images, currentPage, totalPages,
@@ -23,9 +26,23 @@ export default function PaginatedView({
     });
   }, []);
 
-  // getImageLayout 内部会再扣除 HUD/工具栏高度，这里必须传原始视口尺寸
-  const vw = viewport?.w || window.innerWidth;
-  const vh = viewport?.h || window.innerHeight;
+  // 实测视口尺寸：宽度需扣除画廊容器内边距，否则"适应宽度"会比可视区宽出 2×padding
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const vpRef = useRef(null);
+  useEffect(() => {
+    const el = vpRef.current;
+    if (!el) return;
+    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  // getImageLayout 内部会再扣除 HUD/工具栏高度，这里传实测视口尺寸
+  const vw = Math.max(0, (box.w || viewport?.w || window.innerWidth) - GALLERY_PAD * 2);
+  const vh = box.h || viewport?.h || window.innerHeight;
 
   // 用图片自然尺寸 + fit/zoom 计算实际显示尺寸（零扭曲）
   const dims = dimsMap[currentPage];
@@ -72,7 +89,7 @@ export default function PaginatedView({
   }, []);
 
   return (
-    <div className="r-viewport"
+    <div className="r-viewport" ref={vpRef}
       onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp} onClickCapture={handleClickCapture}>
       {/* 点击区 */}
@@ -89,7 +106,7 @@ export default function PaginatedView({
           transition={{ duration: 0 }}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '100%', height: '100%', gap: 0 }}>
-          <div className="r-gallery" style={{ padding: 8 }}>
+          <div className="r-gallery" style={{ padding: GALLERY_PAD }}>
             <div style={{
               width: '100%', height: '100%',
               overflow: needScroll ? 'auto' : 'hidden',
