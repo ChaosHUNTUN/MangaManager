@@ -1,7 +1,7 @@
 # MangaManager 项目知识库
 
 > 用途：后续会话 / 新接手任务时**先读本文档**，即可恢复项目全貌。细节内容通过链接跳转。
-> 最后更新：2026-09-01（含阅读器交互模型、桌面控制台重构、移动端适配、全量标签化管理 P0–P4）
+> 最后更新：2026-09-10（含阅读器交互模型、桌面控制台重构、移动端适配、全量标签化管理 P0–P4、标签内自定义顺序）
 
 ---
 
@@ -186,6 +186,13 @@ MangaManager/
 8. **拖拽排序保存要合并式**——只保存当前页数组会整体覆盖全量顺序；跨页场景（连载系列几十上百部）必须先取完整列表、替换当前页块
 9. **两套拖拽系统不能同时挂**——旧 `useGalleryDrag`（mousedown 克隆）与 dnd-kit（pointer 传感器）同时启用时互相干扰；启用 dnd-kit 的排序模式必须禁用旧拖拽并移除 `onDragMouseDown`
 
+### 2026-09-10 收尾（审查 / 备份 / 上线）
+- **阅读器 TDZ 崩溃（用户报告"阅读模式工作异常"）**：`ReaderLocal` 的"下一部预取" effect 引用了 engine 解构出的 `currentPage`，而解构发生在该 effect 之后 → `Cannot access 'currentPage' before initialization`，整页崩溃；顺带修掉 HUD 高度测量 effect 依赖 `showThumbs`（声明在后）的第二处同类问题。修法：预取 effect 下移到 engine 解构之后，`showThumbs`/`showHelp` 声明上移
+- **标签内自定义顺序**（09-01 落地，09-10 复验）：`tag_order` 表 + `GET/PUT /api/tag/{id}/order`；单标签 + `sort=custom` 生效；单选已排序标签自动进 custom；拖拽只在"单标签 + custom"下可用（旧专辑拖拽与 dnd-kit 冲突已消除）
+- **全量校验**：后端 Release 构建 0 警告 0 错误；前端 `npm run build` 通过；`scripts/smoke_test.py --build` 15/15 通过（库规模 **3008 画廊 / 4242 标签 / 53130 work_tag**，无孤儿 work_tag）
+- **本地备份**：新增 `scripts/devops/backup_local.py` → `D:\MangaManager_Backups\MangaManager_<时间戳>`（工作树 + SQLite backup API 一致性快照 + git bundle，排除 node_modules/bin/obj）
+- **清理**：删除遗留临时脚本 `scripts/verify_g.py`；`.gitignore` 增加 `.codebuddy/`（其它工具的记忆目录）
+
 ### 第一批：阅读器核心修复
 - **缩放/适配真正生效**：`fit`/`zoom` 接入 PaginatedView 与 ContinuousView（`getImageLayout` + 自然尺寸测量）；放大溢出可滚动
 - **滚动模式补全页码/跳转/进度语义**：滚动跟踪当前页、缩略图/Home/End 跳转、帧固定尺寸 + memo、图片懒加载
@@ -312,6 +319,13 @@ cd src/frontend/manga-ui; npm run dev                       # http://localhost:5
 # 构建验证
 dotnet build src/backend/MangaManager.Api/MangaManager.Api.csproj
 cd src/frontend/manga-ui; npm run build; npx eslint src/pages/ReaderLocal.jsx src/visual-test/reader
+
+# 本地备份（工作树 + SQLite 一致性快照 + git bundle）
+python scripts/devops/backup_local.py                 # 默认输出 D:\MangaManager_Backups\MangaManager_<时间戳>
+python scripts/devops/backup_local.py --dest E:\Backups
+
+# 端到端冒烟（在真实库副本上起临时 API，端口 5299）
+python scripts/smoke_test.py --build                  # 首次/临时目录被清后必须带 --build
 ```
 
 环境坑：

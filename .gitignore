@@ -36,3 +36,6 @@ __pycache__/
 .idea/
 .vs/
 .vscode/
+
+# 其它工具的记忆/临时目录（非项目内容）
+.codebuddy/
