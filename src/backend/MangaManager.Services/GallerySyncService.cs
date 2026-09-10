@@ -15,7 +15,11 @@ public class GallerySyncService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<GallerySyncService> _logger;
-    private static readonly string DownloadDir = EhentaiFileHelper.DefaultDownloadDir;
+    private FileSystemWatcher? _watcher;
+    private readonly object _watcherLock = new();
+
+    /// <summary>画廊根目录：动态读取，支持前端设置页热切换</summary>
+    private static string DownloadDir => EhentaiFileHelper.DefaultDownloadDir;
 
     public GallerySyncService(IServiceScopeFactory scopeFactory, ILogger<GallerySyncService> logger)
     {
@@ -39,11 +43,7 @@ public class GallerySyncService : BackgroundService
         }
 
         // 启动文件系统监听
-        using var watcher = StartWatcher();
-        if (watcher == null)
-        {
-            _logger.LogWarning("[GallerySync] 下载目录不存在，跳过文件监听");
-        }
+        RestartWatcher();
 
 
         // 每 5 分钟做一次一致性检查（补偿 FileSystemWatcher 可能丢失的事件）
@@ -54,11 +54,18 @@ public class GallerySyncService : BackgroundService
             catch (Exception ex) { _logger.LogWarning(ex, "[GallerySync] 一致性检查异常"); }
         }
 
+        lock (_watcherLock)
+        {
+            try { _watcher?.Dispose(); } catch { /* 忽略释放异常 */ }
+            _watcher = null;
+        }
         _logger.LogInformation("[GallerySync] 服务已停止");
     }
 
-    /// <summary>全量扫描下载目录并写入 DB</summary>
-    public async Task FullSyncAsync(CancellationToken ct)
+    /// <summary>全量扫描下载目录并写入 DB（prune=true 时清理磁盘上已消失的记录）</summary>
+    public Task FullSyncAsync(CancellationToken ct) => FullSyncAsync(true, ct);
+
+    public async Task FullSyncAsync(bool pruneMissing, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MangaDbContext>();
@@ -126,6 +133,7 @@ public class GallerySyncService : BackgroundService
 
         // 清理已删除的目录
         var deletedGids = existing.Keys.Except(processedGids).ToList();
+        var removedCount = 0;
         if (dirs.Length == 0 && existing.Count > 0)
         {
             // 扫描到 0 个目录但 DB 有记录：大概率是目录未挂载或配置错误，
@@ -134,10 +142,17 @@ public class GallerySyncService : BackgroundService
                 "[GallerySync] 扫描到 0 个目录但 DB 有 {Count} 条记录，可能下载目录未挂载或路径错误，跳过清理",
                 existing.Count);
         }
+        else if (!pruneMissing && deletedGids.Count > 0)
+        {
+            // 切换/新配目录时的重扫：只增改不删，避免误配目录把已有索引清空
+            _logger.LogInformation(
+                "[GallerySync] 本次为追加式重扫，跳过清理 {Count} 条未出现的记录", deletedGids.Count);
+        }
         else if (deletedGids.Count > 0)
         {
             var deletedEntities = deletedGids.Select(gid => existing[gid]).ToList();
             db.LocalGalleries.RemoveRange(deletedEntities);
+            removedCount = deletedGids.Count;
             _logger.LogInformation("[GallerySync] 删除失效画廊 {Count} 条", deletedGids.Count);
         }
 
@@ -151,7 +166,7 @@ public class GallerySyncService : BackgroundService
 
         _logger.LogInformation(
             "[GallerySync] 全量同步: 新增 {Added}, 更新 {Updated}, 未变 {Unchanged}, 删除 {Deleted}",
-            added, updated, unchanged, deletedGids.Count);
+            added, updated, unchanged, removedCount);
     }
 
     /// <summary>增量同步单个目录</summary>
@@ -432,6 +447,45 @@ public class GallerySyncService : BackgroundService
         watcher.EnableRaisingEvents = true;
         _logger.LogInformation("[GallerySync] FileSystemWatcher 已启动");
         return watcher;
+    }
+
+    /// <summary>重建文件监听（目录变更后调用）；目录不存在时仅告警，不影响服务存活</summary>
+    private void RestartWatcher()
+    {
+        lock (_watcherLock)
+        {
+            try { _watcher?.Dispose(); } catch { /* 忽略释放异常 */ }
+            _watcher = null;
+            try
+            {
+                _watcher = StartWatcher();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[GallerySync] 启动文件监听失败: {Dir}", DownloadDir);
+            }
+            if (_watcher == null)
+                _logger.LogWarning("[GallerySync] 目录不存在或不可访问，跳过文件监听: {Dir}", DownloadDir);
+        }
+    }
+
+    /// <summary>
+    /// 重新扫描当前画廊目录：重建监听 + 全量同步。
+    /// 供前端设置页切换目录后调用（也可手动触发重扫）。
+    /// </summary>
+    public async Task RescanAsync(string reason, bool pruneMissing = false, CancellationToken ct = default)
+    {
+        _logger.LogInformation("[GallerySync] 重新扫描（{Reason}），目录: {Dir}", reason, DownloadDir);
+        RestartWatcher();
+        try
+        {
+            await FullSyncAsync(pruneMissing, ct);
+            _logger.LogInformation("[GallerySync] 重新扫描完成（{Reason}）", reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[GallerySync] 重新扫描失败（{Reason}）", reason);
+        }
     }
 
     private static long SafeFileLength(string path)

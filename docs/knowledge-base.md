@@ -76,7 +76,7 @@ MangaManager/
 |---|---|---|
 | LocalGalleryController | `/api/local` | 画廊列表/分页/随机/分组、详情、**页面列表、单页图片、封面**、导入、重下载、meta-tags、repair-metadata(SSE) |
 | ReadingProgressController | `/api/readingprogress` | GET 单条 / POST 批量 upsert（**并发冲突自动重试一次**） |
-| SettingsController | `/api/settings/reader` | 阅读器设置 JSON 快照读写（`ReaderSettings.Data` 列；localStorage 快速路径 + 后端持久化双轨） |
+| SettingsController | `/api/settings/reader`、`/api/settings/app` | 阅读器设置 JSON 快照读写（`ReaderSettings.Data` 列；localStorage 快速路径 + 后端持久化双轨）；**运行时设置**（库目录/代理）读写 + `POST /api/settings/app/rescan` 追加式重扫 |
 | ReaderController | `/api/reader/manga/{id}/...` | 旧版漫画阅读（防腐层之外的旧链路） |
 | MangaController | `/api/manga` | 扫描/CRUD/批量标签/`{id}/as-local-gallery` |
 | TagController / MangaTagController / BatchTagController | `/api/tag*` | 标签 CRUD/分类/批量 |
@@ -187,6 +187,11 @@ MangaManager/
 9. **两套拖拽系统不能同时挂**——旧 `useGalleryDrag`（mousedown 克隆）与 dnd-kit（pointer 传感器）同时启用时互相干扰；启用 dnd-kit 的排序模式必须禁用旧拖拽并移除 `onDragMouseDown`
 
 ### 2026-09-10 收尾（审查 / 备份 / 上线）
+- **运行时设置页（库目录 / Cookie / 代理）**：新增 `AppSettingsService`（`runtime_settings.json`，优先级 **runtime > appsettings > 内置默认**）+ `GET/PUT /api/settings/app`、`POST /api/settings/app/rescan`；前端新增 `/settings` 页（目录选择器 + Cookie 复用 `useEHCookie` + 代理）与首次配置引导弹窗 `FirstRunSetup`（未配置库目录时弹出）。要点：
+  - `GallerySyncService.DownloadDir` 由 `static readonly` 改为**动态读取**，新增 `RescanAsync(reason, pruneMissing)` —— 设置页触发的重扫用 **pruneMissing=false（只增改不删）**，避免误配目录清空索引
+  - 代理改为 `DynamicWebProxy`（每请求读取设置），改代理无需重启
+  - `downloadDirConfigured` 的判断包含 appsettings 来源（否则老用户也会被弹首次引导）
+  - PUT 保存时校验目录必须存在，不存在直接 400
 - **阅读器 TDZ 崩溃（用户报告"阅读模式工作异常"）**：`ReaderLocal` 的"下一部预取" effect 引用了 engine 解构出的 `currentPage`，而解构发生在该 effect 之后 → `Cannot access 'currentPage' before initialization`，整页崩溃；顺带修掉 HUD 高度测量 effect 依赖 `showThumbs`（声明在后）的第二处同类问题。修法：预取 effect 下移到 engine 解构之后，`showThumbs`/`showHelp` 声明上移
 - **标签内自定义顺序**（09-01 落地，09-10 复验）：`tag_order` 表 + `GET/PUT /api/tag/{id}/order`；单标签 + `sort=custom` 生效；单选已排序标签自动进 custom；拖拽只在"单标签 + custom"下可用（旧专辑拖拽与 dnd-kit 冲突已消除）
 - **全量校验**：后端 Release 构建 0 警告 0 错误；前端 `npm run build` 通过；`scripts/smoke_test.py --build` 15/15 通过（库规模 **3008 画廊 / 4242 标签 / 53130 work_tag**，无孤儿 work_tag）

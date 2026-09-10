@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutGrid, Globe, Download } from 'lucide-react'
+import { LayoutGrid, Globe, Download, Settings } from 'lucide-react'
 
 /**
  * 移动端底部标签栏（独立移动端导航）
@@ -14,6 +14,7 @@ export default function MobileTabBar() {
     { to: '/local', label: '本地', icon: <LayoutGrid size={20} /> },
     { to: '/ehentai', label: '浏览', icon: <Globe size={20} /> },
     { to: '/downloads', label: '下载', icon: <Download size={20} /> },
+    { to: '/settings', label: '设置', icon: <Settings size={20} /> },
   ]
 
   return (

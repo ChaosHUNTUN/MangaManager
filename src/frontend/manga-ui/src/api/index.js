@@ -58,3 +58,6 @@ export {
 
 // 文件系统
 export { fetchDrives, fetchDirectory } from './filesystem'
+
+// 运行时设置（库目录 / 代理 / 重扫）
+export { fetchAppSettings, saveAppSettings, rescanLibrary } from './appSettings'

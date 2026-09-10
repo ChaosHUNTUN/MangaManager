@@ -394,6 +394,7 @@ export default function LocalGallery() {
               style={{ borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>☰ {FEATURES.enableAlbums ? '专辑' : '标签'}</button>
             <Link to="/ehentai" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}><IconGlobe size={14} /> 在线</Link>
             <Link to="/downloads" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}><IconDownload size={14} /> 下载</Link>
+            <Link to="/settings" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }} title="设置：库目录 / Cookie / 代理">⚙ 设置</Link>
             <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>
             <span className="badge badge-teal">{pageTotal}</span>
           </div>

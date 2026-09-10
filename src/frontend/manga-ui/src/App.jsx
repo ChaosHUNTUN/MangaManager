@@ -5,7 +5,9 @@ import ReaderRedirect from './pages/ReaderRedirect'
 import EHentai from './pages/EHentai'
 import ReaderLocal from './pages/ReaderLocal'
 import DownloadMonitor from './pages/DownloadMonitor'
+import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
+import FirstRunSetup from './components/FirstRunSetup'
 import { API_BASE } from './api'
 import useIsMobile from './hooks/useIsMobile'
 import MobileTabBar from './components/MobileTabBar'
@@ -70,6 +72,7 @@ export default function App() {
           <Route path="/reader-local/:gid" element={<ReaderLocal />} />
           <Route path="/ehentai" element={<EHentai />} />
           <Route path="/downloads" element={<DownloadMonitor />} />
+          <Route path="/settings" element={<Settings />} />
 
           {/* Visual Test Routes */}
           <Route path="/visual-test/reader" element={<VTReader />} />
@@ -90,6 +93,7 @@ export default function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <FirstRunSetup />
         {isMobile && <MobileTabBar />}
       </div>
     </BrowserRouter>

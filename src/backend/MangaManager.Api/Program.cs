@@ -68,7 +68,6 @@ builder.Services.AddHttpClient("ehentai", client =>
 })
 .ConfigurePrimaryHttpMessageHandler(sp =>
 {
-    var config = sp.GetRequiredService<IConfiguration>();
     var cookies = sp.GetKeyedService<System.Net.CookieContainer>("EhentaiCookies")!;
     var handler = new HttpClientHandler
     {
@@ -77,12 +76,12 @@ builder.Services.AddHttpClient("ehentai", client =>
         AllowAutoRedirect = true,
         AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
     };
-    var proxyUrl = config.GetValue<string>("Ehentai:Proxy");
-    if (!string.IsNullOrWhiteSpace(proxyUrl))
-        handler.Proxy = new System.Net.WebProxy(proxyUrl);
+    // 动态代理：每请求读取运行时设置，前端设置页改代理后无需重启
+    handler.Proxy = new DynamicWebProxy(sp.GetRequiredService<AppSettingsService>());
     return handler;
 });
 builder.Services.AddKeyedSingleton("EhentaiCookies", new System.Net.CookieContainer());
+builder.Services.AddSingleton<AppSettingsService>();
 builder.Services.AddSingleton<EhentaiAuthService>();
 builder.Services.AddSingleton<EhentaiBlockedTagService>();
 builder.Services.AddSingleton<TagService>();
@@ -135,7 +134,10 @@ app.MapControllers();
 // 健康检查端点
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow, version = "2.0" }));
 
-var dlDir = app.Configuration.GetValue<string>("Ehentai:DownloadDir") ?? EhentaiFileHelper.DefaultDownloadDir;
+// 运行时设置（runtime_settings.json）优先级最高：构造即热应用库目录，未配置时保持 appsettings/默认值
+var appSettings = app.Services.GetRequiredService<AppSettingsService>();
+
+var dlDir = EhentaiFileHelper.DefaultDownloadDir;
 
 // EF Core Migrations：自动建库/升级，兼容已有数据库
 using (var scope = app.Services.CreateScope())
