@@ -152,6 +152,9 @@ public class GallerySyncService : BackgroundService
         {
             var deletedEntities = deletedGids.Select(gid => existing[gid]).ToList();
             db.LocalGalleries.RemoveRange(deletedEntities);
+            // 同步清理标签关联：否则会留下指向已删作品的孤儿 work_tag
+            var orphanLinks = await db.WorkTags.Where(w => deletedGids.Contains(w.WorkId)).ToListAsync(ct);
+            if (orphanLinks.Count > 0) db.WorkTags.RemoveRange(orphanLinks);
             removedCount = deletedGids.Count;
             _logger.LogInformation("[GallerySync] 删除失效画廊 {Count} 条", deletedGids.Count);
         }
@@ -209,6 +212,8 @@ public class GallerySyncService : BackgroundService
         if (entity != null)
         {
             db.LocalGalleries.Remove(entity);
+            var links = await db.WorkTags.Where(w => w.WorkId == entity.Gid).ToListAsync();
+            if (links.Count > 0) db.WorkTags.RemoveRange(links);
             await db.SaveChangesAsync();
             LocalGalleryService.InvalidateScanCache();
             _logger.LogInformation("[GallerySync] 已删除记录: {Dir}", dirPath);
@@ -409,6 +414,9 @@ public class GallerySyncService : BackgroundService
         var missing = all.Where(g => !Directory.Exists(g.DirPath)).ToList();
         if (missing.Count > 0)
         {
+            var missingGids = missing.Select(g => g.Gid).ToList();
+            var orphanLinks = await db.WorkTags.Where(w => missingGids.Contains(w.WorkId)).ToListAsync(ct);
+            if (orphanLinks.Count > 0) db.WorkTags.RemoveRange(orphanLinks);
             db.LocalGalleries.RemoveRange(missing);
             await db.SaveChangesAsync(ct);
             _logger.LogInformation("[GallerySync] 一致性检查: 清理 {Count} 条失效记录", missing.Count);
