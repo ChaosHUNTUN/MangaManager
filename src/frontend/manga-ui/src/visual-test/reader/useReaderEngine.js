@@ -62,14 +62,12 @@ function getAvailableArea(viewportW, viewportH, padding, chrome) {
 export function getImageLayout(imgW, imgH, viewportW, viewportH, fit, zoom, padding = 0, chrome) {
   if (!imgW || !imgH) return { width: 0, height: 0, scale: 1, overflowX: false, overflowY: false };
   const avail = getAvailableArea(viewportW, viewportH, padding, chrome);
-  let fitScale = 1;
-  switch (fit) {
-    case 'both':    fitScale = Math.min(avail.width / imgW, avail.height / imgH); break;
-    case 'width':   fitScale = avail.width / imgW; break;
-    case 'height':  fitScale = avail.height / imgH; break;
-    case 'original': fitScale = 1; break;
-    default:        fitScale = Math.min(avail.width / imgW, avail.height / imgH);
-  }
+  const ratio = Math.min(avail.width / imgW, avail.height / imgH);
+  const fitScale =
+    fit === 'width' ? avail.width / imgW :
+    fit === 'height' ? avail.height / imgH :
+    fit === 'original' ? 1 :
+    ratio;                     // both / 默认：整页适应
   const scale = fitScale * zoom;
   return {
     width: Math.round(imgW * scale),
@@ -194,7 +192,7 @@ export function useReaderEngine(totalPages) {
 
   // ── 幻灯片 — 连续滚动模式: rAF 匀速滚动 ──
   const directionRef = useRef(direction);
-  directionRef.current = direction;
+  useEffect(() => { directionRef.current = direction; }, [direction]);
   useEffect(() => {
     if (flow !== 'continuous' || !slideshowActive) return;
     const el = scrollerRef.current;

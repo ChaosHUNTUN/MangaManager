@@ -26,8 +26,8 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
     loadWorkTags(detail.gid)
   }, [detail?.gid, loadWorkTags])
 
-  if (!detail) return null
-
+  // 注意：早退必须放在所有 Hook 之后（下面 useMemo/useCallback 数量固定），
+  // 否则 detail 由空转非空时 Hook 数量变化会触发 React 报错
   const inCustomAlbum = useMemo(() => {
     if (!albumConfig || !detail) return false
     return Object.values(albumConfig).some(v => (v.gids || []).includes(detail.gid))
@@ -73,6 +73,8 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
       await loadWorkTags(detail.gid)
     } catch { }
   }
+
+  if (!detail) return null
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
