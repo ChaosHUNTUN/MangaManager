@@ -404,37 +404,6 @@ public class LocalGalleryService
         };
     }
 
-    /// <summary>计算侧边栏分组信息（DB 加载 + 内存聚合）</summary>
-    public List<GroupInfo> GetGalleryGroups()
-    {
-        using var db = CreateDb();
-        var all = db.LocalGalleries.AsNoTracking()
-            .Select(g => new { g.Gid, g.Artists, g.Groups })
-            .ToList();
-
-        var map = new Dictionary<string, GroupInfo>();
-
-        foreach (var g in all)
-        {
-            var artists = DeserializeJsonList(g.Artists);
-            var grps = DeserializeJsonList(g.Groups);
-
-            if (artists.Count + grps.Count > 1)
-            {
-                if (!map.ContainsKey("multi")) map["multi"] = new GroupInfo { Key = "multi", Type = "multi", Name = "多作者", Count = 0 };
-                map["multi"].Count++;
-            }
-            else if (artists.Count + grps.Count == 0)
-            {
-                if (!map.ContainsKey("unknown")) map["unknown"] = new GroupInfo { Key = "unknown", Type = "unknown", Name = "未分类", Count = 0 };
-                map["unknown"].Count++;
-            }
-        }
-
-        var groups = map.Values.OrderByDescending(g => g.Count).ToList();
-        return groups;
-    }
-
     /// <summary>标签统计（供侧边栏标签云/选择器：每个标签的关联作品数）</summary>
     public List<TagStatDto> GetTagStats()
     {
@@ -913,15 +882,6 @@ public class LocalGalleryMeta
     public List<string> Groups { get; set; } = new();
     public string? Category { get; set; }
     public string? Language { get; set; }
-}
-
-/// <summary>侧边栏分组信息</summary>
-public class GroupInfo
-{
-    public string Key { get; set; } = "";
-    public string Type { get; set; } = "";  // artist | group | multi | unknown
-    public string Name { get; set; } = "";
-    public int Count { get; set; }
 }
 
 public record TagStatDto(

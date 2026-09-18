@@ -71,14 +71,6 @@ public class LocalGalleryController : ControllerBase
         return Ok(new ApiResponse<object>(true, result));
     }
 
-    /// <summary>获取侧边栏分组信息（自动分组统计，不含自定义专辑）</summary>
-    [HttpGet("groups")]
-    public IActionResult GetGroups()
-    {
-        var list = _svc.GetGalleryGroups();
-        return Ok(new ApiResponse<object>(true, list));
-    }
-
     /// <summary>获取本地画廊详情（含 EH 标签）</summary>
     [HttpGet("gallery/{gid}")]
     public async Task<IActionResult> GetDetail(int gid)

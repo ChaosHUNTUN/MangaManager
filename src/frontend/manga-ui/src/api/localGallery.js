@@ -27,11 +27,6 @@ export async function fetchLocalGalleriesRandom(count = 20, signal) {
   return json.data || { items: [], total: 0, totalPages: 0 }
 }
 
-export async function fetchLocalGalleryGroups() {
-  const json = await request('/api/local/groups')
-  return json.data || []
-}
-
 export async function fetchLocalGalleryDetail(gid) {
   const json = await request(`/api/local/gallery/${gid}`)
   return json.data

@@ -36,7 +36,7 @@ export {
 // 本地画廊
 export {
   fetchLocalGalleries, fetchLocalGalleryMetas, fetchLocalGalleriesPaged,
-  fetchLocalGalleriesRandom, fetchLocalGalleryGroups, fetchLocalGalleryDetail,
+  fetchLocalGalleriesRandom, fetchLocalGalleryDetail,
   fetchLocalGalleryPages, fetchLocalGalleryPagesAbortable,
   getLocalCoverUrl, getLocalPageUrl, deleteLocalGallery,
   redownloadLocalGallery, batchRedownloadLocalGalleries, checkDownloaded,
