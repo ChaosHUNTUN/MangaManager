@@ -101,33 +101,53 @@ export default function ContinuousView({
     return getImageLayout(d.w, d.h, fullW, fullH, fit, zoom, padding, { top: chromeTop, bottom: chromeBottom });
   }), [images, dimsMap, fit, zoom, fullW, fullH, padding, chromeTop, chromeBottom]);
 
-  // 滚动 → 上报当前页（首个结束位置越过视口中线的帧）
+  // 滚动 → 上报当前页（视口中线所在帧）
+  //
+  // 性能要点（移动端快速滚动卡顿的两大来源）：
+  // ① 用 rAF 合并同一帧内的多次 scroll 事件，避免每个事件都做一次布局读取 + setState；
+  // ② 从上一次上报的帧索引增量查找，而不是每次都从第 0 帧遍历（长画廊里是 O(N) 次 offsetTop 读取）
+  const scrollRafRef = useRef(0);
+  const lastScrollTsRef = useRef(0);
   const handleScroll = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el || el.children.length === 0 || !onPageChange) return;
-    const mid = isHoriz ? el.scrollLeft + el.clientWidth / 2 : el.scrollTop + el.clientHeight / 2;
-    let idx = 0;
-    for (let i = 0; i < el.children.length; i++) {
-      const c = el.children[i];
-      const start = isHoriz ? c.offsetLeft : c.offsetTop;
-      const end = start + (isHoriz ? c.offsetWidth : c.offsetHeight);
-      idx = i;
-      // 精确包含：LTR 帧偏移升序、RTL(row-reverse) 降序都成立
-      if (mid >= start && mid < end) break;
-    }
-    // 页内偏移（0~1）：当前帧内中线相对位置，供进度保存/恢复
-    const c = el.children[idx];
-    const start = isHoriz ? c.offsetLeft : c.offsetTop;
-    const size = isHoriz ? c.offsetWidth : c.offsetHeight;
-    if (size > 0) {
-      const offset = Math.min(1, Math.max(0, (mid - start) / size));
-      onOffsetChange?.(offset);
-    }
-    if (idx !== reportedPageRef.current) {
-      reportedPageRef.current = idx;
-      onPageChange(idx);
-    }
+    lastScrollTsRef.current = Date.now();
+    if (scrollRafRef.current) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = 0;
+      const el = scrollerRef.current;
+      if (!el || el.children.length === 0 || !onPageChange) return;
+      const n = el.children.length;
+      const startOf = (i) => (isHoriz ? el.children[i].offsetLeft : el.children[i].offsetTop);
+      const sizeOf = (i) => (isHoriz ? el.children[i].offsetWidth : el.children[i].offsetHeight);
+      const mid = isHoriz ? el.scrollLeft + el.clientWidth / 2 : el.scrollTop + el.clientHeight / 2;
+
+      // RTL(row-reverse) 下帧偏移是降序的，先判断方向再增量逼近
+      const ascending = n < 2 || startOf(1) >= startOf(0);
+      let idx = reportedPageRef.current;
+      if (idx < 0 || idx >= n) idx = 0;
+      if (ascending) {
+        while (idx > 0 && mid < startOf(idx)) idx--;
+        while (idx < n - 1 && mid >= startOf(idx) + sizeOf(idx)) idx++;
+      } else {
+        // 降序（row-reverse）：坐标更大 = 索引更小
+        while (idx > 0 && mid >= startOf(idx) + sizeOf(idx)) idx--;
+        while (idx < n - 1 && mid < startOf(idx)) idx++;
+      }
+
+      // 页内偏移（0~1）：当前帧内中线相对位置，供进度保存/恢复
+      const start = startOf(idx);
+      const size = sizeOf(idx);
+      if (size > 0) {
+        const offset = Math.min(1, Math.max(0, (mid - start) / size));
+        onOffsetChange?.(offset);
+      }
+      if (idx !== reportedPageRef.current) {
+        reportedPageRef.current = idx;
+        onPageChange(idx);
+      }
+    });
   }, [isHoriz, scrollerRef, onPageChange, onOffsetChange]);
+
+  useEffect(() => () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); }, []);
 
   // 外部跳页（缩略图/Home/End/进度恢复）→ 滚动到对应帧
   // 滚动跟踪写回的 currentPage 与 reported 相等，跳过避免回拉
@@ -135,6 +155,9 @@ export default function ContinuousView({
     const el = scrollerRef.current;
     if (!el || currentPage == null || !el.children[currentPage]) return;
     if (currentPage === reportedPageRef.current) return;
+    // 刚滚动过 → 这次 currentPage 变化是滚动驱动的（快速滚动时 state 会落后于实际位置），
+    // 此时若执行 smooth scrollTo 会与惯性滚动打架，表现为"滚到一半被卡住/回拉"
+    if (Date.now() - lastScrollTsRef.current < 250) return;
     const c = el.children[currentPage];
     el.scrollTo({
       // 减去容器上内边距，让目标帧顶部落在 HUD 下方而不是被浮层盖住
