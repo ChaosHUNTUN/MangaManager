@@ -16,7 +16,7 @@ import GalleryCard from '../components/GalleryCard'
 import GalleryRow from '../components/GalleryRow'
 import SortableGalleryCard from '../components/SortableGalleryCard'
 import ScrollToTop from '../components/ScrollToTop'
-import { IconGlobe, IconImport, IconBatch, IconRandom, IconTrash, IconRedownload, IconGrid, IconList, IconChevronLeft, IconChevronRight, IconSearch, IconFolder, IconEdit, IconEye, IconBook, IconClose, IconAlbum, IconDownload, IconGripDots } from '../components/Icons'
+import { IconGlobe, IconImport, IconBatch, IconRandom, IconTrash, IconRedownload, IconGrid, IconList, IconChevronLeft, IconChevronRight, IconSearch, IconFolder, IconEdit, IconEye, IconBook, IconClose, IconAlbum, IconGripDots } from '../components/Icons'
 import { User, Users, FolderOpen, Save, Hash, CheckCircle, XCircle, Rocket, Tag } from 'lucide-react'
 import { CATEGORY_COLORS } from '../components/GalleryCard'
 import { FEATURES } from '../config'
@@ -296,6 +296,12 @@ export default function LocalGallery() {
 
   const isInAlbum = activeGroup.startsWith('album:')
 
+  // 是否处于"无任何筛选"状态（顶部「全部」按钮高亮 + 清空动作判定）
+  const noFilter = activeGroup === 'all' && !search && !(tagIds && tagIds.length)
+  const clearAllFilters = useCallback(() => {
+    updateParams({ group: null, tags: null, q: null, sort: null, p: null, random: null })
+  }, [updateParams])
+
   const { dragGidRef, handleDragMouseDown } = useGalleryDrag({
     // 旧专辑拖拽仅在专辑功能开启时可用；标签顺序用 dnd-kit，其余视图一律不可拖
     isSortMode: false, disabled: batchMode || isInAlbum || isTagOrderMode || !FEATURES.enableAlbums,
@@ -321,19 +327,6 @@ export default function LocalGallery() {
         {e < totalPages && <><span style={{ color: 'var(--text-muted)' }}>…</span><button className="btn-sm" onClick={() => setPage(totalPages)}>{totalPages}</button></>}
         <button className="btn-sm" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>»</button>
       </div>
-    )
-  }
-
-  const renderGroupTag = (grp) => {
-    const isActive = activeGroup === grp.key
-    const icon = grp.type === 'artist' ? <User size={13} /> : grp.type === 'group' ? <Users size={13} /> : grp.type === 'multi' ? <Users size={13} /> : <FolderOpen size={13} />
-    return (
-      <span key={grp.key} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-        <button className="btn-sm" onClick={() => updateParams({ group: grp.key === 'all' ? null : grp.key, p: null })}
-          style={{ borderColor: isActive ? 'var(--accent-border)' : 'var(--border-input)', color: isActive ? 'var(--accent)' : 'var(--text-secondary)', background: isActive ? 'var(--accent-bg)' : 'transparent' }}>
-          {icon} {grp.name} ({grp.count})
-        </button>
-      </span>
     )
   }
 
@@ -393,7 +386,12 @@ export default function LocalGallery() {
             <button className="btn-sm sidebar-toggle" onClick={() => setSidebarOpen(true)}
               style={{ borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>☰ {FEATURES.enableAlbums ? '专辑' : '标签'}</button>
             <Link to="/ehentai" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}><IconGlobe size={14} /> 在线</Link>
-            <Link to="/downloads" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}><IconDownload size={14} /> 下载</Link>
+            {/* 全部：清除所有筛选与搜索，回到完整作品列表（原「下载」入口位置） */}
+            <button className="btn-sm" onClick={clearAllFilters}
+              title="清除全部筛选与搜索，显示所有作品"
+              style={{ borderColor: noFilter ? 'var(--accent-border)' : 'var(--border-input)', color: noFilter ? 'var(--accent)' : 'var(--text-secondary)', background: noFilter ? 'var(--accent-bg)' : 'transparent' }}>
+              <IconGrid size={14} /> 全部
+            </button>
             <Link to="/settings" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }} title="设置：库目录 / Cookie / 代理">⚙ 设置</Link>
             <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>
             <span className="badge badge-teal">{pageTotal}</span>
@@ -447,36 +445,8 @@ export default function LocalGallery() {
 
         {/* ── 工具栏 ── */}
         <div className="gallery-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-4)', borderBottom: '1px solid var(--divider)', flexShrink: 0, overflowX: 'auto', height: 'var(--toolbar-height)' }}>
-          {/* 分组标签 */}
-          <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
-            <button className="btn-sm" onClick={() => updateParams({ group: null, p: null })}
-              style={{ borderColor: activeGroup === 'all' ? 'var(--accent-border)' : 'var(--border-input)', color: activeGroup === 'all' ? 'var(--accent)' : 'var(--text-secondary)', background: activeGroup === 'all' ? 'var(--accent-bg)' : 'transparent' }}>全部</button>
-            {groups.filter(g => g.type !== 'album').slice(0, 8).map(grp => renderGroupTag(grp))}
-            {FEATURES.enableAlbums && (() => {
-              const activeAuto = groups.find(g => g.key === activeGroup && g.type !== 'album')
-              if (!activeAuto || activeAuto.type === 'multi' || activeAuto.type === 'unknown') return null
-              return (
-                <button className="btn-sm" onClick={() => handleConvertGroupToAlbum(activeAuto)}
-                  title="转为专辑"
-                  style={{ color: 'var(--accent-teal)', borderColor: 'var(--accent-teal-bg)', whiteSpace: 'nowrap' }}>
-                  <FolderOpen size={13} /> 转为专辑
-                </button>
-              )
-            })()}
-            {/* 激活的标签筛选 chips */}
-            {(tagIds || []).map(id => {
-              const t = tagStats.find(x => x.id === id)
-              if (!t) return null
-              return (
-                <button key={id} className="btn-sm" onClick={() => handleToggleTag(id)}
-                  title={`${t.namespace}:${t.name}`}
-                  style={{ borderColor: 'var(--accent-border)', color: 'var(--accent)', background: 'var(--accent-bg)', whiteSpace: 'nowrap' }}>
-                  ✕ {t.nameCn || t.name}
-                </button>
-              )
-            })}
-          </div>
-
+          {/* 筛选 chips 已移除：分组/作者/社团筛选改由搜索框（artist:xxx / group:xxx）与侧边栏标签云承担，
+              顶部「全部」按钮一键清空所有筛选 */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
             <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })} style={{ height: 28, fontSize: 'var(--text-xs)' }}>
               {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}

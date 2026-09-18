@@ -94,9 +94,9 @@ export default function useAlbumConfig({ galleryMetas }) {
       const gids = val.gids || []; if (gids.length === 0 && !allNames.has(key)) return
       map.set(`album:${key}`, { type: 'album', key: `album:${key}`, name: val.name || key, count: gids.length, editable: true, createdAt: val.createdAt || val.updatedAt, updatedAt: val.updatedAt })
     })
-    const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
+    // 专辑方案已废弃：自动分组不再排除专辑成员。
+    // 排除会导致计数远低于点击后的实际筛选结果（库里多数作品仍带历史专辑归属）
     galleryMetas.forEach(g => {
-      if (albumGids.has(g.gid)) return
       const a = g.artists || []; const gr = g.groups || []
       if (a.length === 1 && gr.length === 0) { const k = `artist:${a[0]}`; if (!map.has(k)) map.set(k, { type: 'artist', name: a[0], count: 0 }); map.get(k).count++ }
       else if (gr.length === 1 && a.length === 0) { const k = `group:${gr[0]}`; if (!map.has(k)) map.set(k, { type: 'group', name: gr[0], count: 0 }); map.get(k).count++ }
