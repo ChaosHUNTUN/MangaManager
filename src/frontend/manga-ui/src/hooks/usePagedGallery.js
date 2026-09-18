@@ -6,7 +6,7 @@ import { fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryM
  * 分页画廊加载 Hook
  * — URL 参数双向同步、分页/随机加载、竞态防护、自动匹配事件监听
  */
-export default function usePagedGallery({ albumConfig, albumConfigRef, albumsLoaded, setError }) {
+export default function usePagedGallery({ albumConfigRef, albumsLoaded, setError }) {
   // ── URL 参数 ──
   const [searchParams, setSearchParams] = useSearchParams()
   const search = searchParams.get('q') || ''
@@ -111,7 +111,7 @@ export default function usePagedGallery({ albumConfig, albumConfigRef, albumsLoa
   }, [loadPaged])
 
   // ── 阅读器上下文 ──
-  const handleOpenReader = useCallback(async ({ gid, albumConfig, isRandom, paged }) => {
+ const handleOpenReader = useCallback(async ({ albumConfig, isRandom, paged }) => {
     const allGids = Object.values(albumConfig).flatMap(v => v.gids || [])
     let ag = null, ao = null
     if (activeGroup.startsWith('album:')) {

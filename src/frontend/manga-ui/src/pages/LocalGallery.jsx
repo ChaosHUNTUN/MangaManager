@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryGids, browseDirectory, saveAlbumConfig, fetchGalleryMetaTags, updateGalleryMetaTags, importLocalGallery, batchImportGalleries } from '../api'
@@ -16,8 +16,8 @@ import GalleryCard from '../components/GalleryCard'
 import GalleryRow from '../components/GalleryRow'
 import SortableGalleryCard from '../components/SortableGalleryCard'
 import ScrollToTop from '../components/ScrollToTop'
-import { IconGlobe, IconImport, IconBatch, IconRandom, IconTrash, IconRedownload, IconGrid, IconList, IconChevronLeft, IconChevronRight, IconSearch, IconFolder, IconEdit, IconEye, IconBook, IconClose, IconAlbum, IconGripDots } from '../components/Icons'
-import { User, Users, FolderOpen, Save, Hash, CheckCircle, XCircle, Rocket, Tag } from 'lucide-react'
+import { IconGlobe, IconImport, IconBatch, IconRandom, IconTrash, IconGrid, IconFolder, IconGripDots } from '../components/Icons'
+import { User, Users, FolderOpen, Save, CheckCircle, XCircle, Rocket, Tag } from 'lucide-react'
 import { CATEGORY_COLORS } from '../components/GalleryCard'
 import { FEATURES } from '../config'
 import { fetchTagStats } from '../api/work'
@@ -32,7 +32,6 @@ const SORT_OPTIONS = [
 ]
 
 export default function LocalGallery() {
-  const navigate = useNavigate()
   const isMobile = useIsMobile()
 
   // ── 状态 ──
@@ -102,9 +101,8 @@ export default function LocalGallery() {
   // 专辑配置（Hook 封装）
   const { albumConfig, albumConfigRef, albumsLoaded, saveAlbums,
     albumSearch, setAlbumSearch, albumSort, setAlbumSort, albumModal, setAlbumModal,
-    groups, gidToAlbum, getAlbumName,
-    generateAlbumColor, convertGroupToAlbum,
-    handleCreateAlbum, handleAlbumUpdated, handleDeleteAlbum,
+    groups, gidToAlbum, convertGroupToAlbum,
+ handleCreateAlbum, handleAlbumUpdated, handleDeleteAlbum,
   } = useAlbumConfig({ galleryMetas })
 
   const [editingAlbumKey, setEditingAlbumKey] = useState(null)
@@ -196,7 +194,7 @@ export default function LocalGallery() {
   // 自动匹配 + 分组计算 → useAlbumConfig Hook
 
   // ── 搜索标签池 & 自动补全（Hook 封装） ──
-  const { searchTagPool, searchTagTransMap, searchSuggestions, setSearchSuggestions, handleSearchInput, applySearchTag } = useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast, searchInputRef })
+  const { searchSuggestions, handleSearchInput, applySearchTag } = useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast, searchInputRef })
 
   // 输入过程中自动打开补全下拉（有建议即显示，避免必须重新聚焦才出现）
   useEffect(() => {
@@ -232,9 +230,9 @@ export default function LocalGallery() {
     batchRedownloadConfirm, setBatchRedownloadConfirm, handleBatchRedownload,
     detail, detailLoading, setDetail, tagTranslations, nsTranslations, handleOpenDetail,
     handleOpenReader,
-    importModal, setImportModal, importForm, setImportForm, importing, setImporting, importDirBrowser, setImportDirBrowser, handleBrowseImport, handleImport,
-    batchImportModal, setBatchImportModal, batchImportForm, setBatchImportForm, batchImporting, setBatchImporting, batchImportResult, setBatchImportResult, handleBatchImport,
-    editTagsModal, setEditTagsModal, editTagsForm, setEditTagsForm, editTagsSaving, setEditTagsSaving, loadEditTags, saveEditTags } = ops
+    importModal, setImportModal, importForm, setImportForm, importing, setImporting, importDirBrowser, setImportDirBrowser,
+    batchImportModal, setBatchImportModal, batchImportForm, setBatchImportForm, batchImporting, setBatchImporting, batchImportResult, setBatchImportResult,
+    editTagsModal, setEditTagsModal, editTagsForm, setEditTagsForm, editTagsSaving, setEditTagsSaving } = ops
 
   // ── 卡片交互（组件的轻量逻辑） ──
   const handleCardClick = useCallback((g) => {
@@ -304,8 +302,8 @@ export default function LocalGallery() {
     updateParams({ group: null, tags: null, q: null, sort: null, p: null, random: null })
   }, [updateParams])
 
-  const { dragGidRef, handleDragMouseDown } = useGalleryDrag({
-    // 旧专辑拖拽仅在专辑功能开启时可用；标签顺序用 dnd-kit，其余视图一律不可拖
+  const { handleDragMouseDown } = useGalleryDrag({
+ // 旧专辑拖拽仅在专辑功能开启时可用；标签顺序用 dnd-kit，其余视图一律不可拖
     isSortMode: false, disabled: batchMode || isInAlbum || isTagOrderMode || !FEATURES.enableAlbums,
     onDropToAlbum: doAlbumDrop, onDropToSort: () => {},
     onDragStart: (gid) => setDragGid(gid), onDragEnd: () => setDragGid(null),
@@ -597,6 +595,7 @@ export default function LocalGallery() {
       {FEATURES.enableAlbums && albumModal && (() => {
         const matched = albumModal.matchedAlbums || []; const gTags = albumModal.tags || []; const kt = gTags.filter(t => t.ns === 'artist' || t.ns === 'group')
         return <div className="modal-overlay" onClick={() => setAlbumModal(null)}><div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}><h3><FolderOpen size={14} /> 添加到专辑</h3><p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{albumModal.title}</p>
+          {/* eslint-disable-next-line react-hooks/refs -- 误报：saveAlbums 内部不访问 ref，调用发生在 onClick 回调而非渲染期 */}
           {matched.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--warning)' }}>匹配的专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{matched.map(({ key, name, count }) => <button key={key} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; if (!cfg[key]) cfg[key] = { name: key, gids: [] }; cfg[key].gids = [...cfg[key].gids.filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${name}"`) }} style={{ borderColor: 'var(--accent-border)', color: 'var(--warning)' }}><FolderOpen size={12} /> {name} ({count})</button>)}</div></div>}
           {Object.keys(albumConfig).length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>选择已有专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{Object.entries(albumConfig).map(([key, val]) => { const isM = matched.some(m => m.key === key); return <button key={key} className="btn-sm" disabled={isM} onClick={() => { const cfg = { ...albumConfig }; cfg[key].gids = [...(cfg[key].gids || []).filter(id => id !== albumModal.gid), albumModal.gid]; saveAlbums(cfg); setAlbumModal(null); setToast(`已添加到 "${val.name || key}"`) }} style={isM ? { opacity: 0.4 } : {}}><FolderOpen size={12} /> {val.name || key} ({(val.gids || []).length})</button> })}</div></div>}
           {kt.length > 0 && <div style={{ marginTop: 'var(--space-3)' }}><div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>用关键标签创建专辑</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>{kt.map((t, i) => <button key={i} className="btn-sm" onClick={() => { const cfg = { ...albumConfig }; cfg[t.tag] = { name: t.tag, gids: [...(cfg[t.tag]?.gids || []), albumModal.gid] }; saveAlbums(cfg); setAlbumModal(null); setToast(`已创建专辑 "${t.tag}"`) }}>{t.ns === 'artist' ? <User size={12} /> : <Users size={12} />} {t.tag}</button>)}</div></div>}

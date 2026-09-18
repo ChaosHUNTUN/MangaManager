@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
-  fetchDownloadTasks, fetchActiveDownloadTasks,
-  pauseDownloadTask, resumeDownloadTask, removeDownloadTask,
+ fetchDownloadTasks,   pauseDownloadTask, resumeDownloadTask, removeDownloadTask,
   restartDownloadTask, restartAllFailedTasks,
   pauseAllDownloadTasks, resumeAllDownloadTasks, API_BASE
 } from '../api'

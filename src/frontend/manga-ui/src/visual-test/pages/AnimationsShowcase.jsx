@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, RefreshCw, ChevronDown, X } from 'lucide-react';
+import { RefreshCw, ChevronDown, X } from 'lucide-react';
 
 export default function AnimationsShowcase() {
   const [key, setKey] = useState(0);

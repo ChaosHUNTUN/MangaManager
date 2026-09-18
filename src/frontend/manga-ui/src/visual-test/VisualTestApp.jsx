@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import {
   Palette, MousePointer2, LayoutGrid, FormInput,
-  BarChart3, Atom, Shapes, Layers,
-  Sparkles, Zap, Box,
+ BarChart3, Atom, Shapes,   Sparkles, Zap, Box,
   Type, Droplets
 } from 'lucide-react';
 import {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useReaderEngine } from '../reader/useReaderEngine';
 import PaginatedView from '../reader/PaginatedView';
 import ContinuousView from '../reader/ContinuousView';
@@ -40,13 +40,12 @@ export default function ReaderShowcase() {
     currentPage, totalPages, direction, flow, fit, zoom,
     background, bgValue, padding, uiVisible,
     slideshowActive, slideshowInterval, scrollSpeed,
-    pageStep, canBack, canForward, flipDirRef, viewport,
-    setCurrentPage, setDirection, setFlow, setFit, setZoom,
-    setBackground, setPadding, setUiVisible,
-    setSlideshowInterval, setScrollSpeed,
+  pageStep, flipDirRef, viewport,
+  setCurrentPage, setDirection, setFlow, setPadding, setUiVisible,
+ setSlideshowInterval, setScrollSpeed,
     goForward, goBack, goFirst, goLast, setFitCycled, zoomIn, zoomOut, zoomReset,
-    setBgCycled, toggleSlideshow, setSlideshowActive,
-    scrollerRef,
+  setBgCycled, toggleSlideshow,
+  scrollerRef,
   } = engine;
 
   // ── UI 自动隐藏 ──

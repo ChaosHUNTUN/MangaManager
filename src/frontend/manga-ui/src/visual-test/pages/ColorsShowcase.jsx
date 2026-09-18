@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Palette, Droplets, Sun, Moon } from 'lucide-react';
+import { Palette, Sun } from 'lucide-react';
 
 const COLOR_GROUPS = [
   {

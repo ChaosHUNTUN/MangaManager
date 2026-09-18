@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import ScrollToTop from '../components/ScrollToTop'
 import { getEHImageProxyUrl, API_BASE } from '../api'
-import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
+import { getCategoryColorDetail } from '../constants/colors'
 import { formatSize } from '../utils/format'
 import useEHCookie from '../hooks/useEHCookie'
 import useEHBrowse from '../hooks/useEHBrowse'
@@ -42,8 +42,8 @@ export default function EHentai() {
   }
 
   const browseHook = useEHBrowse()
-  const { galleries, search, setSearch, totalPages, hasMore, loading, loadingMore, error, setError,
-    exhentai, setExhentai, popularMode, setPopularMode, loadMoreRef,
+ const { galleries, search, setSearch, hasMore, loading, loadingMore, error, setError,
+ exhentai, setExhentai, setPopularMode, loadMoreRef,
     localGids, setLocalGids, downloadingGids, setDownloadingGids,
     filters, setFilters, toggleCategory, toggleAdvSearch, showAdvanced, setShowAdvanced,
     browse, goPopular } = browseHook

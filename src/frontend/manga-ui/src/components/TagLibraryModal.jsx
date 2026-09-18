@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, X, Pencil, Trash2, GitMerge } from 'lucide-react'
+import { Search, Pencil, Trash2, GitMerge } from 'lucide-react'
 import { fetchTagStats, searchTags } from '../api/work'
 import { updateTag, deleteTag, mergeTags, fetchTagCategories, cleanupEmptyTags } from '../api'
 

@@ -1,16 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BookOpen, Eye, LayoutGrid, AlignJustify, Check,
-  GripVertical, FolderOpen, ArrowRight, Layers
+ BookOpen, LayoutGrid, AlignJustify, Check,
+ GripVertical, Layers
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   DragOverlay, useDraggable, useDroppable
 } from '@dnd-kit/core';
 import {
-  SortableContext, useSortable, verticalListSortingStrategy,
-  rectSortingStrategy, arrayMove
+ SortableContext, useSortable,   rectSortingStrategy, arrayMove
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 

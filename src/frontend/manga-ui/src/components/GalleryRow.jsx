@@ -4,8 +4,7 @@ import { getCategoryColor, formatSize } from './GalleryCard'
 import { formatCount } from '../utils/format'
 
 const GalleryRow = memo(({
-  g, isSel, dragGid, albumInfo, ribbonText,
-  batchMode, onCardClick, onDragMouseDown, onOpenDetail, onOpenReader
+  g, isSel, dragGid, albumInfo, batchMode, onCardClick, onDragMouseDown
 }) => {
   return (
     <div

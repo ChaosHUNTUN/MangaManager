@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { fetchWorkTags, addWorkTags, removeWorkTag, searchTags, fetchTagStats, createTag } from '../api/work'
 
 const CATEGORY_LABELS = {

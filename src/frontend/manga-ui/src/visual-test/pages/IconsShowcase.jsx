@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import * as LucideIcons from 'lucide-react';
 import {
@@ -6,7 +6,7 @@ import {
   HeartOutlined, StarOutlined, MessageOutlined, BellOutlined,
   PlayCircleOutlined, CameraOutlined, EditOutlined, DeleteOutlined,
   DownloadOutlined, UploadOutlined, LockOutlined, UnlockOutlined,
-  EyeOutlined, EyeInvisibleOutlined, CheckCircleOutlined, CloseCircleOutlined,
+ CheckCircleOutlined, CloseCircleOutlined,
   SyncOutlined, PlusOutlined, MinusOutlined, QuestionCircleOutlined,
   WarningOutlined, InfoCircleOutlined, CopyOutlined, FolderOutlined,
   FileOutlined, TagOutlined, BookOutlined,

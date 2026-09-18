@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { fetchEHGalleryDetail, translateEHTags, fetchBlockedTags, addBlockedTag, removeBlockedTag, addDownloadTask } from '../api'
 
-export default function useEHDetail({ showToast, localGids, setLocalGids, setDownloadingGids, setError }) {
+export default function useEHDetail({ showToast, setLocalGids, setDownloadingGids, setError }) {
   const [detail, setDetail] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [tagTranslations, setTagTranslations] = useState({})

@@ -1,6 +1,5 @@
-import React from 'react';
 import { motion } from 'framer-motion';
-import { Type, AlignJustify } from 'lucide-react';
+import {} from 'lucide-react';
 
 const TYPOGRAPHY_ITEMS = [
   { var: '--text-3xs', size: '12px', name: '3xs', sample: '超小字号 — 脚注/辅助信息' },

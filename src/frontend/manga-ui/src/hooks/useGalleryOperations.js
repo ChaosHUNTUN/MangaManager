@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  deleteLocalGallery, redownloadLocalGallery, batchRedownloadLocalGalleries,
+ deleteLocalGallery, batchRedownloadLocalGalleries,
   importLocalGallery, batchImportGalleries, browseDirectory,
   fetchLocalGalleryDetail, fetchGalleryMetaTags,
   updateGalleryMetaTags, translateEHTags,
@@ -10,7 +10,7 @@ import {
 /**
  * 本地画廊操作 Hook — 所有增删改操作，与 UI 完全解耦
  */
-export default function useGalleryOperations({ galleryMetas, albumConfig, paged, pageTotal,
+export default function useGalleryOperations({ albumConfig, paged, pageTotal,
   activeGroup, search, sortBy, randomMode, tagIds, loadMetas, loadPaged, setError, setToast
 }) {
   const navigate = useNavigate()

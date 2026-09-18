@@ -1,8 +1,8 @@
 import { useMemo, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, BookOpen, Globe, FolderOpen, Edit3 } from 'lucide-react'
-import { getLocalCoverUrl, fetchGalleryMetaTags, translateEHTags } from '../api'
-import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
+import { getLocalCoverUrl } from '../api'
+import { getCategoryColorDetail } from '../constants/colors'
 import { formatSize } from '../utils/format'
 import { fetchWorkTags, removeWorkTag } from '../api/work'
 import TagPicker from './TagPicker'
@@ -12,7 +12,7 @@ const getCategoryColor = getCategoryColorDetail
 /**
  * 画廊详情弹窗
  */
-export default function GalleryDetail({ detail, tagTranslations, nsTranslations, filtered, albumConfig, galleries, onClose, onEditTags, onAddToAlbum, onOpenReader }) {
+export default function GalleryDetail({ detail, tagTranslations, nsTranslations, filtered, albumConfig, galleries, onClose, onEditTags, onAddToAlbum }) {
   const [workTags, setWorkTags] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
@@ -32,17 +32,6 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
     if (!albumConfig || !detail) return false
     return Object.values(albumConfig).some(v => (v.gids || []).includes(detail.gid))
   }, [albumConfig, detail])
-
-  const isInAutoGroup = useMemo(() => {
-    if (!albumConfig || !detail || !galleries) return false
-    const albumGids = new Set(Object.values(albumConfig).flatMap(v => v.gids || []))
-    if (albumGids.has(detail.gid)) return false
-    const g = galleries.find(g => g.gid === detail.gid)
-    if (!g) return false
-    const artists = g.artists || []
-    const grps = g.groups || []
-    return artists.length > 0 || grps.length > 0
-  }, [albumConfig, detail, galleries])
 
   // 计算匹配的专辑（KeyTag 或 title 模糊匹配）
   const matchedAlbums = useMemo(() => {

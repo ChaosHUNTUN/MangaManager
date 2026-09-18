@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, X, Plus, Minus } from 'lucide-react'
+import { Search, Plus, Minus } from 'lucide-react'
 import { searchTags, batchAddWorkTags, batchRemoveWorkTags } from '../api/work'
 
 /**

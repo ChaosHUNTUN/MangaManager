@@ -1,12 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import {
-  BookOpen, Palette, Droplets, Type, MousePointer, Zap,
-  Eye, Layers, Sparkles, ArrowRight, Check, GripVertical,
-  PanelLeft, Columns, Maximize2, Minimize2, Moon, Sun,
-  Frame, Grid3X3
+ BookOpen, Palette, Droplets, Zap,
+ Eye, Sparkles, Check, GripVertical,
+  Maximize2, Minimize2, Moon, Grid3X3
 } from 'lucide-react';
-import { Switch, Slider, Button as AntButton, Tag } from 'antd';
 
 // ─────── 设计哲学 ───────
 const PHILOSOPHY = {

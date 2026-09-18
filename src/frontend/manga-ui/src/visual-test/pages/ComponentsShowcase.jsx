@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConfigProvider } from 'antd';
 import {
@@ -11,13 +11,12 @@ import { useAntdTheme } from '../antdTheme';
 import {
   DownloadOutlined, EditOutlined, DeleteOutlined, MoreOutlined,
   CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, CloseCircleOutlined,
-  UserOutlined, SmileOutlined, LoadingOutlined,
-  TableOutlined, AppstoreOutlined, FileTextOutlined,
+ UserOutlined, SmileOutlined,   TableOutlined, AppstoreOutlined, FileTextOutlined,
   HistoryOutlined, FolderOpenOutlined, BellOutlined,
   HomeOutlined,
 } from '@ant-design/icons';
 
-const { Title, Text, Paragraph } = Typography;
+const { Paragraph } = Typography;
 
 const TABLE_DATA = [
   { key: 1, title: '[C97] 少女終末旅行 総集編', artist: 'つくみず', pages: 224, size: '156MB', rating: 4.8, status: 'done' },

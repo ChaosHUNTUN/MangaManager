@@ -8,7 +8,7 @@ import { searchTags } from '../api/work'
  * — 标签翻译（artist/group/category/language 中文映射）
  * — 搜索输入自动补全
  */
-export default function useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, setToast, searchInputRef }) {
+export default function useGallerySearch({ galleryMetas, albumConfig, search, setSearch, cursorPos, setCursorPos, searchInputRef }) {
   const [searchTagTransMap, setSearchTagTransMap] = useState({})
   const [searchSuggestions, setSearchSuggestions] = useState([])
   const suggestTimerRef = useRef(null)

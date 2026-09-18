@@ -1,17 +1,8 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Button as AntButton, ConfigProvider } from 'antd';
 import { Download, BookOpen, FolderOpen, Trash2 } from 'lucide-react';
 import { useAntdTheme } from '../antdTheme';
-
-const BTN_VARIANTS = [
-  { name: 'btn-primary', label: 'primary', css: 'btn-primary' },
-  { name: 'btn-green', label: 'green', css: 'btn-green' },
-  { name: 'btn-outline', label: 'outline', css: 'btn-outline' },
-  { name: 'btn-sm', label: 'sm', css: 'btn-sm' },
-  { name: 'btn-danger', label: 'danger', css: 'btn-danger' },
-  { name: 'btn-ghost', label: 'ghost', css: 'btn-ghost' },
-];
 
 export default function ButtonsShowcase() {
   const antdThemeConfig = useAntdTheme();

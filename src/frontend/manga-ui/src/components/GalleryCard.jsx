@@ -15,8 +15,7 @@ import { formatSize, formatCount } from '../utils/format'
  *  - 专辑归属 badge (动态颜色)
  */
 const GalleryCard = memo(({
-  g, isSel, isHovered, dragGid, albumInfo, ribbonText,
-  batchMode, onCardClick, onDragMouseDown, onOpenDetail, onOpenReader, onDelete
+ g, isSel, isHovered, dragGid, albumInfo,   batchMode, onCardClick, onDragMouseDown, onOpenDetail, onOpenReader, onDelete
 }) => {
   const [coverLoaded, setCoverLoaded] = useState(false)
   const [coverError, setCoverError] = useState(false)

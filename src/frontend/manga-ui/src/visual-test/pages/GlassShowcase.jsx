@@ -1,13 +1,5 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Droplets, Layers } from 'lucide-react';
-
-const GLASS_COLORS = [
-  { label: 'accent-op5', color: 'rgba(139,122,160,0.5)' },
-  { label: 'teal-op5', color: 'rgba(90,138,138,0.5)' },
-  { label: 'purple-op4', color: 'rgba(120, 80, 160, 0.4)' },
-  { label: 'blue-op4', color: 'rgba(60, 100, 180, 0.4)' },
-];
 
 export default function GlassShowcase() {
   return (

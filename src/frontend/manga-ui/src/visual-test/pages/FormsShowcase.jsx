@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConfigProvider, Form, Input, InputNumber, Select, DatePicker, Switch, Slider, Rate, Radio, Checkbox, Upload, Button } from 'antd';
 import { useAntdTheme } from '../antdTheme';

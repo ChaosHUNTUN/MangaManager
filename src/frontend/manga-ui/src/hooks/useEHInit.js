@@ -7,7 +7,7 @@ import { fetchEHGalleryDetail } from '../api'
  * — 或进入热门浏览模式
  * — 所有逻辑与 UI 渲染完全隔离
  */
-export default function useEHInit({ browse, openDetailViaApi, cookieInfo }) {
+export default function useEHInit({ browse, openDetailViaApi }) {
   useEffect(() => {
     let cancelled = false
 
