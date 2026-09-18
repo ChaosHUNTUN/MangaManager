@@ -230,6 +230,8 @@ MangaManager/
 - **关键坑**：`DownloadMonitor.Merge` 原先只删"快照里已有且已完成"的项，而添加循环会把 incoming 中的**全部**任务加进去（含 completed）→ **已完成任务每轮轮询都被重新加回列表**（所以那个筛选并非无用，它确实在过滤这些记录）。修法：`activeGids` 只统计非 completed/removed，且添加循环 `continue` 跳过
 - Web 端的「已完成」筛选保留（本次只按要求改控制台）
 - 注：控制台是 WPF 独立进程，改动需**重新构建并重启控制台**才生效；且它同时管理 API 服务进程，切勿在未确认的情况下直接结束它
+  - **⚠️ 为什么改了没生效（重要，已踩两次）**：`manga_manager.py` 启动 API 用的是 `dotnet run --no-build`，控制台则是**直接运行预编译 exe**（`bin/Debug/net9.0-windows/MangaManager.Console.exe`）——**两者都不会自动重建**。所以改完代码后如果只是"重启应用"，跑的还是旧二进制（本次现象：控制台进程今天 3:17 启动，但 exe 时间戳还是 9 月 1 日）。**正确顺序：停进程 → `dotnet build <项目>` → 再启动**
+  - 结束控制台时用强制结束（Stop-Process）不会触发它的 `Exit_Click`，因此**不会连带停掉 API**；但走它自己的「退出」按钮会停 API+前端
 
 ### 2026-09-10 收尾（审查 / 备份 / 上线）
 - **运行时设置页（库目录 / Cookie / 代理）**：新增 `AppSettingsService`（`runtime_settings.json`，优先级 **runtime > appsettings > 内置默认**）+ `GET/PUT /api/settings/app`、`POST /api/settings/app/rescan`；前端新增 `/settings` 页（目录选择器 + Cookie 复用 `useEHCookie` + 代理）与首次配置引导弹窗 `FirstRunSetup`（未配置库目录时弹出）。要点：
