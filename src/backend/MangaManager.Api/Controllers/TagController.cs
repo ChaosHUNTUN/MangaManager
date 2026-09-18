@@ -119,18 +119,47 @@ public class TagController : ControllerBase
 
     /// <summary>删除标签</summary>
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, [FromQuery] bool force = false)
     {
         var tag = await _db.Tags.FindAsync(id);
         if (tag == null) return NotFound();
         // SQLite 未启用 FK 级联：先显式清理关联，避免残留孤儿行
         var workLinks = await _db.WorkTags.Where(w => w.TagId == id).ToListAsync();
+        // 标签大多来自 EH 元数据同步，删掉有作品的标签会丢失分类且后续同步可能再建回来，
+        // 因此默认拒绝；确实要删（如清理合成标签）需显式 force=true
+        if (workLinks.Count > 0 && !force)
+        {
+            return BadRequest(new ApiResponse<object>(false, new { workCount = workLinks.Count },
+                $"该标签仍关联 {workLinks.Count} 部作品。若只是去重请使用「合并」；确实要删除请加 force=true。"));
+        }
         var mangaLinks = await _db.MangaTags.Where(mt => mt.TagId == id).ToListAsync();
         _db.WorkTags.RemoveRange(workLinks);
         _db.MangaTags.RemoveRange(mangaLinks);
+        var orderRows = await _db.TagOrders.Where(o => o.TagId == id).ToListAsync();
+        if (orderRows.Count > 0) _db.TagOrders.RemoveRange(orderRows);
         _db.Tags.Remove(tag);
         await _db.SaveChangesAsync();
         return Ok(new ApiResponse<object>(true, new { removedWorkLinks = workLinks.Count, removedMangaLinks = mangaLinks.Count }));
+    }
+
+    /// <summary>清理空标签（无任何作品关联）——删除标签唯一真正安全的场景</summary>
+    [HttpPost("cleanup-empty")]
+    public async Task<IActionResult> CleanupEmpty()
+    {
+        var emptyIds = await _db.Tags
+            .Where(t => !_db.WorkTags.Any(w => w.TagId == t.Id) && !_db.MangaTags.Any(m => m.TagId == t.Id))
+            .Select(t => t.Id)
+            .ToListAsync();
+        if (emptyIds.Count == 0)
+            return Ok(new ApiResponse<object>(true, new { removed = 0 }, "没有需要清理的空标签"));
+
+        var orderRows = await _db.TagOrders.Where(o => emptyIds.Contains(o.TagId)).ToListAsync();
+        if (orderRows.Count > 0) _db.TagOrders.RemoveRange(orderRows);
+        var emptyTags = await _db.Tags.Where(t => emptyIds.Contains(t.Id)).ToListAsync();
+        _db.Tags.RemoveRange(emptyTags);
+        await _db.SaveChangesAsync();
+        return Ok(new ApiResponse<object>(true, new { removed = emptyIds.Count },
+            $"已清理 {emptyIds.Count} 个空标签"));
     }
 
     /// <summary>合并标签：把 fromId 的全部关联搬移到 intoId 并删除 fromId（改名/去重场景）</summary>

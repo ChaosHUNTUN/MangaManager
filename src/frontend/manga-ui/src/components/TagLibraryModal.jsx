@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search, X, Pencil, Trash2, GitMerge } from 'lucide-react'
 import { fetchTagStats, searchTags } from '../api/work'
-import { updateTag, deleteTag, mergeTags, fetchTagCategories } from '../api'
+import { updateTag, deleteTag, mergeTags, fetchTagCategories, cleanupEmptyTags } from '../api'
+
+/** 标签有作品关联时禁止删除：删掉只会让作品失去分类，且后续同步可能再建回来 */
 
 /**
  * 标签库管理弹窗：搜索/分类浏览 + 改名/改中文/改色/改分类 + 合并 + 删除
@@ -85,7 +87,7 @@ export default function TagLibraryModal({ onClose, onChanged }) {
   }
 
   const doDelete = async (tag) => {
-    if (!window.confirm(`删除标签「${tag.nameCn || tag.name}」？\n\n所有作品上的该标签关联都会被移除，此操作不可撤销。`)) return
+    if (!window.confirm(`删除空标签「${tag.nameCn || tag.name}」？\n\n该标签没有任何作品关联，删除不影响作品。`)) return
     setBusy(true)
     try {
       const r = await deleteTag(tag.id)
@@ -95,13 +97,34 @@ export default function TagLibraryModal({ onClose, onChanged }) {
     finally { setBusy(false) }
   }
 
+  const emptyCount = useMemo(() => stats.filter(t => !(t.count > 0)).length, [stats])
+
+  /** 批量清理空标签——删除标签唯一真正安全的场景 */
+  const doCleanupEmpty = async () => {
+    if (!window.confirm(`清理全部 ${emptyCount} 个空标签（没有任何作品关联）？\n\n不会影响任何作品。`)) return
+    setBusy(true)
+    try {
+      const r = await cleanupEmptyTags()
+      if (!r.success) { alert(r.message || '清理失败'); return }
+      await refresh()
+    } catch (e) { alert('清理失败: ' + (e.message || e)) }
+    finally { setBusy(false) }
+  }
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !busy) onClose() }}>
       <div className="modal" onClick={e => e.stopPropagation()}
         style={{ width: 'min(720px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontWeight: 600 }}>标签库管理 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({stats.length})</span></span>
-          <button className="btn-sm" onClick={onClose} disabled={busy}>✕</button>
+          <span style={{ fontWeight: 600 }}>标签库管理 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({stats.length}{emptyCount > 0 ? `，空标签 ${emptyCount}` : ''})</span></span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button className="btn-sm" onClick={doCleanupEmpty} disabled={busy || emptyCount === 0}
+              title={emptyCount > 0 ? `删除 ${emptyCount} 个没有任何作品关联的空标签` : '没有空标签'}
+              style={emptyCount === 0 ? { opacity: 0.45 } : {}}>
+              <Trash2 size={12} /> 清理空标签{emptyCount > 0 ? ` (${emptyCount})` : ''}
+            </button>
+            <button className="btn-sm" onClick={onClose} disabled={busy}>✕</button>
+          </div>
         </div>
 
         {/* 搜索 + 分类 */}
@@ -141,8 +164,16 @@ export default function TagLibraryModal({ onClose, onChanged }) {
                         style={{ padding: '1px 6px', color: 'var(--accent)' }}><Pencil size={12} /></button>
                       <button className="btn-sm" title="合并到其他标签" onClick={() => { setMerging(merging?.id === t.id ? null : t); setMergeQuery('') }}
                         style={{ padding: '1px 6px', color: 'var(--warning)' }}><GitMerge size={12} /></button>
-                      <button className="btn-sm" title="删除" onClick={() => doDelete(t)}
-                        style={{ padding: '1px 6px', color: 'var(--error)' }}><Trash2 size={12} /></button>
+                      {t.count > 0 ? (
+                        <button className="btn-sm" disabled
+                          title={`该标签关联 ${t.count} 部作品，不能直接删除（会让作品失去该分类）；如需去重请用「合并」`}
+                          style={{ padding: '1px 6px', color: 'var(--text-dim)', cursor: 'not-allowed' }}>
+                          <Trash2 size={12} />
+                        </button>
+                      ) : (
+                        <button className="btn-sm" title="删除空标签（无作品关联）" onClick={() => doDelete(t)}
+                          style={{ padding: '1px 6px', color: 'var(--error)' }}><Trash2 size={12} /></button>
+                      )}
                     </span>
                   )}
                 </div>

@@ -31,8 +31,14 @@ export async function updateTag(id, updates) {
   })
 }
 
-export async function deleteTag(id) {
-  return request(`/api/tag/${id}`, { method: 'DELETE' })
+/** 删除标签；force=false 时后端会拒绝删除仍有关联作品的标签 */
+export async function deleteTag(id, force = false) {
+  return request(`/api/tag/${id}${force ? '?force=true' : ''}`, { method: 'DELETE' })
+}
+
+/** 清理空标签（无任何作品关联） */
+export async function cleanupEmptyTags() {
+  return request('/api/tag/cleanup-empty', { method: 'POST' })
 }
 
 export async function mergeTags(fromId, intoId) {
