@@ -62,6 +62,8 @@ export default function LocalGallery() {
   const pageSize = parseInt(searchParams.get('size') || '20', 10)
   const page = parseInt(searchParams.get('p') || '1', 10)
   const viewMode = searchParams.get('view') || 'grid'
+  // 移动端固定网格显示：切换按钮已移除，若 URL 残留 view=list 会无法切回
+  const effectiveViewMode = isMobile ? 'grid' : viewMode
   const rawGroup = searchParams.get('group') || 'all'
   // 专辑方案已废弃：即使 URL 残留 album: 分组也回退到"全部"
   const activeGroup = rawGroup.startsWith('album:') && !FEATURES.enableAlbums ? 'all' : rawGroup
@@ -421,10 +423,13 @@ export default function LocalGallery() {
               {singleTagId && <option value="custom">{'🔢 '}标签顺序</option>}
               {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
-            <div style={{ display: 'flex', gap: 0 }}>
-              <button className="btn-sm" onClick={() => setViewMode('grid')} title="网格视图" style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
-              <button className="btn-sm" onClick={() => setViewMode('list')} title="列表视图" style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
-            </div>
+            {/* 显示模式切换：仅桌面端（手机端固定网格） */}
+            {!isMobile && (
+              <div style={{ display: 'flex', gap: 0 }}>
+                <button className="btn-sm" onClick={() => setViewMode('grid')} title="网格视图" style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
+                <button className="btn-sm" onClick={() => setViewMode('list')} title="列表视图" style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
+              </div>
+            )}
           </div>
 
           {/* 右侧：操作按钮组 */}
@@ -513,7 +518,7 @@ export default function LocalGallery() {
           )}
 
           {/* 画廊网格/列表 */}
-          {viewMode === 'grid' ? (
+          {effectiveViewMode === 'grid' ? (
             (isAlbumSortMode || isTagOrderMode) ? (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => setActiveDragId(e.active.id)}
                 onDragEnd={isTagOrderMode ? handleTagOrderDragEnd : handleDragEnd}>
