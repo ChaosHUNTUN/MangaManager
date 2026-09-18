@@ -400,15 +400,16 @@ export default function LocalGallery() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
             <button className="btn-sm sidebar-toggle" onClick={() => setSidebarOpen(true)}
               style={{ borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>☰ {FEATURES.enableAlbums ? '专辑' : '标签'}</button>
-            <Link to="/ehentai" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}><IconGlobe size={14} /> 在线</Link>
+            {/* 移动端已有底部标签栏（本地/浏览/下载/设置），顶栏不再重复放这些入口 */}
+            {!isMobile && <Link to="/ehentai" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}><IconGlobe size={14} /> 在线</Link>}
             {/* 全部：清除所有筛选与搜索，回到完整作品列表（原「下载」入口位置） */}
             <button className="btn-sm" onClick={clearAllFilters}
               title="清除全部筛选与搜索，显示所有作品"
               style={{ borderColor: noFilter ? 'var(--accent-border)' : 'var(--border-input)', color: noFilter ? 'var(--accent)' : 'var(--text-secondary)', background: noFilter ? 'var(--accent-bg)' : 'transparent' }}>
               <IconGrid size={14} /> 全部
             </button>
-            <Link to="/settings" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }} title="设置：库目录 / Cookie / 代理">⚙ 设置</Link>
-            <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>
+            {!isMobile && <Link to="/settings" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }} title="设置：库目录 / Cookie / 代理">⚙ 设置</Link>}
+            {!isMobile && <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>}
             <span className="badge badge-teal">{pageTotal}</span>
           </div>
 

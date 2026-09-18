@@ -9,12 +9,15 @@ import useEHBrowse from '../hooks/useEHBrowse'
 import useEHSearch from '../hooks/useEHSearch'
 import useEHDetail from '../hooks/useEHDetail'
 import useEHInit from '../hooks/useEHInit'
+import useIsMobile from '../hooks/useIsMobile'
 const getCategoryColor = getCategoryColorDetail
 
 // 一键导出书签：在已登录的 e-hentai.org 页面点击，自动复制 ipb_member_id / ipb_pass_hash / igneous 为 JSON
 const BOOKMARKLET = "javascript:(()=>{const g=n=>{const m=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(n+'='));return m?decodeURIComponent(m.slice(n.length+1)):''};const o={ipb_member_id:g('ipb_member_id'),ipb_pass_hash:g('ipb_pass_hash'),igneous:g('igneous')};const t=JSON.stringify(o);navigator.clipboard.writeText(t).then(()=>alert('已复制 EH Cookie，回 MangaManager 粘贴导入'))['catch'](()=>prompt('手动复制：',t))})()"
 
 export default function EHentai() {
+  const isMobile = useIsMobile()
+
   // ─── Toast ───
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
@@ -76,10 +79,13 @@ export default function EHentai() {
         display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: '0 var(--space-4)', height: 'var(--header-height)',
         background: 'var(--surface)', borderBottom: '1px solid var(--divider)', flexShrink: 0, marginBottom: 'var(--space-2)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
-          <Link to="/" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}>📁 本地</Link>
-          <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>🌐 E-Hentai</span>
-        </div>
+        {/* 移动端有底部标签栏，本地入口与标题都不再重复显示 */}
+        {!isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+            <Link to="/" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}>📁 本地</Link>
+            <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>🌐 E-Hentai</span>
+          </div>
+        )}
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
           <span style={{ fontSize: '0.72rem', color: cookieStatus.color, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
