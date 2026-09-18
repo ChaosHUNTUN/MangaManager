@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { Download } from 'lucide-react'
 import ScrollToTop from '../components/ScrollToTop'
 import { getEHImageProxyUrl, API_BASE } from '../api'
 import { getCategoryColorDetail, CATEGORY_COLORS_DETAIL as CATEGORY_COLORS } from '../constants/colors'
@@ -75,6 +76,12 @@ export default function EHentai() {
     if (isMobile && Date.now() - lastScrollRef.current < 250) return
     handleOpenDetail(g)
   }, [isMobile, handleOpenDetail])
+  // 下载按钮同样防护：滑动列表时误触会直接进下载队列，代价比误开详情更高
+  const handleDownloadTap = useCallback((e, g) => {
+    e.stopPropagation()
+    if (isMobile && Date.now() - lastScrollRef.current < 250) return
+    handleDownloadCard(e, g)
+  }, [isMobile, handleDownloadCard])
   const toggleBlockedPanel = useCallback(() => { setShowBlockedPanel(v => !v); loadBlockedTags() }, [loadBlockedTags, setShowBlockedPanel])
   const toggleExhentai = useCallback((checked) => { setExhentai(checked); setPopularMode(false); browse(search, checked) }, [setExhentai, setPopularMode, browse, search])
   const resetFilters = useCallback(() => setFilters({ categoryMask: 0, minRating: 0, pageFrom: '', pageTo: '', advSearch: 0 }), [setFilters])
@@ -329,6 +336,23 @@ export default function EHentai() {
                   : <button onClick={e => handleDownloadCard(e, g)} style={{ padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)', cursor: 'pointer', backdropFilter: 'blur(6px)' }}
                     onMouseEnter={e2 => e2.currentTarget.style.background = 'rgba(160,128,80,0.35)'} onMouseLeave={e2 => e2.currentTarget.style.background = 'rgba(0,0,0,0.6)'}>下载</button>}
               </div>
+              {/* 移动端常驻下载按钮：悬浮层在手机上不可见，避免必须先进详情才能下载 */}
+              {isMobile && !localGids.has(g.gid) && !downloadingGids.has(g.gid) && (
+                <button onClick={e => handleDownloadTap(e, g)} title="直接下载"
+                  style={{
+                    position: 'absolute', right: 6, bottom: 6, zIndex: 6,
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '6px 12px', minHeight: 34,
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    background: 'rgba(0,0,0,0.66)', color: '#fff',
+                    fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-semibold)',
+                    cursor: 'pointer', backdropFilter: 'blur(6px)',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}>
+                  <Download size={13} /> 下载
+                </button>
+              )}
             </div>
             <div style={{ padding: '6px 8px 8px' }}>
               <div title={g.title || `#${g.gid}`} style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', color: 'var(--text-primary)', fontWeight: 'var(--weight-medium)', userSelect: 'none' }}>{g.title || `#${g.gid}`}</div>
