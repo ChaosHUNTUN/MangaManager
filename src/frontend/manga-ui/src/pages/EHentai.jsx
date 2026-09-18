@@ -95,20 +95,17 @@ export default function EHentai() {
   return (
       <div className="container eh-container" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 'var(--space-4)', minHeight: '100vh' }}>
       {/* 导航栏 */}
+      {/* 移动端顶栏内容全部移除后只剩空条，直接不渲染，避免占高度 */}
+      {!isMobile && (
       <div style={{
         display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: '0 var(--space-4)', height: 'var(--header-height)',
         background: 'var(--surface)', borderBottom: '1px solid var(--divider)', flexShrink: 0, marginBottom: 'var(--space-2)',
       }}>
-        {/* 移动端有底部标签栏，本地入口与标题都不再重复显示 */}
-        {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
             <Link to="/" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)', fontWeight: 'var(--weight-semibold)' }}>📁 本地</Link>
             <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>🌐 E-Hentai</span>
           </div>
-        )}
         <div style={{ flex: 1 }} />
-        {/* 账号相关（Cookie 状态 / 配置 / 验证 / 屏蔽）：移动端不管理，统一在「设置」页处理 */}
-        {!isMobile && (
         <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
           <span style={{ fontSize: '0.72rem', color: cookieStatus.color, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: cookieStatus.color, display: 'inline-block' }} />
@@ -122,8 +119,8 @@ export default function EHentai() {
             style={{ borderColor: showBlockedPanel ? 'rgba(176,96,96,0.3)' : 'var(--border-input)', color: showBlockedPanel ? 'var(--error)' : 'var(--text-secondary)' }}>
             {blockedTags.length > 0 ? `🚫 ${blockedTags.length}` : '屏蔽'}</button>
         </div>
-        )}
       </div>
+      )}
 
       {/* Cookie 面板 */}
       {!isMobile && showCookie && (
