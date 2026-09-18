@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, ArrowDown, ArrowUpDown,
   BookOpen, GripHorizontal, Sun, ZoomIn, ZoomOut, Play, Pause, HelpCircle,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
+  ChevronsLeft, ChevronsRight, ChevronsUp, ChevronsDown, SlidersHorizontal,
 } from 'lucide-react';
 import ThumbnailStrip from './ThumbnailStrip';
+import ReaderSettingsModal from './ReaderSettingsModal';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const Btn = React.memo(({ active, onClick, title, icon, compact, disabled }) => (
   <motion.button whileTap={disabled ? undefined : { scale: 0.9 }} onClick={onClick} title={title}
@@ -27,7 +31,9 @@ export default function ReaderToolbar({
   setUiVisible, setShowThumbs,
   setDirection, setFlow, setReadingOrder,
   setBgCycled, setPadding, setFitCycled,
+  setFit, setZoom, setBackground,
   zoomIn, zoomOut,
+  goForward, goBack,
   toggleSlideshow, setSlideshowInterval, scrollSpeed, setScrollSpeed,
   onPrevGallery, onNextGallery, canPrevGallery, canNextGallery,
   // 图片
@@ -39,6 +45,37 @@ export default function ReaderToolbar({
   const bgName = ['暗色', '纯黑', '纸色'][background];
   const isPaginated = flow === 'paginated';
   const isVertical = direction === 'vertical';
+  const rtl = !isVertical && readingOrder === 'rtl';
+  const isMobile = useIsMobile();
+  const [showSettings, setShowSettings] = useState(false);
+
+  // 移动端极简工具行：换作品（双箭头）/ 翻页（单箭头）/ 自动阅读 / 设置
+  const mobileBar = (
+    <>
+      <BtnGroup>
+        <Btn compact disabled={!canPrevGallery} onClick={onPrevGallery} title="上一部"
+          icon={isVertical ? <ChevronsLeft size={16} /> : <ChevronsUp size={16} />} />
+        <Btn compact disabled={!canNextGallery} onClick={onNextGallery} title="下一部"
+          icon={isVertical ? <ChevronsRight size={16} /> : <ChevronsDown size={16} />} />
+      </BtnGroup>
+      <Sep />
+      <Btn compact onClick={goBack} title="上一页"
+        icon={isVertical ? <ChevronUp size={16} /> : (rtl ? <ChevronRight size={16} /> : <ChevronLeft size={16} />)} />
+      <Btn compact onClick={goForward} title="下一页"
+        icon={isVertical ? <ChevronDown size={16} /> : (rtl ? <ChevronLeft size={16} /> : <ChevronRight size={16} />)} />
+      <Btn compact active={slideshowActive} onClick={toggleSlideshow}
+        title={slideshowActive ? '暂停自动阅读' : '开始自动阅读'}
+        icon={slideshowActive ? <Pause size={15} /> : <Play size={15} />} />
+      <Sep />
+      <motion.button whileTap={{ scale: 0.94 }} onClick={() => { setShowSettings(true); setUiVisible(true) }}
+        title="阅读设置"
+        className="r-btn compact"
+        style={{ width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <SlidersHorizontal size={15} />
+        <span style={{ fontSize: 'var(--text-2xs)' }}>设置</span>
+      </motion.button>
+    </>
+  );
 
   return (
     <>
@@ -54,7 +91,8 @@ export default function ReaderToolbar({
               <div className="r-hud-title">{title}</div>
               <div className="r-hud-sub">{currentPage + 1}/{totalPages}</div>
             </div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            {/* 桌面端快捷按钮；移动端收进底部「设置」弹窗，保持 HUD 干净 */}
+            {!isMobile && <div style={{ display: 'flex', gap: 4 }}>
               <Btn active={direction === 'horizontal'} onClick={() => setDirection(d => d === 'horizontal' ? 'vertical' : 'horizontal')}
                 title={`滚动方向: ${direction === 'horizontal' ? '横向' : '纵向'}`}
                 icon={direction === 'horizontal' ? <ArrowLeftRight size={15} /> : <ArrowUpDown size={15} />} />
@@ -64,7 +102,7 @@ export default function ReaderToolbar({
                 <Btn active={showHelp} onClick={onToggleHelp} title="快捷键 (?)"
                   icon={<HelpCircle size={15} />} />
               )}
-            </div>
+            </div>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -84,12 +122,14 @@ export default function ReaderToolbar({
         {uiVisible && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }} className="r-bar">
-            {/* 缩略图 */}
-            <ThumbnailStrip
-              open={showThumbs} images={images}
-              currentPage={currentPage} pageStep={pageStep}
-              isCoverAlone={false}
-              onJump={setCurrentPage} />
+            {/* 缩略图（移动端不显示，避免挤占阅读区） */}
+            {!isMobile && (
+              <ThumbnailStrip
+                open={showThumbs} images={images}
+                currentPage={currentPage} pageStep={pageStep}
+                isCoverAlone={false}
+                onJump={setCurrentPage} />
+            )}
             {/* 进度条（翻页/滚动模式均显示；滚动模式点击滑块跳页） */}
             <div className="r-progress-row" onPointerDown={e => e.stopPropagation()}>
               <input type="range" min={0} max={Math.max(0, totalPages - 1)} step={1}
@@ -100,6 +140,7 @@ export default function ReaderToolbar({
             </div>
             {/* 工具行 */}
             <div className="r-bar-row" onPointerDown={e => e.stopPropagation()}>
+              {isMobile ? mobileBar : (<>
               {/* 作品导航（交叉轴图标随方向） */}
               <BtnGroup>
                 <Btn compact disabled={!canPrevGallery} onClick={onPrevGallery}
@@ -176,10 +217,26 @@ export default function ReaderToolbar({
                   className="r-pad-input" />
                 <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', flexShrink: 0 }}>%</span>
               </span>
+              </>)}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 阅读设置弹窗（移动端集中入口，桌面也可用） */}
+      <ReaderSettingsModal
+        open={showSettings} onClose={() => setShowSettings(false)}
+        direction={direction} setDirection={setDirection}
+        flow={flow} setFlow={setFlow}
+        readingOrder={readingOrder} setReadingOrder={setReadingOrder}
+        fit={fit} zoom={zoom} setFit={setFit} setZoom={setZoom}
+        zoomIn={zoomIn} zoomOut={zoomOut}
+        background={background} setBackground={setBackground}
+        padding={padding} setPadding={setPadding}
+        slideshowActive={slideshowActive} toggleSlideshow={toggleSlideshow}
+        slideshowInterval={slideshowInterval} setSlideshowInterval={setSlideshowInterval}
+        scrollSpeed={scrollSpeed} setScrollSpeed={setScrollSpeed}
+      />
     </>
   );
 }

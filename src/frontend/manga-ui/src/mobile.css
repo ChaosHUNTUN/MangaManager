@@ -148,7 +148,8 @@
   .mobile .r-bar-row {
     gap: 4px;
     flex-wrap: nowrap;
-    justify-content: flex-start;
+    /* 移动端工具行已精简，内容少时居中；万一超宽仍可横向滚动 */
+    justify-content: safe center;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;

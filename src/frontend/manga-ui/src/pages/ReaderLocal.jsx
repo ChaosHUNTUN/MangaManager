@@ -489,7 +489,9 @@ export default function ReaderLocal() {
         setUiVisible={setUiVisible} setShowThumbs={setShowThumbs}
         setDirection={setDirection} setFlow={setFlow} setReadingOrder={setReadingOrder}
         setBgCycled={setBgCycled} setPadding={setPadding} setFitCycled={setFitCycled}
+        setFit={setFit} setZoom={setZoom} setBackground={setBackground}
         zoomIn={zoomIn} zoomOut={zoomOut} zoomReset={zoomReset}
+        goForward={goForward} goBack={goBack}
         toggleSlideshow={toggleSlideshow} setSlideshowInterval={setSlideshowInterval}
         scrollSpeed={scrollSpeed} setScrollSpeed={setScrollSpeed}
         goForward={goForward} goBack={goBack}
