@@ -232,9 +232,9 @@ export default function LocalGallery() {
     batchRedownloadConfirm, setBatchRedownloadConfirm, handleBatchRedownload,
     detail, detailLoading, setDetail, tagTranslations, nsTranslations, handleOpenDetail,
     handleOpenReader,
-    importModal, setImportModal, importForm, setImportForm, importing, importDirBrowser, setImportDirBrowser, handleBrowseImport, handleImport,
-    batchImportModal, setBatchImportModal, batchImportForm, setBatchImportForm, batchImporting, batchImportResult, setBatchImportResult, handleBatchImport,
-    editTagsModal, setEditTagsModal, editTagsForm, setEditTagsForm, editTagsSaving, loadEditTags, saveEditTags } = ops
+    importModal, setImportModal, importForm, setImportForm, importing, setImporting, importDirBrowser, setImportDirBrowser, handleBrowseImport, handleImport,
+    batchImportModal, setBatchImportModal, batchImportForm, setBatchImportForm, batchImporting, setBatchImporting, batchImportResult, setBatchImportResult, handleBatchImport,
+    editTagsModal, setEditTagsModal, editTagsForm, setEditTagsForm, editTagsSaving, setEditTagsSaving, loadEditTags, saveEditTags } = ops
 
   // ── 卡片交互（组件的轻量逻辑） ──
   const handleCardClick = useCallback((g) => {
