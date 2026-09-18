@@ -59,22 +59,14 @@
     animation: r-modal-up 0.22s ease-out;
   }
   .mobile .gallery-topbar {
-    flex-wrap: wrap; height: auto !important;
+    height: auto !important;
     padding: var(--space-2) var(--space-3) !important;
     gap: var(--space-2) !important;
     position: sticky; top: 0; z-index: 20;
   }
   .mobile .gallery-topbar > div { flex-wrap: wrap; row-gap: var(--space-2); }
   .mobile .gallery-topbar > div:nth-child(1) { order: 1; }
-  .mobile .gallery-topbar > div:nth-child(3) { order: 2; margin-left: auto; }
-  .mobile .gallery-topbar > div:nth-child(2) { order: 3; flex-basis: 100%; } /* 搜索框独占一行 */
-  /* 工具栏：取消横向滚动条，改为换行 */
-  .mobile .gallery-toolbar {
-    height: auto !important; overflow-x: visible !important;
-    flex-wrap: wrap; row-gap: var(--space-2);
-    padding: var(--space-2) var(--space-3) !important;
-  }
-  .mobile .gallery-toolbar > div { flex-wrap: wrap; row-gap: var(--space-2); }
+  .mobile .gallery-topbar > div:nth-child(2) { order: 2; flex-basis: 100%; } /* 搜索框独占一行 */
   /* 分页按钮可换行 */
   .mobile .gallery-pagination { flex-wrap: wrap; }
 

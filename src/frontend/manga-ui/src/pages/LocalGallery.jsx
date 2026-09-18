@@ -391,11 +391,13 @@ export default function LocalGallery() {
       <div className="main-area" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
         {/* ── 紧凑顶栏 ── */}
         <div className="gallery-topbar" style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-          padding: '0 var(--space-4)', height: 'var(--header-height)',
+          display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
+          padding: 'var(--space-2) var(--space-4)',
           background: 'var(--surface)', borderBottom: '1px solid var(--divider)',
           flexShrink: 0,
         }}>
+          {/* 第 1 行：导航 / 作品计数 / 视图控制（随机·排序·显示模式） */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', width: '100%' }}>
           {/* 左侧：Logo + 标题 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
             <button className="btn-sm sidebar-toggle" onClick={() => setSidebarOpen(true)}
@@ -411,30 +413,6 @@ export default function LocalGallery() {
             {!isMobile && <Link to="/settings" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }} title="设置：库目录 / Cookie / 代理">⚙ 设置</Link>}
             {!isMobile && <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>}
             <span className="badge badge-teal">{pageTotal}</span>
-          </div>
-
-          {/* 中间：搜索框 */}
-          <div style={{ flex: 1, minWidth: 0, maxWidth: 480, position: 'relative', margin: '0 auto' }}>
-            <input ref={searchInputRef} type="text" placeholder="搜索标题 / GID / artist:xxx / tag:xxx …"
-              defaultValue={search} onChange={handleSearchInput}
-              onCompositionStart={() => { composingRef.current = true }}
-              onCompositionEnd={(e) => { composingRef.current = false; handleSearchInput(e) }}
-              onKeyDown={e => { if (e.key === 'Escape') setShowSearchSuggestions(false) }}
-              onFocus={() => { if (search && searchSuggestions.length > 0) setShowSearchSuggestions(true) }}
-              onBlur={() => setTimeout(() => setShowSearchSuggestions(false), 150)}
-              style={{ width: '100%', height: 32, padding: '0 var(--space-3)', fontSize: 'var(--text-sm)' }} />
-            {showSearchSuggestions && searchSuggestions.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--surface-high)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)', maxHeight: 240, overflowY: 'auto', marginTop: 4 }}>
-                <div style={{ padding: '4px 10px', fontSize: 'var(--text-3xs)', color: 'var(--text-dim)', borderBottom: '1px solid var(--divider)' }}>点击补全 · {searchSuggestions.length} 条</div>
-                {searchSuggestions.map((t, i) => (
-                  <div key={i} onMouseDown={e => { e.preventDefault(); applySearchTag(t) }} style={{ padding: '5px 10px', cursor: 'pointer', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover-bg)' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-                    <span className="badge badge-muted" style={{ fontSize: 'var(--text-3xs)' }}>{t.prefix}</span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* 右侧：操作按钮组 */}
@@ -484,6 +462,31 @@ export default function LocalGallery() {
               {/* 批量删除：仅桌面端（手机端用卡片左滑删除） */}
               {!isMobile && <button className="btn-sm" onClick={() => setBatchMode(true)} title="批量选择作品" style={{ color: 'var(--error)' }}><IconTrash size={14} /> 批量</button>}
             </>}
+          </div>
+          </div>
+
+          {/* 第 2 行：搜索框独占整行 */}
+          <div style={{ width: '100%', maxWidth: 720, position: 'relative', margin: '0 auto' }}>
+            <input ref={searchInputRef} type="text" placeholder="搜索标题 / GID / artist:xxx / tag:xxx …"
+              defaultValue={search} onChange={handleSearchInput}
+              onCompositionStart={() => { composingRef.current = true }}
+              onCompositionEnd={(e) => { composingRef.current = false; handleSearchInput(e) }}
+              onKeyDown={e => { if (e.key === 'Escape') setShowSearchSuggestions(false) }}
+              onFocus={() => { if (search && searchSuggestions.length > 0) setShowSearchSuggestions(true) }}
+              onBlur={() => setTimeout(() => setShowSearchSuggestions(false), 150)}
+              style={{ width: '100%', height: 32, padding: '0 var(--space-3)', fontSize: 'var(--text-sm)' }} />
+            {showSearchSuggestions && searchSuggestions.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--surface-high)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)', maxHeight: 240, overflowY: 'auto', marginTop: 4 }}>
+                <div style={{ padding: '4px 10px', fontSize: 'var(--text-3xs)', color: 'var(--text-dim)', borderBottom: '1px solid var(--divider)' }}>点击补全 · {searchSuggestions.length} 条</div>
+                {searchSuggestions.map((t, i) => (
+                  <div key={i} onMouseDown={e => { e.preventDefault(); applySearchTag(t) }} style={{ padding: '5px 10px', cursor: 'pointer', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover-bg)' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <span className="badge badge-muted" style={{ fontSize: 'var(--text-3xs)' }}>{t.prefix}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
