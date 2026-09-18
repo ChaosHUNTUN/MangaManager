@@ -399,7 +399,7 @@ export default function LocalGallery() {
           {/* 第 1 行：导航 / 作品计数 / 视图控制（随机·排序·显示模式） */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', width: '100%' }}>
           {/* 左侧：Logo + 标题 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', rowGap: 'var(--space-1)', minWidth: 0 }}>
             <button className="btn-sm sidebar-toggle" onClick={() => setSidebarOpen(true)}
               style={{ borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }}>☰ {FEATURES.enableAlbums ? '专辑' : '标签'}</button>
             {/* 移动端已有底部标签栏（本地/浏览/下载/设置），顶栏不再重复放这些入口 */}
@@ -413,10 +413,22 @@ export default function LocalGallery() {
             {!isMobile && <Link to="/settings" className="btn-sm" style={{ textDecoration: 'none', borderColor: 'var(--border-input)', color: 'var(--text-secondary)' }} title="设置：库目录 / Cookie / 代理">⚙ 设置</Link>}
             {!isMobile && <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-semibold)', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><IconFolder size={15} /> 本地画廊</span>}
             <span className="badge badge-teal">{pageTotal}</span>
+            {/* 视图控制紧跟计数徽章：随机 / 排序 / 显示模式 */}
+            <button className="btn-sm" onClick={() => loadRandom(true)} title="随机抽取"><IconRandom size={14} /></button>
+            <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })}
+              title="排序方式" style={{ height: 28, fontSize: 'var(--text-xs)' }}>
+              {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}
+              {singleTagId && <option value="custom">{'🔢 '}标签顺序</option>}
+              {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            <div style={{ display: 'flex', gap: 0 }}>
+              <button className="btn-sm" onClick={() => setViewMode('grid')} title="网格视图" style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
+              <button className="btn-sm" onClick={() => setViewMode('list')} title="列表视图" style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
+            </div>
           </div>
 
           {/* 右侧：操作按钮组 */}
-          <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap', rowGap: 'var(--space-1)', minWidth: 0 }}>
             {batchMode ? <>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--error)', whiteSpace: 'nowrap', alignSelf: 'center' }}>已选 {selected.size}</span>
               <button className="btn-sm" onClick={() => { const all = paged.map(g => g.gid); setSelected(selected.size === all.length ? new Set() : new Set(all)) }}>{selected.size === paged.length ? '取消全选' : '全选'}</button>
@@ -430,18 +442,6 @@ export default function LocalGallery() {
                 <button className="btn-sm" onClick={() => setImportModal(true)} style={{ color: 'var(--accent-teal)' }}><IconImport size={14} /> 导入</button>
                 <button className="btn-sm" onClick={() => setBatchImportModal(true)} style={{ color: 'var(--warning)' }}><IconBatch size={14} /> 批量导入</button>
               </>}
-              {/* 常用视图控制：随机 / 排序 / 显示模式 放在一起 */}
-              <button className="btn-sm" onClick={() => loadRandom(true)} title="随机抽取"><IconRandom size={14} /></button>
-              <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })}
-                title="排序方式" style={{ height: 28, fontSize: 'var(--text-xs)' }}>
-                {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}
-                {singleTagId && <option value="custom">{'🔢 '}标签顺序</option>}
-                {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-              <div style={{ display: 'flex', gap: 0 }}>
-                <button className="btn-sm" onClick={() => setViewMode('grid')} title="网格视图" style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
-                <button className="btn-sm" onClick={() => setViewMode('list')} title="列表视图" style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
-              </div>
               {singleTagId && (
                 <button className="btn-sm" onClick={() => updateParams({ sort: sortBy === 'custom' ? null : 'custom', p: null })}
                   title="在该标签内自定义连载/阅读顺序：开启后拖拽卡片调整顺序"
