@@ -62,6 +62,19 @@ export default function EHentai() {
   // ─── 供 JSX 使用的稳定 handler（封装复杂参数构造） ───
   const handleDownloadCard = useCallback((e, g) => { e.stopPropagation(); handleDownload({ gid: g.gid, token: g.token, title: g.title, thumb: g.thumbUrl }) }, [handleDownload])
   const handleOpenDetail = useCallback((g) => openDetail(g.gid, g.token), [openDetail])
+
+  // 误触防护：滚动（含惯性滚动）过程中或刚结束时轻触卡片会触发 click，
+  // 移动端很容易在滑动列表时误开详情，这里按"最近是否滚动过"过滤
+  const lastScrollRef = useRef(0)
+  useEffect(() => {
+    const onScroll = () => { lastScrollRef.current = Date.now() }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  const handleCardTap = useCallback((g) => {
+    if (isMobile && Date.now() - lastScrollRef.current < 250) return
+    handleOpenDetail(g)
+  }, [isMobile, handleOpenDetail])
   const toggleBlockedPanel = useCallback(() => { setShowBlockedPanel(v => !v); loadBlockedTags() }, [loadBlockedTags, setShowBlockedPanel])
   const toggleExhentai = useCallback((checked) => { setExhentai(checked); setPopularMode(false); browse(search, checked) }, [setExhentai, setPopularMode, browse, search])
   const resetFilters = useCallback(() => setFilters({ categoryMask: 0, minRating: 0, pageFrom: '', pageTo: '', advSearch: 0 }), [setFilters])
@@ -87,6 +100,8 @@ export default function EHentai() {
           </div>
         )}
         <div style={{ flex: 1 }} />
+        {/* 账号相关（Cookie 状态 / 配置 / 验证 / 屏蔽）：移动端不管理，统一在「设置」页处理 */}
+        {!isMobile && (
         <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
           <span style={{ fontSize: '0.72rem', color: cookieStatus.color, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: cookieStatus.color, display: 'inline-block' }} />
@@ -100,10 +115,11 @@ export default function EHentai() {
             style={{ borderColor: showBlockedPanel ? 'rgba(176,96,96,0.3)' : 'var(--border-input)', color: showBlockedPanel ? 'var(--error)' : 'var(--text-secondary)' }}>
             {blockedTags.length > 0 ? `🚫 ${blockedTags.length}` : '屏蔽'}</button>
         </div>
+        )}
       </div>
 
       {/* Cookie 面板 */}
-      {showCookie && (
+      {!isMobile && showCookie && (
         <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
             <span style={{ fontWeight: 600 }}>Cookie</span>
@@ -278,8 +294,12 @@ export default function EHentai() {
       {!loading && galleries.length === 0 && !error && !cookieInfo && (
         <div style={{ background: '#7f1d1d20', border: '1px solid #ef444440', borderRadius: 8, padding: 16, marginBottom: 14, fontSize: '0.85rem', color: '#fca5a5', textAlign: 'center' }}>
           <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>未配置 E-Hentai Cookie</p>
-          <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#888' }}>请点击上方 <b>🍪 Cookie</b> 按钮配置后再使用在线功能</p>
-          <button className="btn-primary" onClick={() => setShowCookie(true)} style={{ fontSize: '0.8rem' }}>配置 Cookie</button>
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#888' }}>
+            {isMobile ? '请在「设置」页配置后再使用在线功能' : <>请点击上方 <b>🍪 Cookie</b> 按钮配置后再使用在线功能</>}
+          </p>
+          {isMobile
+            ? <Link to="/settings" className="btn-primary" style={{ fontSize: '0.8rem', textDecoration: 'none', display: 'inline-block' }}>前往设置</Link>
+            : <button className="btn-primary" onClick={() => setShowCookie(true)} style={{ fontSize: '0.8rem' }}>配置 Cookie</button>}
         </div>
       )}
       {error && <div className="status-msg error" style={{ marginBottom: 12 }}>⚠ {error} <button className="btn-sm" onClick={retryBrowse} style={{ marginLeft: 12, borderColor: '#f87171', color: '#fca5a5' }}>重试</button></div>}
@@ -289,7 +309,7 @@ export default function EHentai() {
       {/* 画廊列表 */}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(var(--card-min-width), 1fr))' }}>
         {galleries.map(g => (
-          <div key={`${g.gid}_${g.token}`} onClick={() => handleOpenDetail(g)} className="gallery-card"
+          <div key={`${g.gid}_${g.token}`} onClick={() => handleCardTap(g)} className="gallery-card"
             style={{ background: 'var(--surface-card)', borderRadius: 'var(--radius-md)', overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border-card)', transition: 'border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out)' }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-active)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-card)'; e.currentTarget.style.transform = 'none' }}>
