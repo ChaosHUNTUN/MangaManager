@@ -132,11 +132,10 @@ export function useReaderEngine(totalPages) {
 
   /** 运行时测量 HUD/底部栏实际高度，替代硬编码 44/36 */
   const updateChrome = useCallback((top, bottom) => {
-    setViewport(v => ({
-      ...v,
-      top: Math.max(0, Math.round(top ?? 44)),
-      bottom: Math.max(0, Math.round(bottom ?? 36)),
-    }));
+    const t = Math.max(0, Math.round(top ?? 44));
+    const b = Math.max(0, Math.round(bottom ?? 36));
+    // 值未变化时返回原对象，避免 ResizeObserver 触发的无谓重渲染
+    setViewport(v => (v.top === t && v.bottom === b) ? v : { ...v, top: t, bottom: b });
   }, []);
 
   useEffect(() => {

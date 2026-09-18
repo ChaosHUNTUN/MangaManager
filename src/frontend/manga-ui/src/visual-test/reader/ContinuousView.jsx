@@ -137,11 +137,12 @@ export default function ContinuousView({
     if (currentPage === reportedPageRef.current) return;
     const c = el.children[currentPage];
     el.scrollTo({
+      // 减去容器上内边距，让目标帧顶部落在 HUD 下方而不是被浮层盖住
       left: isHoriz ? c.offsetLeft : el.scrollLeft,
-      top: isHoriz ? el.scrollTop : c.offsetTop,
+      top: isHoriz ? el.scrollTop : Math.max(0, c.offsetTop - chromeTop),
       behavior: 'smooth',
     });
-  }, [currentPage, isHoriz, scrollerRef, dimsMap]);
+  }, [currentPage, isHoriz, scrollerRef, dimsMap, chromeTop]);
 
   // 画廊/方向切换后重置滚动跟踪
   useEffect(() => {
@@ -159,13 +160,14 @@ export default function ContinuousView({
     // 帧必须已有真实尺寸（图片加载完成）：content-visibility 占位尺寸不算数，避免按估算落位
     if (!dimsMap[pageIndex] || size < 2) return;
     const start = isHoriz ? c.offsetLeft : c.offsetTop;
+    const target = Math.max(0, start + size * (offset ?? 0) - (isHoriz ? 0 : chromeTop));
     el.scrollTo({
-      left: isHoriz ? start + size * (offset ?? 0) : el.scrollLeft,
-      top: isHoriz ? el.scrollTop : start + size * (offset ?? 0),
+      left: isHoriz ? target : el.scrollLeft,
+      top: isHoriz ? el.scrollTop : target,
       behavior: 'auto',
     });
     onRestoreApplied?.();
-  }, [scrollRestore, isHoriz, scrollerRef, dimsMap, onRestoreApplied]);
+  }, [scrollRestore, isHoriz, scrollerRef, dimsMap, onRestoreApplied, chromeTop]);
 
   // grab scroll（拖拽结束后不误触 UI 切换：用 moved 标记真实位移）
   const handlePointerDown = useCallback((e) => {
@@ -216,7 +218,9 @@ export default function ContinuousView({
         display: 'flex', flexDirection: isHoriz ? (rtl ? 'row-reverse' : 'row') : 'column',
         // 横向 RTL：row-reverse 让第 0 页在最右，向后读往左（保持 LTR 滚动语义，规避浏览器 RTL scrollLeft 差异）
         // 放大后帧可能超出视口：靠边对齐保证溢出部分可滚动到达；未放大时居中
-        alignItems: zoom > 1 ? 'flex-start' : 'center', gap: 0, padding: 0,
+        alignItems: zoom > 1 ? 'flex-start' : 'center', gap: 0,
+        // 上下留出 HUD/底栏高度的内边距：否则首帧顶部永远压在 HUD 下、末帧底部压在底栏下（滚到 0 也露不出来）
+        paddingTop: chromeTop, paddingBottom: chromeBottom, paddingLeft: 0, paddingRight: 0,
       }}>
       {images.map((name, i) => (
         <Frame key={i} name={name} index={i} total={images.length}

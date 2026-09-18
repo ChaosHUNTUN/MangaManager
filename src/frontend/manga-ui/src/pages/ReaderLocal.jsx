@@ -194,16 +194,24 @@ export default function ReaderLocal() {
 
   // ── 运行时测量 HUD/底部栏实际高度（含缩略图展开），替代硬编码 44/36 ──
   useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
     const measure = () => {
-      const root = rootRef.current
-      if (!root) return
       const hud = root.querySelector('.r-hud')
       const bar = root.querySelector('.r-bar')
       updateChrome(hud ? hud.getBoundingClientRect().height : 0, bar ? bar.getBoundingClientRect().height : 0)
     }
     measure()
     const t = setTimeout(measure, 80)   // AnimatePresence 高度动画结束后复测
-    return () => clearTimeout(t)
+    // 工具栏内容变化（缩略图展开、自动阅读控件出现、窄屏换行）时高度会变，
+    // 用 ResizeObserver 持续跟踪，保证可用阅读区始终准确
+    let ro
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure)
+      const hud = root.querySelector('.r-hud'); if (hud) ro.observe(hud)
+      const bar = root.querySelector('.r-bar'); if (bar) ro.observe(bar)
+    }
+    return () => { clearTimeout(t); ro?.disconnect() }
   }, [uiVisible, showThumbs, updateChrome, loading])
 
   // ── 画廊间切换（需在 engine 之后, currentPage 依赖其解构） ──

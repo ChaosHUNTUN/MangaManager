@@ -186,6 +186,11 @@ MangaManager/
 8. **拖拽排序保存要合并式**——只保存当前页数组会整体覆盖全量顺序；跨页场景（连载系列几十上百部）必须先取完整列表、替换当前页块
 9. **两套拖拽系统不能同时挂**——旧 `useGalleryDrag`（mousedown 克隆）与 dnd-kit（pointer 传感器）同时启用时互相干扰；启用 dnd-kit 的排序模式必须禁用旧拖拽并移除 `onDragMouseDown`
 
+### 2026-09-18 阅读器移动端修复（触摸滚动 / 高度适应）
+- **高度"没适应"根因（浮层与定位不一致）**：HUD/底栏是 `position: absolute` 浮层，代码只在**算尺寸**时扣了它们的高度，**定位**却仍按整屏居中 → 图片下沿被工具栏遮住；滚动模式更严重——滚动容器没有上下内边距，首帧顶部永远压在 HUD 下、末帧底部压在底栏下（滚到 0 也露不出来）。修法：翻页模式把 HUD/底栏高度做成 `.r-gallery` 的 padding（算尺寸与摆放用同一组值）；滚动模式给 scroller 加 `paddingTop/Bottom`，跳页/进度恢复的 scrollTo 目标同步减去该内边距
+- **"只能点击翻页"根因（pointercancel）**：内容溢出时滚动容器 `touch-action: pan-x pan-y` 让浏览器接管平移 → 触发 `pointercancel` → `pointerup` 永远不来 → 依赖 `pointerup` 的手势识别失效。修法：**触摸改走 touch 事件**（`touchstart/touchmove/touchend`，不受平移接管取消影响），鼠标仍走 pointer 事件；溢出时滑动优先平移、到边界才翻页
+- 其它：`updateChrome` 值不变时不 setState（配合 ResizeObserver 跟踪 HUD/底栏实际高度）；手机端图片预取半径 50 → 8
+
 ### 2026-09-10 收尾（审查 / 备份 / 上线）
 - **运行时设置页（库目录 / Cookie / 代理）**：新增 `AppSettingsService`（`runtime_settings.json`，优先级 **runtime > appsettings > 内置默认**）+ `GET/PUT /api/settings/app`、`POST /api/settings/app/rescan`；前端新增 `/settings` 页（目录选择器 + Cookie 复用 `useEHCookie` + 代理）与首次配置引导弹窗 `FirstRunSetup`（未配置库目录时弹出）。要点：
   - `GallerySyncService.DownloadDir` 由 `static readonly` 改为**动态读取**，新增 `RescanAsync(reason, pruneMissing)` —— 设置页触发的重扫用 **pruneMissing=false（只增改不删）**，避免误配目录清空索引
