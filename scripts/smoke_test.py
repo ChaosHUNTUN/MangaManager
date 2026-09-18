@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -37,13 +38,34 @@ def req(api, method, path, body=None, timeout=30):
         return json.loads(resp.read().decode("utf-8"))
 
 
+def pick_free_port(preferred=18099):
+    """挑一个能立即绑定的端口。
+
+    不要用 5299 这类"动态端口范围"内的端口：Windows 动态范围默认为 1024~15000，
+    落在其中的端口可能已被临时分配占用，Kestrel 绑定会抛 WSAEACCES(10013)，
+    表现为"临时 API 起不来、冒烟测试卡满 90 秒"。
+    """
+    for port in [preferred] + list(range(preferred + 1, preferred + 20)):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise SystemExit("找不到可用端口（18099 起试了 20 个）")
+
+
 def main():
     ap = argparse.ArgumentParser(description="MangaManager smoke test")
     ap.add_argument("--dll", default=os.path.join(tempfile.gettempdir(), "mm_p4_build", "MangaManager.Api.dll"))
     ap.add_argument("--db", default=r"D:\MangaManager\src\backend\MangaManager.Api\manga.db")
-    ap.add_argument("--port", type=int, default=5299)
+    ap.add_argument("--port", type=int, default=0, help="0 = 自动选择空闲端口（默认，避开系统动态端口范围）")
     ap.add_argument("--build", action="store_true", help="先 dotnet build 到临时目录")
     args = ap.parse_args()
+
+    if not args.port:
+        args.port = pick_free_port()
+        print("使用空闲端口: %d" % args.port)
 
     api = "http://127.0.0.1:%d" % args.port
     root = os.path.join(tempfile.gettempdir(), "mm_smoke")
@@ -103,6 +125,15 @@ def main():
     try:
         up = False
         for _ in range(90):
+            # 进程已退出就不必再空等 90 秒：直接把 stderr 末尾打出来（例如端口绑定失败 WSAEACCES）
+            if p.poll() is not None:
+                print("临时 API 进程已退出，stderr 末尾：")
+                try:
+                    with open(os.path.join(root, "e.log"), encoding="utf-8", errors="replace") as f:
+                        print("".join(f.readlines()[-10:]).rstrip())
+                except Exception:
+                    pass
+                break
             time.sleep(1)
             try:
                 req(api, "GET", "/health", timeout=2)

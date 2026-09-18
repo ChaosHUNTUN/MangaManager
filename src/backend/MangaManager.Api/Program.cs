@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.AspNetCore.ResponseCompression;
 using MangaManager.Data;
 using MangaManager.Services;
 
@@ -90,7 +91,21 @@ builder.Services.AddSingleton<EhentaiService>();
 
 builder.Services.AddControllers();
 
+// 响应压缩：本地库 meta/tag-stats 等 JSON 负载达数百 KB~1.4MB，压缩后体积约为 1/5
+// （默认 MIME 列表已含 application/json；图片与 SSE(text/event-stream) 不在列表内，不会被压缩）
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Optimal);
+builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+
 var app = builder.Build();
+
+// 必须在其它中间件之前：越早包裹，响应（含异常中间件产出的 JSON）才能被压缩
+app.UseResponseCompression();
 
 // 全局异常处理中间件（确保所有 500 响应带 CORS 头和 JSON body）
 app.Use(async (context, next) =>
