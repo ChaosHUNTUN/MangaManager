@@ -96,8 +96,11 @@
   /* ── EHentai ── */
   .mobile .eh-container { padding: var(--space-3) !important; }
   .mobile .eh-container > div:first-child { flex-wrap: wrap; row-gap: var(--space-2); }
-  .mobile .eh-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
-  .mobile .eh-card-title { font-size: 0.72rem !important; }
+  /* 封面源图仅约 250px：卡片越小放大越少、越清晰。约 3 列（390px 屏 ≈114px/卡，DPR3 下 1.4x 放大） */
+  .mobile .eh-container .grid {
+    --card-min-width: 104px;
+    gap: var(--space-2) !important;
+  }
   /* 搜索栏：换行 + 输入框独占整行，按钮不被挤出屏幕 */
   .mobile .eh-searchbar { flex-wrap: wrap; row-gap: var(--space-2); }
   .mobile .eh-searchbar > div:first-child { flex-basis: 100%; min-width: 0 !important; }
@@ -156,8 +159,9 @@
 
   /* ── 横屏微调（短高视口：网格更密、标签栏更矮、留白收紧） ── */
   @media (max-height: 500px) {
-    .mobile .eh-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
     .mobile .grid { --card-min-width: 150px; }
+    /* 横屏可视宽度大：保持更多列，避免封面被拉大 */
+    .mobile .eh-container .grid { --card-min-width: 120px; }
     .mobile-tab { min-height: 44px; }
     body { padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
     .mobile .r-thumb { width: 44px; height: 62px; }

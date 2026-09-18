@@ -66,6 +66,9 @@
   gap: var(--space-4);
 }
 
+/* 在线模块：EH 封面源图仅约 250px，卡片越小放大倍数越低（越清晰） */
+.eh-container .grid { --card-min-width: 200px; }
+
 /* ── Card ── */
 .card {
   background: var(--surface-high);
@@ -727,8 +730,6 @@ button > svg {
 }
 
 /* ── E-Hentai 响应式 ── */
-@media (max-width: 900px) { .eh-grid { grid-template-columns: repeat(3, 1fr) !important; } }
-@media (max-width: 600px) { .eh-grid { grid-template-columns: repeat(2, 1fr) !important; } }
 
 /* ── 触摸优化 ── */
 @media (hover: none) and (pointer: coarse) {
