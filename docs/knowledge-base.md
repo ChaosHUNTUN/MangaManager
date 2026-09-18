@@ -233,6 +233,27 @@ MangaManager/
   - **⚠️ 为什么改了没生效（重要，已踩两次）**：`manga_manager.py` 启动 API 用的是 `dotnet run --no-build`，控制台则是**直接运行预编译 exe**（`bin/Debug/net9.0-windows/MangaManager.Console.exe`）——**两者都不会自动重建**。所以改完代码后如果只是"重启应用"，跑的还是旧二进制（本次现象：控制台进程今天 3:17 启动，但 exe 时间戳还是 9 月 1 日）。**正确顺序：停进程 → `dotnet build <项目>` → 再启动**
   - 结束控制台时用强制结束（Stop-Process）不会触发它的 `Exit_Click`，因此**不会连带停掉 API**；但走它自己的「退出」按钮会停 API+前端
 
+### 2026-09-19 全量优化执行记录
+
+**P0 真 bug**
+- **编辑标签保存直接报错**：`useGalleryOperations` 定义了 `setEditTagsSaving` / `setImporting` / `setBatchImporting` 但**没 return**，LocalGallery 的内联 handler 直接调用 → 点击保存抛 `ReferenceError`（编辑标签功能实际不可用）。已补全 hook 返回值与解构
+
+**P1 性能（实测数据）**
+- **响应压缩**：后端原先未启用 → 已加 Brotli(Optimal)+Gzip。实测 meta 311KB→33KB、tag-stats 535KB→86KB、/api/tag 500KB→80KB（注意 Brotli 用 `Fastest` 反而比 gzip 大，必须用 `Optimal`）
+- **meta 载荷瘦身**：`/api/local/galleries/meta` 移除 `AllTags` 字段——它占载荷 76%（1.05MB）且仅被**已禁用的专辑自动匹配**使用。meta 1392KB → 311KB（配合 brotli 33KB）；本地库首屏 JSON 1.93MB → **119KB**
+- **生产包移除开发展示页**：App.jsx 原先把 12 个 visual-test 页面**静态引入**（注释写"loaded lazily"但实际不是），连带 antd/@ant-design/charts/@ant-design/icons 全进生产包。抽出 `src/visual-test/VTRoutes.jsx` 并用 `import.meta.env.DEV + React.lazy` 引入 → **JS 3.77MB → 663KB（gzip 1.10MB → 200KB）**，CSS 52.4→45.4KB，构建 1.4s→0.44s。开发服务器下 `/visual-test/*` 仍可用（已验证模块返回 200）
+
+**P2 数据一致性 / 工程基线**
+- **孤儿 work_tag**：`GallerySyncService` 三处删除点原先只删 `local_gallery`、不清理 `work_tag` → 已同步清理；一次性脚本 `scripts/db/cleanup_orphan_work_tags.py` 清除历史遗留 32 条（54324→54292），复检孤儿/悬空 TagId 均为 0
+- **死端点移除**：`/api/local/groups` + 前端 `fetchLocalGalleryGroups`（从未被调用）+ 后端 `GetGalleryGroups()/GroupInfo`
+- **lint 基线 189 errors → 0**：修复 `no-undef`（上条 bug）、`rules-of-hooks`（GalleryDetail 早退在 Hook 之前）、render 期写 ref（useReaderEngine）、无用赋值；批量清理 160+ 未使用变量/导入；eslint 配置补 node globals、允许空 catch、React Compiler 建议性规则降为 warn。剩 54 warnings（建议性）
+- **冒烟测试偶发卡死**：端口 5299 落在 Windows 动态端口范围(1024-15000)内会偶发 `WSAEACCES`，改为自动挑空闲端口 + 进程退出即失败并打印 stderr。实测从 30~180 秒卡顿降到 **8 秒**跑完
+- 新增 `scripts/devops/check_payload.py`（接口体积/压缩巡检）、`scripts/start_frontend.ps1`
+
+**有意未做（附理由）**
+- 删除 `manga`/`manga_tag`/`author` 三张空表与实体：属旧版漫画子系统（MangaService/MangaController/ReaderController 仍在用），需迁移+连带改造，风险远大于收益
+- 移除 `useGalleryDrag`：专辑关闭后它已被 `disabled` 永久禁用，属休眠代码，删除需改动 GalleryCard/LocalGallery/AlbumSidebar，收益低
+
 ### 2026-09-10 收尾（审查 / 备份 / 上线）
 - **运行时设置页（库目录 / Cookie / 代理）**：新增 `AppSettingsService`（`runtime_settings.json`，优先级 **runtime > appsettings > 内置默认**）+ `GET/PUT /api/settings/app`、`POST /api/settings/app/rescan`；前端新增 `/settings` 页（目录选择器 + Cookie 复用 `useEHCookie` + 代理）与首次配置引导弹窗 `FirstRunSetup`（未配置库目录时弹出）。要点：
   - `GallerySyncService.DownloadDir` 由 `static readonly` 改为**动态读取**，新增 `RescanAsync(reason, pruneMissing)` —— 设置页触发的重扫用 **pruneMissing=false（只增改不删）**，避免误配目录清空索引
