@@ -323,7 +323,15 @@ export default function EHentai() {
             <div style={{ position: 'relative', width: '100%', paddingBottom: '138%', background: 'var(--surface-high)' }}>
               {g.thumbUrl ? (
                 <img src={getEHImageProxyUrl(g.thumbUrl)} alt={g.title || ''} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0, transition: 'opacity var(--duration-normal) var(--ease-out)' }}
-                  loading="lazy" onLoad={e => { e.target.style.opacity = '1' }} onError={e => { e.target.style.display = 'none' }} />
+                  loading="lazy"
+                  onLoad={e => {
+                    const t = e.target
+                    t.style.opacity = '1'
+                    // 横版封面塞进竖版卡片时 cover 会再放大 1.5~2 倍（250px 源图雪上加霜），
+                    // 改为等比缩放留黑边，避免二次放大
+                    if (t.naturalWidth > t.naturalHeight) t.style.objectFit = 'contain'
+                  }}
+                  onError={e => { e.target.style.display = 'none' }} />
               ) : <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: '2rem', opacity: 0.15 }}>📖</span></div>}
               {localGids.has(g.gid) ? <div className="badge" style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(107,139,107,0.85)', color: '#fff', borderColor: 'transparent' }}>已下载</div>
                 : downloadingGids.has(g.gid) ? <div className="badge" style={{ position: 'absolute', top: 6, left: 6, zIndex: 5, background: 'rgba(80,128,160,0.85)', color: '#fff', borderColor: 'transparent' }}>下载中</div>
