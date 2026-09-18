@@ -225,6 +225,12 @@ MangaManager/
 - **"只能点击翻页"根因（pointercancel）**：内容溢出时滚动容器 `touch-action: pan-x pan-y` 让浏览器接管平移 → 触发 `pointercancel` → `pointerup` 永远不来 → 依赖 `pointerup` 的手势识别失效。修法：**触摸改走 touch 事件**（`touchstart/touchmove/touchend`，不受平移接管取消影响），鼠标仍走 pointer 事件；溢出时滑动优先平移、到边界才翻页
 - 其它：`updateChrome` 值不变时不 setState（配合 ResizeObserver 跟踪 HUD/底栏实际高度）；手机端图片预取半径 50 → 8
 
+### 2026-09-19 桌面控制台：移除"已完成"任务
+- **控制台只保留在途任务**（等待/下载中/暂停/失败），不再显示任何已完成记录：删除 XAML 的「已完成」筛选 Chip、`IsFilterCompleted` 属性、`MatchesFilter` 的 completed 分支
+- **关键坑**：`DownloadMonitor.Merge` 原先只删"快照里已有且已完成"的项，而添加循环会把 incoming 中的**全部**任务加进去（含 completed）→ **已完成任务每轮轮询都被重新加回列表**（所以那个筛选并非无用，它确实在过滤这些记录）。修法：`activeGids` 只统计非 completed/removed，且添加循环 `continue` 跳过
+- Web 端的「已完成」筛选保留（本次只按要求改控制台）
+- 注：控制台是 WPF 独立进程，改动需**重新构建并重启控制台**才生效；且它同时管理 API 服务进程，切勿在未确认的情况下直接结束它
+
 ### 2026-09-10 收尾（审查 / 备份 / 上线）
 - **运行时设置页（库目录 / Cookie / 代理）**：新增 `AppSettingsService`（`runtime_settings.json`，优先级 **runtime > appsettings > 内置默认**）+ `GET/PUT /api/settings/app`、`POST /api/settings/app/rescan`；前端新增 `/settings` 页（目录选择器 + Cookie 复用 `useEHCookie` + 代理）与首次配置引导弹窗 `FirstRunSetup`（未配置库目录时弹出）。要点：
   - `GallerySyncService.DownloadDir` 由 `static readonly` 改为**动态读取**，新增 `RescanAsync(reason, pruneMissing)` —— 设置页触发的重扫用 **pruneMissing=false（只增改不删）**，避免误配目录清空索引

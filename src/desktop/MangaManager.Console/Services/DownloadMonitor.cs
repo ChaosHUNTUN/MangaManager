@@ -95,7 +95,13 @@ public class DownloadMonitor : IDownloadMonitor
 
     private void Merge(List<DownloadTaskDto> incoming)
     {
-        var activeGids = new HashSet<int>(incoming.Select(t => t.Gid));
+        // 控制台只关心在途任务（等待/下载中/暂停/失败），不保留"已完成/已移除"记录：
+        // 1) 快照里凡已完成、已移除、或本次未返回的任务一律移除；
+        // 2) 添加时跳过已完成/已移除，避免每轮轮询又被重新加回列表
+        var activeGids = new HashSet<int>();
+        foreach (var t in incoming)
+            if (t.Status is not ("completed" or "removed")) activeGids.Add(t.Gid);
+
         for (int i = _snapshot.Count - 1; i >= 0; i--)
         {
             var t = _snapshot[i];
@@ -105,6 +111,7 @@ public class DownloadMonitor : IDownloadMonitor
 
         foreach (var t in incoming)
         {
+            if (t.Status is "completed" or "removed") continue;
             var idx = _snapshot.FindIndex(x => x.Gid == t.Gid);
             if (idx >= 0)
             {

@@ -127,7 +127,6 @@ public class MainViewModel : ViewModelBase
     public bool IsFilterPending { get => _taskFilter == "pending"; set { if (value) TaskFilter = "pending"; } }
     public bool IsFilterPaused { get => _taskFilter == "paused"; set { if (value) TaskFilter = "paused"; } }
     public bool IsFilterFailed { get => _taskFilter == "failed"; set { if (value) TaskFilter = "failed"; } }
-    public bool IsFilterCompleted { get => _taskFilter == "completed"; set { if (value) TaskFilter = "completed"; } }
 
     // ===== 命令 =====
     public ICommand StartAllCommand { get; }
@@ -255,7 +254,6 @@ public class MainViewModel : ViewModelBase
         "pending"     => t.Status == "pending",
         "paused"      => t.Status == "paused",
         "failed"      => t.Status == "failed",
-        "completed"   => t.Status == "completed",
         _             => true
     };
 

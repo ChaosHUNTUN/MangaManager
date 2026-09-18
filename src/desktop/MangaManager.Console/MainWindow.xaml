@@ -534,8 +534,6 @@
                                                      IsChecked="{Binding IsFilterPaused}" Style="{StaticResource FilterChip}"/>
                                         <RadioButton Content="失败" GroupName="TaskFilter"
                                                      IsChecked="{Binding IsFilterFailed}" Style="{StaticResource FilterChip}"/>
-                                        <RadioButton Content="已完成" GroupName="TaskFilter"
-                                                     IsChecked="{Binding IsFilterCompleted}" Style="{StaticResource FilterChip}"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <Button Content="🔄 重启全部失败"
