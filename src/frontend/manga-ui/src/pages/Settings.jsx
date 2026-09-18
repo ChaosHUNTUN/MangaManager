@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Folder, RefreshCw, Save, ShieldCheck, Globe, AlertCircle, CheckCircle, BookMarked } from 'lucide-react'
+import { Folder, RefreshCw, Save, ShieldCheck, Globe, AlertCircle, CheckCircle, BookMarked, Tags } from 'lucide-react'
 import { fetchAppSettings, saveAppSettings, rescanLibrary } from '../api'
 import useEHCookie from '../hooks/useEHCookie'
 import DirectoryPicker from '../components/DirectoryPicker'
+import TagLibraryModal from '../components/TagLibraryModal'
 
 /** 一键导出书签：在已登录的 e-hentai.org 页面点击，自动复制 Cookie 为 JSON */
 const BOOKMARKLET = "javascript:(()=>{const g=n=>{const m=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(n+'='));return m?decodeURIComponent(m.slice(n.length+1)):''};const o={ipb_member_id:g('ipb_member_id'),ipb_pass_hash:g('ipb_pass_hash'),igneous:g('igneous')};const t=JSON.stringify(o);navigator.clipboard.writeText(t).then(()=>alert('已复制 EH Cookie，回 MangaManager 粘贴导入'))['catch'](()=>prompt('手动复制：',t))})()"
@@ -55,6 +56,7 @@ export default function Settings() {
   const [proxyInput, setProxyInput] = useState('')
   const [savingProxy, setSavingProxy] = useState(false)
   const [rescanning, setRescanning] = useState(false)
+  const [tagLibOpen, setTagLibOpen] = useState(false)
 
   const loadApp = useCallback(async () => {
     setLoading(true)
@@ -245,6 +247,17 @@ export default function Settings() {
         onSelect={handlePickDir}
         onClose={() => setPickerOpen(false)}
       />
+
+      {/* 标签管理（低频维护操作，从画廊顶栏移到这里） */}
+      <Card icon={<Tags size={16} />} title="标签库管理"
+        desc="改名 / 中文名 / 颜色 / 分类、合并重复标签、清理空标签。标签默认来自 EH 元数据同步，一般无需手动维护。">
+        <button className="btn-sm" onClick={() => setTagLibOpen(true)}
+          style={{ borderColor: 'var(--accent-border)', color: 'var(--accent)' }}>
+          <Tags size={13} /> 打开标签库管理
+        </button>
+      </Card>
+
+      {tagLibOpen && <TagLibraryModal onClose={() => setTagLibOpen(false)} />}
     </div>
   )
 }

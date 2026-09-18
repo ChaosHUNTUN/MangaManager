@@ -7,10 +7,10 @@ import useGalleryDrag from '../hooks/useGalleryDrag'
 import useGallerySearch from '../hooks/useGallerySearch'
 import useGalleryOperations from '../hooks/useGalleryOperations'
 import useAlbumConfig from '../hooks/useAlbumConfig'
+import useIsMobile from '../hooks/useIsMobile'
 import GalleryDetail from '../components/GalleryDetail'
 import AlbumSidebar from '../components/AlbumSidebar'
 import AlbumEditModal from '../components/AlbumEditModal'
-import TagLibraryModal from '../components/TagLibraryModal'
 import BatchTagModal from '../components/BatchTagModal'
 import GalleryCard from '../components/GalleryCard'
 import GalleryRow from '../components/GalleryRow'
@@ -33,6 +33,7 @@ const SORT_OPTIONS = [
 
 export default function LocalGallery() {
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
 
   // ── 状态 ──
   const [galleryMetas, setGalleryMetas] = useState([])
@@ -107,7 +108,6 @@ export default function LocalGallery() {
   const [editingAlbumKey, setEditingAlbumKey] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
-  const [tagLibOpen, setTagLibOpen] = useState(false)
   const [batchTagOpen, setBatchTagOpen] = useState(false)
 
   // 拖拽状态
@@ -315,8 +315,22 @@ export default function LocalGallery() {
   const sidebarDragOver = (e) => { e.preventDefault(); sidebarEnter() }
 
   // ── 分页 ──
+  // 每页数量随页码放底部（原在顶部工具栏，属于低频设置）
+  const pageSizeSelect = (
+    <select value={pageSize} onChange={e => updateParams({ size: Number(e.target.value) === 20 ? null : Number(e.target.value), p: null })}
+      title="每页显示数量" style={{ height: 28, fontSize: 'var(--text-xs)', marginLeft: 'var(--space-3)' }}>
+      {PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}/页</option>)}
+    </select>
+  )
+
   const renderPagination = () => {
-    if (totalPages <= 1) return null
+    if (totalPages <= 1) {
+      return (
+        <div className="gallery-pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 'var(--space-5)' }}>
+          {pageSizeSelect}
+        </div>
+      )
+    }
     const pages = []; const s = Math.max(1, safePage - 2); const e = Math.min(totalPages, safePage + 2)
     for (let i = s; i <= e; i++) pages.push(i)
     return (
@@ -326,6 +340,7 @@ export default function LocalGallery() {
         {pages.map(p => <button key={p} className="btn-sm" onClick={() => setPage(p)} style={p === safePage ? { borderColor: 'var(--accent-border)', color: 'var(--accent)', background: 'var(--accent-bg)' } : {}}>{p}</button>)}
         {e < totalPages && <><span style={{ color: 'var(--text-muted)' }}>…</span><button className="btn-sm" onClick={() => setPage(totalPages)}>{totalPages}</button></>}
         <button className="btn-sm" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>»</button>
+        {pageSizeSelect}
       </div>
     )
   }
@@ -436,47 +451,38 @@ export default function LocalGallery() {
                 <button className="btn-sm" onClick={() => setImportModal(true)} style={{ color: 'var(--accent-teal)' }}><IconImport size={14} /> 导入</button>
                 <button className="btn-sm" onClick={() => setBatchImportModal(true)} style={{ color: 'var(--warning)' }}><IconBatch size={14} /> 批量导入</button>
               </>}
-              <button className="btn-sm" onClick={() => loadRandom(true)}><IconRandom size={14} /></button>
-              <button className="btn-sm" onClick={() => setTagLibOpen(true)} style={{ color: 'var(--accent)' }}><Tag size={14} /> 标签管理</button>
-              <button className="btn-sm" onClick={() => setBatchMode(true)} style={{ color: 'var(--error)' }}><IconTrash size={14} /> 批量</button>
+              {/* 常用视图控制：随机 / 排序 / 显示模式 放在一起 */}
+              <button className="btn-sm" onClick={() => loadRandom(true)} title="随机抽取"><IconRandom size={14} /></button>
+              <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })}
+                title="排序方式" style={{ height: 28, fontSize: 'var(--text-xs)' }}>
+                {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}
+                {singleTagId && <option value="custom">{'🔢 '}标签顺序</option>}
+                {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+              <div style={{ display: 'flex', gap: 0 }}>
+                <button className="btn-sm" onClick={() => setViewMode('grid')} title="网格视图" style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
+                <button className="btn-sm" onClick={() => setViewMode('list')} title="列表视图" style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
+              </div>
+              {singleTagId && (
+                <button className="btn-sm" onClick={() => updateParams({ sort: sortBy === 'custom' ? null : 'custom', p: null })}
+                  title="在该标签内自定义连载/阅读顺序：开启后拖拽卡片调整顺序"
+                  style={{ borderColor: isTagOrderMode ? 'var(--accent-border)' : 'var(--border-input)', color: isTagOrderMode ? 'var(--accent)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                  <IconGripDots size={13} /> {tagHasOrder && !isTagOrderMode ? '已排序' : '自定义顺序'}
+                </button>
+              )}
+              {isTagOrderMode && (
+                <button className="btn-sm" onClick={async () => {
+                  try { await saveTagOrder(singleTagId, []); setTagHasOrder(false); fetchTagStats().then(setTagStats).catch(() => {}); setToast('已清除自定义顺序'); loadPaged() }
+                  catch (e) { setToast('清除失败: ' + e.message) }
+                }} title="清除该标签的自定义顺序，恢复规则排序"
+                  style={{ borderColor: 'var(--border-input)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  清除顺序
+                </button>
+              )}
+              {isAlbumSortMode && <button className="btn-sm" onClick={() => { const ak = activeGroup.slice(6); const o = paged.map(g => g.gid); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], order: o }; saveAlbums(cfg); setToast('顺序已保存') }}><Save size={13} /></button>}
+              {/* 批量删除：仅桌面端（手机端用卡片左滑删除） */}
+              {!isMobile && <button className="btn-sm" onClick={() => setBatchMode(true)} title="批量选择作品" style={{ color: 'var(--error)' }}><IconTrash size={14} /> 批量</button>}
             </>}
-          </div>
-        </div>
-
-        {/* ── 工具栏 ── */}
-        <div className="gallery-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) var(--space-4)', borderBottom: '1px solid var(--divider)', flexShrink: 0, overflowX: 'auto', height: 'var(--toolbar-height)' }}>
-          {/* 筛选 chips 已移除：分组/作者/社团筛选改由搜索框（artist:xxx / group:xxx）与侧边栏标签云承担，
-              顶部「全部」按钮一键清空所有筛选 */}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
-            <select value={sortBy} onChange={e => updateParams({ sort: e.target.value === 'modified-desc' ? null : e.target.value, p: null })} style={{ height: 28, fontSize: 'var(--text-xs)' }}>
-              {activeGroup.startsWith('album:') && <option value="custom">{'🔢 '}自定义顺序</option>}
-              {singleTagId && <option value="custom">{'🔢 '}标签顺序</option>}
-              {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-            </select>
-            {isAlbumSortMode && <button className="btn-sm" onClick={() => { const ak = activeGroup.slice(6); const o = paged.map(g => g.gid); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], order: o }; saveAlbums(cfg); setToast('顺序已保存') }}><Save size={13} /></button>}
-            {singleTagId && (
-              <button className="btn-sm" onClick={() => updateParams({ sort: sortBy === 'custom' ? null : 'custom', p: null })}
-                title="在该标签内自定义连载/阅读顺序：开启后拖拽卡片调整顺序"
-                style={{ borderColor: isTagOrderMode ? 'var(--accent-border)' : 'var(--border-input)', color: isTagOrderMode ? 'var(--accent)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                <IconGripDots size={13} /> {tagHasOrder && !isTagOrderMode ? '已排序' : '自定义顺序'}
-              </button>
-            )}
-            {isTagOrderMode && (
-              <button className="btn-sm" onClick={async () => {
-                try { await saveTagOrder(singleTagId, []); setTagHasOrder(false); fetchTagStats().then(setTagStats).catch(() => {}); setToast('已清除自定义顺序'); loadPaged() }
-                catch (e) { setToast('清除失败: ' + e.message) }
-              }} title="清除该标签的自定义顺序，恢复规则排序"
-                style={{ borderColor: 'var(--border-input)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                清除顺序
-              </button>
-            )}
-            <div style={{ display: 'flex', gap: 0 }}>
-              <button className="btn-sm" onClick={() => setViewMode('grid')} style={{ borderColor: viewMode === 'grid' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>▦</button>
-              <button className="btn-sm" onClick={() => setViewMode('list')} style={{ borderColor: viewMode === 'list' ? 'var(--border-active)' : 'var(--border-input)', color: viewMode === 'list' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>☰</button>
-            </div>
-            <select value={pageSize} onChange={e => updateParams({ size: Number(e.target.value) === 20 ? null : Number(e.target.value), p: null })} style={{ height: 28, fontSize: 'var(--text-xs)' }}>
-              {PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}/页</option>)}
-            </select>
           </div>
         </div>
 
@@ -590,12 +596,6 @@ export default function LocalGallery() {
       })()}
 
       {FEATURES.enableAlbums && editingAlbumKey && <AlbumEditModal albumKey={editingAlbumKey} albumConfig={albumConfig} onClose={() => setEditingAlbumKey(null)} onUpdated={handleAlbumUpdated} />}
-
-      {/* 标签库管理 */}
-      {tagLibOpen && (
-        <TagLibraryModal onClose={() => setTagLibOpen(false)}
-          onChanged={() => { fetchTagStats().then(setTagStats).catch(() => {}); loadMetas() }} />
-      )}
 
       {/* 批量标签 */}
       {batchTagOpen && (
