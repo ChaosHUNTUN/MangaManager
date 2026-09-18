@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 
 const RADIUS = 50
+const MOBILE_RADIUS = 8   // 手机端减少预取，避免占满带宽拖慢当前页
 const BATCH_SIZE = 3
 
 /**
@@ -29,8 +30,12 @@ export default function useImagePreload(pages, currentPage, currentGid) {
 
     // ── 构建优先级队列 (当前页由 DOM <img> 加载, 跳过) ──
     // 双向交错但 +1 优先: [4, 6, 3, 7, 2, 8, ...]  → 翻页方向优先
+    const isMobile = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 768px), (max-width: 1024px) and (max-height: 500px)').matches
+    const radius = isMobile ? MOBILE_RADIUS : RADIUS
     const queue = []
-    for (let d = 1; d <= RADIUS; d++) {
+    for (let d = 1; d <= radius; d++) {
       const prev = currentPage - d
       const next = currentPage + d
       if (next < pages.length) queue.push(next)  // 正向翻页优先

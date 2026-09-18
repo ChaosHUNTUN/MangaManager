@@ -132,12 +132,32 @@
   /* ── 阅读器移动端 ── */
   .mobile .r-root { height: 100dvh; }
   .mobile .r-btn { width: 40px; height: 40px; }
-  .mobile .r-hud { height: 48px; }
+  /* 顶部 HUD：避开刘海/状态栏/挖孔 */
+  .mobile .r-hud {
+    height: calc(48px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-left: calc(14px + env(safe-area-inset-left));
+    padding-right: calc(14px + env(safe-area-inset-right));
+  }
   .mobile .r-hud-title {
     max-width: 55vw; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
-  .mobile .r-bar-row { gap: 4px; }
+  /* 底部工具栏：单行横向滚动（原来会换行成 4~5 行，挤占阅读区） */
+  .mobile .r-bar { padding-bottom: env(safe-area-inset-bottom); }
+  .mobile .r-bar-row {
+    gap: 4px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-left: calc(10px + env(safe-area-inset-left));
+    padding-right: calc(10px + env(safe-area-inset-right));
+  }
+  .mobile .r-bar-row::-webkit-scrollbar { display: none; }
+  .mobile .r-bar-row > * { flex-shrink: 0; }
   .mobile .r-thumb { width: 52px; height: 72px; }
   .mobile .r-speed-slider { width: 90px; }
 

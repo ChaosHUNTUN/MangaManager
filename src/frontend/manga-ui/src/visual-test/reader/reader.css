@@ -10,6 +10,9 @@
   user-select: none; -webkit-user-select: none;
   font-family: var(--font-sans);
   display: flex; flex-direction: column;
+  /* 移动端：禁止下拉刷新/橡皮筋连带滚动；manipulation 去掉双击缩放延迟 */
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 /* ── 图片 ── */

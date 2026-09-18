@@ -18,6 +18,7 @@ export default function PaginatedView({
   // 横向 RTL（漫画）：物理左侧=下一页、右侧=上一页
   const rtlHorizontal = !isVertical && readingOrder === 'rtl';
   const [dimsMap, setDimsMap] = useState({});
+  const scrollBoxRef = useRef(null);
   const setImgDim = useCallback((i, w, h) => {
     setDimsMap(prev => {
       const cur = prev[i];
@@ -72,6 +73,23 @@ export default function PaginatedView({
     const r = swipeRef.current?.onUp(e.clientX, e.clientY);
     if (!r || r.action === 'click' || r.action === 'cancel') return;
     suppressClickRef.current = true;
+
+    // 内容溢出时（放大 / 适应宽度下页面高于视口），滑动优先用于平移：
+    // 只有滚动已到达对应边界，才把这次滑动用于翻页，避免两种手势互相吃掉
+    if (needScroll) {
+      const sc = scrollBoxRef.current;
+      if (!sc) return;
+      const forward = r.action === 'next';
+      const axisY = r.axis === 'y';
+      const pos = axisY ? sc.scrollTop : sc.scrollLeft;
+      const view = axisY ? sc.clientHeight : sc.clientWidth;
+      const total = axisY ? sc.scrollHeight : sc.scrollWidth;
+      const atStart = pos <= 2;
+      const atEnd = pos + view >= total - 2;
+      if (forward && !atEnd) return;
+      if (!forward && !atStart) return;
+    }
+
     if (r.axis === primaryAxis) {
       if (r.action === 'next') goForward();
       else goBack();
@@ -79,7 +97,7 @@ export default function PaginatedView({
       if (r.action === 'next') onNextGallery?.();
       else onPrevGallery?.();
     }
-  }, [goForward, goBack, primaryAxis, onPrevGallery, onNextGallery]);
+  }, [goForward, goBack, primaryAxis, onPrevGallery, onNextGallery, needScroll]);
   // 滑动触发翻页后，吞掉随后的 click，避免热区再次翻页（双翻页）
   const handleClickCapture = useCallback((e) => {
     if (suppressClickRef.current) {
@@ -107,9 +125,13 @@ export default function PaginatedView({
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '100%', height: '100%', gap: 0 }}>
           <div className="r-gallery" style={{ padding: GALLERY_PAD }}>
-            <div style={{
+            <div ref={scrollBoxRef} style={{
               width: '100%', height: '100%',
               overflow: needScroll ? 'auto' : 'hidden',
+              // 未溢出：禁用浏览器默认触摸手势，让指针事件完整送达 -> 滑动翻页可靠
+              // 已溢出：交还原生平移，滑动用于查看超出部分
+              touchAction: needScroll ? 'pan-x pan-y' : 'none',
+              overscrollBehavior: 'contain',
               display: 'flex',
               alignItems: needScroll && layout?.overflowY ? 'flex-start' : 'center',
               justifyContent: needScroll && layout?.overflowX ? 'flex-start' : 'center',

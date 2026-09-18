@@ -170,15 +170,23 @@ export default function ContinuousView({
   // grab scroll（拖拽结束后不误触 UI 切换：用 moved 标记真实位移）
   const handlePointerDown = useCallback((e) => {
     const el = scrollerRef?.current; if (!el) return;
+    const isTouch = e.pointerType !== 'mouse';
     dragRef.current = {
-      down: true, x: e.clientX, y: e.clientY,
+      // 触摸屏交给原生滚动（更顺滑、带惯性）；自定义拖拽滚动仅服务鼠标
+      down: !isTouch, touch: isTouch, x: e.clientX, y: e.clientY,
       sl: el.scrollLeft, st: el.scrollTop,
     };
     movedRef.current = false;
-    setDragging(true);
+    if (!isTouch) setDragging(true);
   }, [scrollerRef]);
   const handlePointerMove = useCallback((e) => {
-    const el = scrollerRef?.current; const d = dragRef.current;
+    const d = dragRef.current;
+    if (d.touch) {
+      // 触摸：只记录是否真实移动过（用于吞掉滚动后的误点击），滚动本身交给浏览器
+      if (Math.abs(e.clientX - d.x) > 6 || Math.abs(e.clientY - d.y) > 6) movedRef.current = true;
+      return;
+    }
+    const el = scrollerRef?.current;
     if (!el || !d.down) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
@@ -194,12 +202,17 @@ export default function ContinuousView({
     <div ref={scrollerRef} className={`r-scroller-gallery${dragging ? ' dragging' : ''}`}
       onScroll={handleScroll}
       onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
+      onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} onPointerCancel={handlePointerUp}
       onClick={(e) => { if (!movedRef.current) { e.stopPropagation(); setUiVisible(v => !v); } }}
       style={{
         flex: 1, cursor: 'grab', minHeight: 0,
         overflowX: 'auto',
         overflowY: 'auto',
+        // 允许原生触摸平移（否则自定义指针手势会与浏览器滚动竞争，导致滑动失效）
+        touchAction: 'pan-x pan-y',
+        // 滚到首尾时不触发页面级下拉刷新/橡皮筋
+        overscrollBehavior: 'none',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex', flexDirection: isHoriz ? (rtl ? 'row-reverse' : 'row') : 'column',
         // 横向 RTL：row-reverse 让第 0 页在最右，向后读往左（保持 LTR 滚动语义，规避浏览器 RTL scrollLeft 差异）
         // 放大后帧可能超出视口：靠边对齐保证溢出部分可滚动到达；未放大时居中
