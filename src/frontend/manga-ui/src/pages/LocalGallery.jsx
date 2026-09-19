@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryGids, browseDirectory, saveAlbumConfig, fetchGalleryMetaTags, updateGalleryMetaTags, importLocalGallery, batchImportGalleries } from '../api'
+import { fetchLocalGalleryMetas, fetchLocalGalleriesPaged, fetchLocalGalleriesRandom, fetchLocalGalleryGids, browseDirectory, saveAlbumConfig, fetchGalleryMetaTags, updateGalleryMetaTags, importLocalGallery, batchImportGalleries, markProgressFinished } from '../api'
 import useGalleryDrag from '../hooks/useGalleryDrag'
 import useGallerySearch from '../hooks/useGallerySearch'
 import useGalleryOperations from '../hooks/useGalleryOperations'
@@ -438,6 +438,13 @@ export default function LocalGallery() {
               <button className="btn-sm" onClick={() => { setSelected(new Set()); setBatchMode(false) }} style={{ color: 'var(--text-muted)' }}>退出</button>
               {activeGroup.startsWith('album:') && <button className="btn-sm" disabled={selected.size === 0} onClick={() => { const ak = activeGroup.slice(6); const cfg = { ...albumConfig }; if (cfg[ak]) cfg[ak] = { ...cfg[ak], gids: cfg[ak].gids.filter(id => !selected.has(id)) }; saveAlbums(cfg); setSelected(new Set()); setBatchMode(false); setToast(`已从专辑移除 ${selected.size} 部`) }} style={{ borderColor: 'var(--accent-teal-bg)', color: 'var(--accent-teal)' }}>移出专辑</button>}
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchTagOpen(true)} style={{ color: 'var(--accent)' }}><Tag size={14} /> 标签</button>
+              <button className="btn-sm" disabled={selected.size === 0} onClick={async () => {
+                try {
+                  await markProgressFinished([...selected], true)
+                  setToast(`已标记 ${selected.size} 部为已读`)
+                  setSelected(new Set()); setBatchMode(false); loadPaged()
+                } catch (e) { setToast('标记失败: ' + e.message) }
+              }} style={{ color: 'var(--success)' }}>标记已读</button>
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchRedownloadConfirm(true)} style={{ color: 'var(--warning)' }}>重新下载</button>
               <button className="btn-sm" disabled={selected.size === 0} onClick={() => setBatchDeleteConfirm(true)} style={{ color: 'var(--error)' }}>删除</button>
             </> : <>

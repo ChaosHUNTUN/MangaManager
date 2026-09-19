@@ -8,6 +8,10 @@ public class LocalReadingProgress
     public int PageIndex { get; set; }
     /// <summary>滚动模式页内偏移（0~1，null=分页模式或未知）</summary>
     public double? ScrollOffset { get; set; }
+    /// <summary>作品总页数（用于计算完成度；未知为 null）</summary>
+    public int? TotalPages { get; set; }
+    /// <summary>是否已读完（读到最后一页自动置位，也可手动标记/取消）</summary>
+    public bool Finished { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

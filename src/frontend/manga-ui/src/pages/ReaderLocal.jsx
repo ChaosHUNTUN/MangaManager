@@ -41,15 +41,28 @@ export default function ReaderLocal() {
   const saveTimerRef = useRef(null)
   const offsetRef = useRef(0)              // 当前滚动页内偏移（0~1）
   const progressRestoredRef = useRef(null) // 恢复完成前禁止保存，避免串进度
+  const totalPagesRef = useRef(0)          // 总页数（供进度载荷使用，避免依赖 engine 解构顺序）
 
   const buildProgressItems = useCallback(() =>
     Object.entries(progressRef.current)
-      .map(([k, p]) => ({ gid: parseInt(k), pageIndex: p?.page ?? 0, scrollOffset: p?.offset ?? null }))
+      .map(([k, p]) => ({
+        gid: parseInt(k),
+        pageIndex: p?.page ?? 0,
+        scrollOffset: p?.offset ?? null,
+        totalPages: p?.total ?? null,
+        // 仅在读到最后一页时置位（null = 不改动已有已读标记，避免回看时把已读清掉）
+        finished: p?.finished === true ? true : null,
+      }))
       .filter(item => !Number.isNaN(item.gid)), [])
 
   const saveProgress = useCallback((g, page, offset) => {
     if (Number.isNaN(g)) return
-    progressRef.current[g] = { page, offset: offset ?? null }
+    progressRef.current[g] = {
+      page,
+      offset: offset ?? null,
+      total: totalPagesRef.current || null,
+      finished: totalPagesRef.current > 0 && page >= totalPagesRef.current - 1,
+    }
     const items = buildProgressItems()
     if (items.length > 0) saveReadingProgress(items)
   }, [buildProgressItems])
@@ -183,6 +196,8 @@ export default function ReaderLocal() {
     setBgCycled, toggleSlideshow, setSlideshowActive,
     scrollerRef, updateChrome,
   } = engine
+  // 用 effect 同步（render 期写 ref 会被 react-hooks/refs 规则标记）
+  useEffect(() => { totalPagesRef.current = totalPages }, [totalPages])
 
   // ── 下一部预取：读到末尾阈值（最后 5%，至少 3 页）时预取下一页列表，切换秒开 ──
   // 注意：必须在 engine 解构之后（currentPage 已声明），否则 TDZ 崩溃

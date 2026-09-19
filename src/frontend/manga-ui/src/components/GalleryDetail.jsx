@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ExternalLink, BookOpen, Globe, FolderOpen, Edit3 } from 'lucide-react'
-import { getLocalCoverUrl } from '../api'
+import { ExternalLink, BookOpen, Globe, FolderOpen, Edit3, CheckCircle2 } from 'lucide-react'
+import { getLocalCoverUrl, fetchReadingProgress, markProgressFinished } from '../api'
 import { getCategoryColorDetail } from '../constants/colors'
 import { formatSize } from '../utils/format'
 import { fetchWorkTags, removeWorkTag } from '../api/work'
@@ -15,6 +15,29 @@ const getCategoryColor = getCategoryColorDetail
 export default function GalleryDetail({ detail, tagTranslations, nsTranslations, filtered, albumConfig, galleries, onClose, onEditTags, onAddToAlbum }) {
   const [workTags, setWorkTags] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [finished, setFinished] = useState(false)
+  const [finishedSaving, setFinishedSaving] = useState(false)
+
+  // 阅读状态：进入详情时读一次，按钮可切换
+  useEffect(() => {
+    if (!detail?.gid) return
+    let cancelled = false
+    fetchReadingProgress(detail.gid)
+      .then(p => { if (!cancelled) setFinished(!!p?.finished) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [detail?.gid])
+
+  const toggleFinished = async () => {
+    if (!detail?.gid || finishedSaving) return
+    const next = !finished
+    setFinishedSaving(true)
+    try {
+      await markProgressFinished([detail.gid], next)
+      setFinished(next)
+    } catch { /* 静默：按钮状态保持原值 */ }
+    setFinishedSaving(false)
+  }
 
   const loadWorkTags = useCallback(async (gid) => {
     try { setWorkTags(await fetchWorkTags(gid)) } catch { }
@@ -136,6 +159,11 @@ export default function GalleryDetail({ detail, tagTranslations, nsTranslations,
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-sm" onClick={() => { onEditTags?.(detail.gid); onClose() }} style={{ borderColor: 'var(--warning-border)', color: 'var(--warning)' }}><Edit3 size={13} /> 编辑标签</button>
+            {/* 阅读状态：一键标记已读 / 取消已读（单作品） */}
+            <button className="btn-sm" onClick={toggleFinished} disabled={finishedSaving}
+              style={{ borderColor: 'var(--border-input)', color: finished ? 'var(--success)' : 'var(--text-secondary)' }}>
+              <CheckCircle2 size={13} /> {finishedSaving ? '处理中…' : finished ? '已读（点击取消）' : '标记已读'}
+            </button>
           </div>
         </div>
       </div>

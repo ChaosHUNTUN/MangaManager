@@ -54,6 +54,7 @@ export {
 export {
   getCoverUrl, getPageUrl,
   fetchReadingProgress, fetchReadingProgressAbortable, saveReadingProgress,
+  markProgressFinished,
   fetchReaderSettings, saveReaderSettings
 } from './reader'
 

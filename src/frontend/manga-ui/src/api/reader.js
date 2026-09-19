@@ -48,6 +48,18 @@ export async function fetchReaderSettings() {
   } catch { return null }
 }
 
+/** 批量标记已读/未读（用于"按标签批量标记"与单作品手动切换） */
+export async function markProgressFinished(gids, finished = true) {
+  const list = (Array.isArray(gids) ? gids : [gids]).filter(Boolean)
+  if (list.length === 0) return null
+  const json = await request('/api/readingprogress/mark', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gids: list, finished })
+  })
+  return json.data
+}
+
 export async function saveReaderSettings(data) {
   try {
     await request('/api/settings/reader', {

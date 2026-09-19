@@ -112,9 +112,11 @@ public class LocalGalleryService
             var total = all.Count;
             var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
             var safePage = Math.Clamp(page, 1, Math.Max(1, totalPages));
+            var items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList();
+            AttachProgress(db, items);
             return new GalleryPagedResult
             {
-                Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
+                Items = items,
                 Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
             };
         }
@@ -130,9 +132,11 @@ public class LocalGalleryService
             var total = all.Count;
             var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
             var safePage = Math.Clamp(page, 1, Math.Max(1, totalPages));
+            var items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList();
+            AttachProgress(db, items);
             return new GalleryPagedResult
             {
-                Items = all.Skip((safePage - 1) * pageSize).Take(pageSize).Select(MapToSummary).ToList(),
+                Items = items,
                 Total = total, TotalPages = totalPages, Page = safePage, PageSize = pageSize
             };
         }
@@ -144,6 +148,7 @@ public class LocalGalleryService
         var queryTotalPages = (int)Math.Ceiling(queryTotal / (double)Math.Max(1, pageSize));
         var querySafePage = Math.Clamp(page, 1, Math.Max(1, queryTotalPages));
         var queryItems = query.Skip((querySafePage - 1) * pageSize).Take(pageSize).Select(g => MapToSummary(g)).ToList();
+        AttachProgress(db, queryItems);
 
         return new GalleryPagedResult
         {
@@ -357,6 +362,26 @@ public class LocalGalleryService
         Artists = DeserializeJsonList(g.Artists),
         Groups = DeserializeJsonList(g.Groups)
     };
+
+    /// <summary>为当前页作品附加阅读进度（一次查询批量取，避免逐条查库）</summary>
+    private static void AttachProgress(MangaDbContext db, List<LocalGallerySummary> items)
+    {
+        if (items.Count == 0) return;
+        var gids = items.Select(i => i.Gid).ToList();
+        var map = db.LocalReadingProgresses.AsNoTracking()
+            .Where(p => gids.Contains(p.Gid))
+            .Select(p => new { p.Gid, p.PageIndex, p.TotalPages, p.Finished })
+            .ToDictionary(p => p.Gid);
+        foreach (var it in items)
+        {
+            if (map.TryGetValue(it.Gid, out var p))
+            {
+                it.ProgressPage = p.PageIndex;
+                it.ProgressTotal = p.TotalPages;
+                it.Finished = p.Finished;
+            }
+        }
+    }
 
     private static IQueryable<LocalGallery> ApplyDbSort(IQueryable<LocalGallery> query, string? sort)
     {
@@ -897,4 +922,10 @@ public class LocalGallerySummary
     public DateTime LastModified { get; set; }
     public List<string> Artists { get; set; } = new();
     public List<string> Groups { get; set; } = new();
+    /// <summary>阅读进度：当前页（无记录为 null）</summary>
+    public int? ProgressPage { get; set; }
+    /// <summary>阅读进度：总页数（用于完成度）</summary>
+    public int? ProgressTotal { get; set; }
+    /// <summary>是否已读完</summary>
+    public bool Finished { get; set; }
 }

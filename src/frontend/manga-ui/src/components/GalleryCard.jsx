@@ -1,6 +1,6 @@
 import { memo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, Eye, FileText, Check, Trash2 } from 'lucide-react'
+import { BookOpen, Eye, FileText, Check, Trash2, CheckCircle } from 'lucide-react'
 import { getLocalCoverUrl } from '../api'
 import { getCategoryColor, CATEGORY_COLORS_CARD as CATEGORY_COLORS } from '../constants/colors'
 import { formatSize, formatCount } from '../utils/format'
@@ -243,6 +243,17 @@ const GalleryCard = memo(({
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3xs)' }}>
             {formatCount(g.fileCount)}P · {formatSize(g.totalSize)}
           </span>
+          {/* 阅读状态：已读 / 阅读进度（由分页接口附带，无需额外请求） */}
+          {g.finished ? (
+            <span title="已读完" style={{ color: 'var(--success)', fontSize: 'var(--text-3xs)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <CheckCircle size={11} /> 已读
+            </span>
+          ) : g.progressPage != null && g.progressTotal > 0 ? (
+            <span title={`读到第 ${g.progressPage + 1} / ${g.progressTotal} 页`}
+              style={{ color: 'var(--accent-teal)', fontSize: 'var(--text-3xs)', fontFamily: 'var(--font-mono)' }}>
+              {Math.min(99, Math.round(((g.progressPage + 1) / g.progressTotal) * 100))}%
+            </span>
+          ) : null}
           {g.rating > 0 && (
             <span style={{ color: 'var(--warning)', fontSize: 'var(--text-2xs)' }}>
               ★ {g.rating.toFixed(1)}
