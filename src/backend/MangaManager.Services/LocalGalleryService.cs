@@ -318,7 +318,7 @@ public class LocalGalleryService
     }
 
     /// <summary>按空格分词，但双引号内的内容作为一个整体（引号本身被剥离）</summary>
-    private static List<string> SplitSearchTerms(string search)
+    internal static List<string> SplitSearchTerms(string search)
     {
         var terms = new List<string>();
         var sb = new System.Text.StringBuilder();

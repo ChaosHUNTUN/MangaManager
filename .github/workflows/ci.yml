@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端（构建 + 单元测试）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore src/backend/MangaManager.slnx
+
+      - name: Build（后端解决方案）
+        run: dotnet build src/backend/MangaManager.slnx -c Release --no-restore
+
+      - name: Build（WPF 控制台）
+        run: dotnet build src/desktop/MangaManager.Console/MangaManager.Console.csproj -c Release
+
+      - name: Test
+        run: dotnet test src/backend/MangaManager.Tests/MangaManager.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
+
+  frontend:
+    name: 前端（lint + build）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend/manga-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/manga-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

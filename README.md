@@ -15,6 +15,11 @@ E-Hentai 漫画下载、管理与阅读工具 —— 在线搜索下载、本地
 
 ## 快速开始
 
+> **一键启动（推荐）**：双击根目录 `启动管理工具.bat`。它先 `dotnet build` 再启动 WPF 桌面控制台
+> （`src/desktop/MangaManager.Console`），由控制台负责启停 API/前端、下载监控与托盘图标。
+> 这是项目**唯一**的启动入口（原 Python 启动器 `manga_manager.py` 已删除）。
+> 下面的第 1/2 步是手动分别启动，适合开发调试。
+
 ### 环境要求
 
 - .NET SDK 9.0+
@@ -67,6 +72,15 @@ G:\学习资料\本子\
 
 **⚙ 设置页还集中了其它运行时项**：E-Hentai Cookie（一键导出书签 / 剪贴板导入 / 验证登录 / 里站连通性）、网络代理（保存即生效）。
 
+### 5. 运行测试
+
+```bash
+dotnet test src/backend/MangaManager.Tests/MangaManager.Tests.csproj
+```
+
+CI（`.github/workflows/ci.yml`）会在 push / PR 时跑：后端构建 + WPF 控制台构建 + 单元测试，
+以及前端 `npm ci` + lint + build。
+
 ---
 
 ## 项目结构
@@ -74,6 +88,9 @@ G:\学习资料\本子\
 ```
 MangaManager/
 ├── README.md
+├── .clinerules                      # 全局开发规范（改核心架构后必须同步）
+├── 启动管理工具.bat                  # 唯一启动入口（先构建，再启动 WPF 控制台）
+├── .github/workflows/ci.yml         # CI：后端构建 + 测试 / 前端 lint + build
 ├── docs/                          # 设计文档
 │   ├── api/api-spec.md
 │   └── design/architecture.md
@@ -89,7 +106,10 @@ MangaManager/
     │   ├── MangaManager.Api/     # Web API 入口 + Controllers
     │   ├── MangaManager.Core/    # 实体 + DTO
     │   ├── MangaManager.Data/    # EF Core DbContext
-    │   └── MangaManager.Services/# 业务逻辑
+    │   ├── MangaManager.Services/# 业务逻辑
+    │   └── MangaManager.Tests/   # xUnit 单元/集成测试
+    ├── desktop/
+    │   └── MangaManager.Console/ # WPF 桌面控制台（服务启停 + 下载监控 + 托盘）
     └── frontend/
         └── manga-ui/             # React 前端
 ```
@@ -98,17 +118,14 @@ MangaManager/
 
 ## 数据库
 
-### 实体模型（11 张表）
+### 实体模型（9 张表）
 
 | 实体 | 表名 | 说明 |
 |------|------|------|
-| `Manga` | `manga` | 漫画主表：标题、路径、封面、文件数 |
 | `Tag` | `tag` | 标签静态数据：名称、中文名(NameCn)、命名空间(Namespace)、分类、颜色、屏蔽标记(IsBlocked) |
-| `WorkTag` | `work_tag` | 作品×标签多对多（本地画廊正 Gid、旧版 Manga 负 Id，**统一表**） |
-| `MangaTag` | `manga_tag` | 旧版漫画-标签（已并入 work_tag，遗留保留） |
-| `Author` | `author` | 作者 |
-| `MangaAuthor` | `manga_author` | 漫画-作者多对多 |
-| `ReadingProgress` | `reading_progress` | 阅读进度（1对1） |
+| `WorkTag` | `work_tag` | 作品×标签多对多（WorkId = 本地画廊 Gid，**统一表**） |
+| `TagOrder` | `tag_order` | 单个标签内的手动排序（连载顺序等） |
+| `LocalGallery` | `local_gallery` | 本地画廊元数据（数据库即主索引，文件系统为图片源） |
 | `LocalReadingProgress` | `local_reading_progress` | 本地画廊阅读进度 |
 | `DownloadTask` | `download_task` | E-Hentai 下载任务 |
 | `AlbumConfig` | `album_config` | 专辑配置（**方案已废弃**：数据保留不使用，成员已转 album 标签） |
@@ -162,21 +179,6 @@ dotnet ef migrations add <MigrationName> --startup-project ../MangaManager.Api
 
 ## 完整 API 列表
 
-### 漫画（旧版兼容）
-
-| 方法 | 路由 | 说明 |
-|------|------|------|
-| GET | `/api/manga` | 漫画列表 `?search=&tags=1,2` |
-| GET | `/api/manga/{id}` | 漫画详情 |
-| GET | `/api/manga/{id}/as-local-gallery` | 防腐层：转为本地画廊虚拟 GID |
-| POST | `/api/manga/scan` | 扫描目录入库 `{directory, clientId?}` |
-| GET | `/api/manga/scan/progress/{clientId}` | SSE 扫描进度流 |
-| PUT | `/api/manga/{id}/rename` | 重命名漫画 `{newName}` |
-| DELETE | `/api/manga/{id}` | 删除漫画 `?deleteFolder=true` |
-| GET | `/api/manga/{mangaId}/tags` | 获取漫画标签 |
-| PUT | `/api/manga/{mangaId}/tags` | 设置漫画标签 `[id,...]` |
-| POST | `/api/manga/batch/tags` | 批量添加 `{mangaIds, tagIds}` |
-
 ### 标签
 
 | 方法 | 路由 | 说明 |
@@ -202,20 +204,37 @@ dotnet ef migrations add <MigrationName> --startup-project ../MangaManager.Api
 
 | 方法 | 路由 | 说明 |
 |------|------|------|
-| GET | `/api/local/galleries` | 画廊列表（支持 `tagIds=1,2` 任一命中筛选、`tag:` 搜索语法、`group/album` 分组） |
+| POST | `/api/local/galleries/paged` | 分页列表（`group/search/sort/page/pageSize/tagIds/albumGids`；`tagIds` 多标签 **AND**） |
+| POST | `/api/local/galleries/gids` | 当前筛选下的完整有序 gid 列表（阅读器跨作品导航用） |
+| GET | `/api/local/galleries/meta` | 轻量元数据（封面墙初始化，已去掉 AllTags 以瘦身载荷） |
 | GET | `/api/local/galleries/tag-stats` | 标签统计（每标签关联作品数，标签云/选择器用） |
+| GET | `/api/local/galleries/random` | 随机抽取 N 部作品 |
 | GET | `/api/local/gallery/{gid}` | 画廊详情 |
+| GET | `/api/local/gallery/{gid}/pages` | 页列表 |
 | GET | `/api/local/gallery/{gid}/page/{idx}` | 单张图片 |
 | GET | `/api/local/gallery/{gid}/cover` | 封面图片 |
 | DELETE | `/api/local/gallery/{gid}` | 删除画廊 `?deleteDir=true` |
 | POST | `/api/local/gallery/{gid}/redownload` | 重新下载 |
-| POST | `/api/local/galleries/batch-redownload` | 批量重新下载 |
+| POST | `/api/local/redownload-batch` | 批量重新下载 |
+| POST | `/api/local/check-downloaded` | 批量检查是否已下载 |
 | POST | `/api/local/import` | 导入外部作品 |
-| POST | `/api/local/import-batch` | 批量导入 |
+| POST | `/api/local/batch-import` | 批量导入 |
 | GET | `/api/local/gallery/{gid}/meta-tags` | 获取元数据标签 |
 | PUT | `/api/local/gallery/{gid}/meta-tags` | 更新元数据标签 |
+| POST | `/api/local/repair-metadata` | 修复缺失元数据 |
 | GET | `/api/readingprogress/{gid}` | 阅读进度（含页内偏移 scrollOffset） |
 | POST | `/api/readingprogress` | 批量保存进度 upsert（并发冲突自动重试） |
+| POST | `/api/readingprogress/mark` | 批量标记已读/未读 `{gids, finished}` |
+
+### 设置 / 运行状态
+
+| 方法 | 路由 | 说明 |
+|------|------|------|
+| GET | `/api/settings/app` | 运行时设置（库目录 / Cookie / 代理） |
+| PUT | `/api/settings/app` | 保存设置（改代理/目录保存即生效） |
+| POST | `/api/settings/app/rescan` | 按当前目录重扫（只增改不删） |
+| GET/PUT | `/api/settings/reader` | 阅读器全局设置 |
+| GET | `/api/status` | 运行状态诊断（库规模、孤儿 work_tag、下载队列、存储可用性） |
 
 ### 专辑管理
 
@@ -304,7 +323,6 @@ scanning（扫描目录） → loading（加载数据库） → processing（处
 | `/` `/local` | 本地画廊 | 封面墙/列表、搜索、标签筛选、专辑管理、拖拽排序 |
 | `/ehentai` | E-Hentai | 在线搜索浏览、Cookie 管理、画廊详情、一键下载 |
 | `/reader-local/:gid` | 阅读器 | 统一阅读器（缩放/方向/缩略图/幻灯片/沉浸模式） |
-| `/reader/:id` | 防腐层 | 旧版路由重定向到 `/reader-local/:gid` |
 | `/downloads` | 下载监控 | 实时进度、暂停/恢复/重启/批量操作 |
 
 ---
@@ -356,4 +374,5 @@ powershell -File publish.ps1
 - 前端状态使用 URL 作为唯一数据源（`useSearchParams`），不再使用 `sessionStorage` 持久化筛选状态
 - 前端 API 调用封装在 `src/api.js`，组件通过 import 使用
 - 所有页面组件放在 `src/pages/` 下
-- 旧版 `/reader/:id` 通过防腐层（`ReaderRedirect`）统一路由到 `/reader-local/:gid`
+- 唯一启动入口是 `启动管理工具.bat`（WPF 控制台），不要再加第二个启动器
+- 改动业务逻辑后跑 `dotnet test`；CI 会强制校验后端构建 + 测试与前端 lint + build

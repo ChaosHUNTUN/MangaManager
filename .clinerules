@@ -11,7 +11,7 @@
 MangaManager 是本地的漫画/画廊管理工具，支持本地文件系统扫描、E-Hentai 在线浏览与下载、阅读器、标签/专辑管理。采用 ASP.NET Core 9.0 + React 19 SPA 前后端分离架构，同时包含一个 WPF 桌面下载客户端。
 
 - 仓库地址：`https://github.com/ChaosHUNTUN/MangaManager.git`
-- 当前 Commit：`8eb6467f3d3181c31979fe5ef76473baa38ce618`
+- 当前 Commit：以 `git log -1` 为准（不在此固定提交号，避免文档过期）
 
 ---
 
@@ -24,7 +24,8 @@ MangaManager/
 │   │   ├── MangaManager.Api/          # ASP.NET Core Web API 入口（15 个控制器）
 │   │   ├── MangaManager.Core/         # 实体 (Entities.cs) + DTO (DTOs.cs)
 │   │   ├── MangaManager.Data/         # EF Core DbContext + Migrations
-│   │   └── MangaManager.Services/     # 业务逻辑层（下载/画廊/E-Hentai/同步等服务）
+│   │   ├── MangaManager.Services/     # 业务逻辑层（下载/画廊/E-Hentai/同步等服务）
+│   │   └── MangaManager.Tests/        # xUnit 单元/集成测试（纯逻辑 + SQLite 内存库）
 │   ├── frontend/
 │   │   └── manga-ui/                  # React SPA（Vite 构建）
 │   │       └── src/
@@ -40,9 +41,15 @@ MangaManager/
 │   └── design/                        # 设计系统文档
 │       └── design-language.md         # 阅读器设计语言规范（色彩/材质/字体/动效/组件蓝图）
 ├── scripts/                           # Python 辅助脚本
-├── manga_manager.py                   # Python 工具入口
-└── 启动管理工具.bat                    # 一体化启动脚本
+└── 启动管理工具.bat                    # 唯一启动入口（先构建，再启动 WPF 控制台）
 ```
+
+> **启动器约定（2026-09-19 起）**：唯一入口是根目录 `启动管理工具.bat`，它先 `dotnet build`
+> 再启动 `src/desktop/MangaManager.Console/bin/Debug/net9.0-windows/MangaManager.Console.exe`，
+> 由控制台负责启停 API/前端、下载监控与托盘。原 Python 托盘启动器 `manga_manager.py` 已删除，
+> 禁止再引入第二个启动器（会出现两个进程抢着管服务）。
+> 两条硬约束：① .bat 正文**只写 ASCII**（cmd.exe 按 OEM 代码页解析正文，UTF-8 中文会被拆坏）；
+> ② 控制台运行时会锁住自己的输出目录（构建报 MSB3027），更新代码要先退出控制台再启动。
 
 ---
 
@@ -201,7 +208,12 @@ dotnet run
 ```
 
 ### 一体化
-双击根目录 `启动管理工具.bat`
+双击根目录 `启动管理工具.bat`（唯一入口，内部 `dotnet run` 拉起 WPF 控制台）
+
+### 测试
+```bash
+dotnet test src\backend\MangaManager.Tests\MangaManager.Tests.csproj
+```
 
 ---
 
@@ -211,7 +223,7 @@ dotnet run
 2. **TypeScript 迁移** — 前端全部 `.jsx`，长期可考虑逐步引入类型
 3. **日志升级** — 仍有少量 `Console.WriteLine`，应统一到 `ILogger`/Serilog
 4. **API 版本化** — 添加版本前缀
-5. **测试覆盖** — 仍无正式 xUnit/Vitest 测试，需引入
+5. **测试覆盖** — 后端已有 xUnit 项目 `MangaManager.Tests`（标签逻辑 / 搜索分词 / 画廊筛选 SQLite 集成测试）；前端 Vitest 仍缺，需引入
 6. **文件系统浏览与写操作仍需认证/白名单** — 当前依赖本机使用边界
 
 ---

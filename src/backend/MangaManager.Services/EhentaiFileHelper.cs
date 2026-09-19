@@ -48,6 +48,7 @@ public static class EhentaiFileHelper
         return files;
     }
 
-    private static string SanitizeFileName(string name) =>
+    /// <summary>把标题里的非法文件名字符替换为下划线（internal 以便单元测试覆盖）</summary>
+    internal static string SanitizeFileName(string name) =>
         string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
 }

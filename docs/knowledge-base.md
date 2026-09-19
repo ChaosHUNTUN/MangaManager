@@ -17,7 +17,7 @@
 | 前端 | React 19 + Vite 8 + Ant Design，端口 **5173**，纯 JSX（无 TypeScript） |
 | 桌面 | WPF `MangaManager.Console`（服务启停 + 下载监控 + 托盘） |
 | 数据库 | SQLite（WAL，默认）/ MySQL（可选），EF Core 9 + Migrations |
-| 其他入口 | 根目录 `manga_manager.py`（Python 控制台）+ `启动管理工具.bat` |
+| 启动入口 | **唯一入口 = `启动管理工具.bat`**（先 `dotnet build` 再启动 WPF 控制台，控制台再启停 API/前端）；原 Python 托盘启动器 `manga_manager.py` 已下线，避免两个启动器重复管理服务 |
 
 ## 2. 目录结构（当前实际）
 
@@ -26,8 +26,7 @@ MangaManager/
 ├── NuGet.Config                # 清空继承的 fallbackPackageFolders（修复本机残留的 D:\Coder\Share\NuGetPackages）
 ├── README.md                   # 项目说明 + API 列表
 ├── .clinerules                 # 全局开发规范（最高指示，改核心架构后必须同步）
-├── 启动管理工具.bat            # 一体化启动（Python 控制台拉起 API + 前端）
-├── manga_manager.py            # Python 控制台入口（托盘）
+├── 启动管理工具.bat            # 唯一启动入口（拉起 WPF 控制台，由它启停 API + 前端）
 ├── src/
 │   ├── backend/                # .NET 解决方案（MangaManager.slnx）
 │   │   ├── MangaManager.Api/       # Web API 入口（Program.cs 启动流程）+ 15 个控制器
@@ -230,8 +229,23 @@ MangaManager/
 - **关键坑**：`DownloadMonitor.Merge` 原先只删"快照里已有且已完成"的项，而添加循环会把 incoming 中的**全部**任务加进去（含 completed）→ **已完成任务每轮轮询都被重新加回列表**（所以那个筛选并非无用，它确实在过滤这些记录）。修法：`activeGids` 只统计非 completed/removed，且添加循环 `continue` 跳过
 - Web 端的「已完成」筛选保留（本次只按要求改控制台）
 - 注：控制台是 WPF 独立进程，改动需**重新构建并重启控制台**才生效；且它同时管理 API 服务进程，切勿在未确认的情况下直接结束它
-  - **⚠️ 为什么改了没生效（重要，已踩两次）**：`manga_manager.py` 启动 API 用的是 `dotnet run --no-build`，控制台则是**直接运行预编译 exe**（`bin/Debug/net9.0-windows/MangaManager.Console.exe`）——**两者都不会自动重建**。所以改完代码后如果只是"重启应用"，跑的还是旧二进制（本次现象：控制台进程今天 3:17 启动，但 exe 时间戳还是 9 月 1 日）。**正确顺序：停进程 → `dotnet build <项目>` → 再启动**
+  - **⚠️ 为什么改了没生效（重要，已踩两次）**：早前的 Python 启动器用 `dotnet run --no-build`、控制台被直接双击预编译 exe 启动——**两者都不会自动重建**，改完代码只"重启应用"跑的还是旧二进制（当时控制台进程 3:17 启动、exe 时间戳却是 9 月 1 日）。**现状已消除**：唯一入口 `启动管理工具.bat` 用 `dotnet run`（会构建），控制台启 API 也是不带 `--no-build` 的 `dotnet run`。手动启动时仍建议：停进程 → `dotnet build <项目>` → 再启动
   - 结束控制台时用强制结束（Stop-Process）不会触发它的 `Exit_Click`，因此**不会连带停掉 API**；但走它自己的「退出」按钮会停 API+前端
+
+### 2026-09-19 启动器统一 + 单元测试 + CI（架构审查第 9 项）
+- **启动器只保留 WPF 控制台**：删除根目录 `manga_manager.py`（Python 托盘启动器，603 行），`启动管理工具.bat` 改为「先 `dotnet build` 再启动 `MangaManager.Console.exe`」，彻底消除"重启后跑的还是旧二进制"的历史坑。`.clinerules` 同步目录结构与启动约定：**唯一入口 = `启动管理工具.bat`**，禁止再引入第二个启动器（两个进程会抢着管 API/前端）
+  - **批处理只能写 ASCII**：`chcp 65001` 改的是输出代码页，cmd.exe 解析 .bat 正文仍按 OEM 代码页 → UTF-8 中文会被拆坏（实测报 `'�报错' is not recognized`）。所以启动脚本里的提示一律用英文
+  - **控制台运行时会锁住自己的输出目录**：此时 `dotnet build` 必然 MSB3027 失败。启动器先 `tasklist` 检测 `MangaManager.Console.exe`，已在运行就直接提示（要更新代码：先退出控制台再双击）；构建仍失败但有旧产物时，退化为用旧产物启动并打印警告
+- **API 契约核查（结论：无需改造）**：所有控制器动作已统一返回 `ApiResponse<T>`；分页仅画廊列表使用且形状一致。顺带删除 `DTOs.cs` 中已无引用的旧 DTO：`MangaListItem` / `MangaDetail` / `ScanRequest` / `OpenRequest`
+- **新增 xUnit 测试项目** `src/backend/MangaManager.Tests`（已加入 `MangaManager.slnx`），43 个用例覆盖：
+  - `TagService`：命名空间归一化 / 分类 / 颜色 / `AllTags` JSON 解析（含非法 JSON、无命名空间、空名）
+  - `EhentaiTagService.TranslateChineseSearch`：中文 → 英文标签映射
+  - `EhentaiFileHelper`：文件名非法字符清洗 + `{下载目录}/{gid}-{标题}` 规则
+  - `LocalGalleryService.SplitSearchTerms`：引号分词（`tag:"big breasts"` 曾被拆成两词 → 搜不到）
+  - **SQLite 内存库集成测试**（跑真实 EF 查询）：`tag:"big breasts"`、`tag:big_breasts`、中文标签名、多标签 **AND**、`artist:` 精确匹配、分页钳位
+  - 为可测性把 `SplitSearchTerms` / `SanitizeFileName` 由 `private` 改 `internal`，并在 Services 项目加 `InternalsVisibleTo("MangaManager.Tests")`
+- **CI**：`.github/workflows/ci.yml` —— backend（windows-latest：构建 slnx + WPF 控制台 + `dotnet test`）、frontend（node 22：`npm ci` + lint + build）
+- **验证**：后端 Release 构建 0 警告 0 错误；`dotnet test` 43/43 通过；前端 lint 0 error / 55 warning、build 通过
 
 ### 2026-09-19 全量优化执行记录
 
