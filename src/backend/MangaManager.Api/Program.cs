@@ -55,7 +55,6 @@ else
 }
 
 // 服务注册
-builder.Services.AddScoped<MangaService>();
 builder.Services.AddSingleton<LocalGalleryService>();
 builder.Services.AddSingleton<DownloadManager>();
 builder.Services.AddSingleton<GallerySyncService>();  // 同时注册为自身类型（供 DownloadManager 注入）

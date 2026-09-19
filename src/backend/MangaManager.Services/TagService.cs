@@ -253,16 +253,16 @@ public class TagService
 
     /// <summary>合并标签：把 from 标签的全部关联（work_tag/manga_tag）搬移到 into 标签并删除 from。
     /// 幂等语义：同作品/同漫画已有 into 关联则跳过；返回 (movedWorkLinks, movedMangaLinks)。</summary>
-    public async Task<(int WorkLinks, int MangaLinks, string? Error)> MergeTagsAsync(int fromId, int intoId, CancellationToken ct = default)
+    public async Task<(int WorkLinks, string? Error)> MergeTagsAsync(int fromId, int intoId, CancellationToken ct = default)
     {
         if (fromId == intoId)
-            return (0, 0, "不能合并同一个标签");
+            return (0, "不能合并同一个标签");
 
         using var db = CreateDb();
         var from = await db.Tags.FirstOrDefaultAsync(t => t.Id == fromId, ct);
         var into = await db.Tags.FirstOrDefaultAsync(t => t.Id == intoId, ct);
         if (from == null || into == null)
-            return (0, 0, "标签不存在");
+            return (0, "标签不存在");
 
         // 1) work_tag：搬移关联（同 WorkId 已有 into 则去重）
         var fromWorkLinks = await db.WorkTags.Where(w => w.TagId == fromId).ToListAsync(ct);
@@ -279,31 +279,16 @@ public class TagService
             db.WorkTags.Remove(link);
         }
 
-        // 2) manga_tag（旧版漫画）：同样搬移去重
-        var fromMangaLinks = await db.MangaTags.Where(mt => mt.TagId == fromId).ToListAsync(ct);
-        var intoMangaIds = (await db.MangaTags.Where(mt => mt.TagId == intoId).Select(mt => mt.MangaId).ToListAsync(ct)).ToHashSet();
-        var movedManga = 0;
-        foreach (var link in fromMangaLinks)
-        {
-            if (!intoMangaIds.Contains(link.MangaId))
-            {
-                db.MangaTags.Add(new MangaTag { MangaId = link.MangaId, TagId = intoId });
-                intoMangaIds.Add(link.MangaId);
-                movedManga++;
-            }
-            db.MangaTags.Remove(link);
-        }
-
-        // 3) 元数据合并：目标缺中文则继承源中文；屏蔽标记取并集
+        // 2) 元数据合并：目标缺中文则继承源中文；屏蔽标记取并集
         if (string.IsNullOrWhiteSpace(into.NameCn) && !string.IsNullOrWhiteSpace(from.NameCn))
             into.NameCn = from.NameCn;
         if (from.IsBlocked) into.IsBlocked = true;
 
-        // 4) 删除源标签
+        // 3) 删除源标签
         db.Tags.Remove(from);
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("[TagService] 合并标签 {FromId} → {IntoId}：work 关联 {Work} 条 / manga 关联 {Manga} 条",
-            fromId, intoId, movedWork, movedManga);
-        return (movedWork, movedManga, null);
+        _logger.LogInformation("[TagService] 合并标签 {FromId} → {IntoId}：搬移关联 {Work} 条",
+            fromId, intoId, movedWork);
+        return (movedWork, null);
     }
 }

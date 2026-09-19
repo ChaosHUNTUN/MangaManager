@@ -18,7 +18,6 @@ public class LocalGalleryService
     private static string BaseDir => EhentaiFileHelper.DefaultDownloadDir;
 
     /// <summary>旧版 Manga ID → 本地目录路径的映射（负数 gid 的防腐层）</summary>
-    private static readonly ConcurrentDictionary<int, string> _legacyDirs = new();
 
     public LocalGalleryService(EhentaiService eh, IServiceScopeFactory scopeFactory, ILogger<LocalGalleryService> logger)
     {
@@ -28,12 +27,6 @@ public class LocalGalleryService
     }
 
     private MangaDbContext CreateDb() => _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<MangaDbContext>();
-
-    /// <summary>注册旧版 Manga 目录映射（用于负数虚拟 gid → 真实目录的查找）</summary>
-    public static void RegisterLegacyDir(int legacyId, string dirPath)
-    {
-        _legacyDirs[-Math.Abs(legacyId)] = dirPath;
-    }
 
     /// <summary>DB 查询辅助——从 LocalGallery 实体映射到 LocalGalleryItem</summary>
     private static LocalGalleryItem MapToItem(LocalGallery g) => new()
@@ -613,12 +606,7 @@ public class LocalGalleryService
 
     private string? FindLocalDir(int gid)
     {
-        // 负数 gid：旧版 Manga 防腐层，从注册的映射中查找
-        if (gid < 0)
-        {
-            _legacyDirs.TryGetValue(gid, out var dir);
-            return dir;
-        }
+        if (gid < 0) return null;   // 旧版负数虚拟 gid 已随旧漫画子系统下线
         if (!Directory.Exists(BaseDir)) return null;
         return Directory.GetDirectories(BaseDir, $"{gid}-*").FirstOrDefault();
     }
@@ -838,11 +826,7 @@ public class LocalGalleryService
 
     private static string? FindLocalDirStatic(int gid)
     {
-        if (gid < 0)
-        {
-            _legacyDirs.TryGetValue(gid, out var dir);
-            return dir;
-        }
+        if (gid < 0) return null;   // 旧版负数虚拟 gid 已随旧漫画子系统下线
         if (!Directory.Exists(BaseDir)) return null;
         return Directory.GetDirectories(BaseDir, $"{gid}-*").FirstOrDefault();
     }

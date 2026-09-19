@@ -101,12 +101,7 @@ public class TagMigrationService
         db.WorkTags.AddRange(albumLinks);
         _logger.LogInformation("[TagMigration] 专辑标签：{Albums} 个专辑 / {Links} 条关联", albums.Count, albumLinks.Count);
 
-        // ── 3) manga_tag 历史 → work_tag ──
-        var mangaTags = await db.MangaTags.AsNoTracking().ToListAsync();
-        db.WorkTags.AddRange(mangaTags.Select(mt => new WorkTag { WorkId = -mt.MangaId, TagId = mt.TagId }));
-        _logger.LogInformation("[TagMigration] manga_tag 历史：{Count} 条 → work_tag", mangaTags.Count);
-
-        // ── 4) 屏蔽标签种子 ──
+        // ── 3) 屏蔽标签种子 ──
         try
         {
             var blocked = _blocked.GetBlockedTags();

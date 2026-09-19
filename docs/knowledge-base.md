@@ -242,7 +242,9 @@ MangaManager/
 4. **在线模块缓存 + 详情骨架屏**：搜索结果与画廊详情各加 3 分钟内存缓存（翻页返回、列表↔详情来回切不再重复抓 EH）；详情弹窗先用列表卡片字段渲染骨架，接口返回后覆盖
 5. **可观测性**：新增 `/api/status`（库规模、孤儿 work_tag / 悬空标签引用计数、下载队列按状态、存储目录可用性）+ 设置页「运行状态」诊断卡片。与轻量 `/health` 区分
 6. **阅读进度升级**：`local_reading_progress` 增 `TotalPages`/`Finished`；`POST /api/readingprogress/mark` 批量标记已读/未读；分页接口附带阅读状态（一次查询）；卡片显示「已读 ✓ / 百分比」；详情弹窗可切换；批量模式可「标记已读」；阅读器读到最后一页自动置已读（回看不清除）
-7. **旧漫画子系统前端下线**：删除 `/reader/:id` 路由、`ReaderRedirect`、`api/manga.js` 及其导出、`tags.js` 的旧漫画接口、`reader.js` 的旧 URL 构建器（前端零调用方；`manga`/`reading_progress` 表均 0 行）。**后端 `MangaController`/`ReaderController`/`MangaService` 与 5 张空表未删**——需数据库迁移，留待单独一轮
+7. **旧漫画子系统彻底下线（前后端 + 迁移）**：删除 `/reader/:id` 路由、`ReaderRedirect`、`api/manga.js` 及旧接口导出、`reader.js` 旧 URL 构建器；后端删除 `MangaController`/`MangaTagController`/`BatchTagController`/`ReaderController`/`CoverController`/`MangaService`、5 个旧实体（`Manga`/`Author`/`MangaAuthor`/`MangaTag`/`ReadingProgress`）与 DbContext 配置、`RegisterLegacyDir`；清理存活代码中的 `manga_tag` 分支（`TagController` 删除/清空标签、`TagService` 合并、`TagMigrationService` 迁移），`MergeTagsAsync` 返回签名同步收敛为 `(WorkLinks, Error)`；迁移 `DropLegacyMangaTables` 删除 manga/manga_tag/manga_author/author/reading_progress 五张空表
+   - **执行前置**：先跑 `scripts/devops/backup_local.py` 备份（本次备份在 `D:\MangaManager_Backups\pre_legacy_drop\`）
+   - **验证**：5 张表已删、live 数据完好（3254 作品 / 54760 关联 / 3910 标签 / 2060 进度）、临时标签走完「创建→合并→清理空标签」全链路、冒烟 15/15
 8. **筛选语义收敛（第 5 项）**：原先"按作者筛选"有三套实现（`group=artist:X` 精确、搜索框 `artist:` 子串、`tagIds` 按 id），各写一遍 work_tag JOIN → 抽出统一谓词 `ApplyTagNamespaceFilter(db, query, ns, value, exact)`，两种入口共用。**语义现状**：
    - `tagIds`（侧边栏/URL）：按标签 id 精确匹配，多标签 **AND**
    - 搜索框 `tag:`：标签名/中文名**子串**匹配；`artist:`/`group:`：对应命名空间内**子串**匹配

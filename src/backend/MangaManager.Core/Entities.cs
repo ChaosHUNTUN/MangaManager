@@ -1,40 +1,5 @@
 namespace MangaManager.Core.Entities;
 
-public class Manga
-{
-    public int Id { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public string FolderName { get; set; } = string.Empty;
-    public string FolderPath { get; set; } = string.Empty;
-    public string? CoverPath { get; set; }
-    public int FileCount { get; set; }
-    public long TotalSize { get; set; }
-    public string? Description { get; set; }
-    public string Status { get; set; } = "unknown";
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-    public List<MangaAuthor> MangaAuthors { get; set; } = new();
-    public List<MangaTag> MangaTags { get; set; } = new();
-    public ReadingProgress? ReadingProgress { get; set; }
-}
-
-public class Author
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<MangaAuthor> MangaAuthors { get; set; } = new();
-}
-
-public class MangaAuthor
-{
-    public int Id { get; set; }
-    public int MangaId { get; set; }
-    public int AuthorId { get; set; }
-    public Manga Manga { get; set; } = null!;
-    public Author Author { get; set; } = null!;
-}
-
 public class Tag
 {
     public int Id { get; set; }
@@ -48,10 +13,9 @@ public class Tag
     public string Color { get; set; } = "#6366f1";
     public string Category { get; set; } = "other";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<MangaTag> MangaTags { get; set; } = new();
 }
 
-/// <summary>作品 × 标签 多对多（统一表：本地画廊用正 Gid，旧版 Manga 用负 Id）</summary>
+/// <summary>作品 × 标签 多对多（WorkId = 本地画廊 gid）</summary>
 public class WorkTag
 {
     public int WorkId { get; set; }
@@ -65,24 +29,6 @@ public class TagOrder
     public int TagId { get; set; }            // PK（与 tag 一一对应）
     public string Gids { get; set; } = "[]";  // JSON int 数组：自定义顺序
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-}
-
-public class MangaTag
-{
-    public int Id { get; set; }
-    public int MangaId { get; set; }
-    public int TagId { get; set; }
-    public Manga Manga { get; set; } = null!;
-    public Tag Tag { get; set; } = null!;
-}
-
-public class ReadingProgress
-{
-    public int Id { get; set; }
-    public int MangaId { get; set; }
-    public int PageIndex { get; set; }
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-    public Manga Manga { get; set; } = null!;
 }
 
 public class ScanLog

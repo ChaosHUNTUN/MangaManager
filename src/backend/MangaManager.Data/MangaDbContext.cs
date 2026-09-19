@@ -16,12 +16,7 @@ public class MangaDbContext : DbContext
         // 注：SQLite provider 不完全支持 EnableRetryOnFailure，实际由 WAL 模式 + SaveChanges 异常处理兜底
     }
 
-    public DbSet<Manga> Mangas => Set<Manga>();
-    public DbSet<Author> Authors => Set<Author>();
-    public DbSet<MangaAuthor> MangaAuthors => Set<MangaAuthor>();
     public DbSet<Tag> Tags => Set<Tag>();
-    public DbSet<MangaTag> MangaTags => Set<MangaTag>();
-    public DbSet<ReadingProgress> ReadingProgresses => Set<ReadingProgress>();
     public DbSet<ScanLog> ScanLogs => Set<ScanLog>();
     public DbSet<DownloadTask> DownloadTasks => Set<DownloadTask>();
     public DbSet<ReaderSettings> ReaderSettings => Set<ReaderSettings>();
@@ -33,37 +28,6 @@ public class MangaDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Manga>(e =>
-        {
-            e.ToTable("manga");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Title).HasMaxLength(500);
-            e.Property(x => x.FolderName).HasMaxLength(500);
-            e.Property(x => x.FolderPath).HasMaxLength(1000);
-            e.Property(x => x.CoverPath).HasMaxLength(1000);
-            e.Property(x => x.Description).HasColumnType("text");
-            e.Property(x => x.Status).HasMaxLength(20).HasDefaultValue("unknown");
-            e.HasIndex(x => x.FolderPath);
-            e.HasIndex(x => x.Title);
-        });
-
-        modelBuilder.Entity<Author>(e =>
-        {
-            e.ToTable("author");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Name).HasMaxLength(200);
-            e.HasIndex(x => x.Name).IsUnique();
-        });
-
-        modelBuilder.Entity<MangaAuthor>(e =>
-        {
-            e.ToTable("manga_author");
-            e.HasKey(x => x.Id);
-            e.HasIndex(x => new { x.MangaId, x.AuthorId }).IsUnique();
-            e.HasOne(x => x.Manga).WithMany(m => m.MangaAuthors).HasForeignKey(x => x.MangaId);
-            e.HasOne(x => x.Author).WithMany(a => a.MangaAuthors).HasForeignKey(x => x.AuthorId);
-        });
-
         modelBuilder.Entity<Tag>(e =>
         {
             e.ToTable("tag");
@@ -90,23 +54,6 @@ public class MangaDbContext : DbContext
             e.ToTable("tag_order");
             e.HasKey(x => x.TagId);
             e.Property(x => x.Gids).HasColumnType("TEXT");
-        });
-
-        modelBuilder.Entity<MangaTag>(e =>
-        {
-            e.ToTable("manga_tag");
-            e.HasKey(x => x.Id);
-            e.HasIndex(x => new { x.MangaId, x.TagId }).IsUnique();
-            e.HasOne(x => x.Manga).WithMany(m => m.MangaTags).HasForeignKey(x => x.MangaId);
-            e.HasOne(x => x.Tag).WithMany(t => t.MangaTags).HasForeignKey(x => x.TagId);
-        });
-
-        modelBuilder.Entity<ReadingProgress>(e =>
-        {
-            e.ToTable("reading_progress");
-            e.HasKey(x => x.Id);
-            e.HasIndex(x => x.MangaId).IsUnique();
-            e.HasOne(x => x.Manga).WithOne(m => m.ReadingProgress).HasForeignKey<ReadingProgress>(x => x.MangaId);
         });
 
         modelBuilder.Entity<ScanLog>(e =>

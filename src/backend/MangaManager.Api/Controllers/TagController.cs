@@ -132,14 +132,12 @@ public class TagController : ControllerBase
             return BadRequest(new ApiResponse<object>(false, new { workCount = workLinks.Count },
                 $"该标签仍关联 {workLinks.Count} 部作品。若只是去重请使用「合并」；确实要删除请加 force=true。"));
         }
-        var mangaLinks = await _db.MangaTags.Where(mt => mt.TagId == id).ToListAsync();
         _db.WorkTags.RemoveRange(workLinks);
-        _db.MangaTags.RemoveRange(mangaLinks);
         var orderRows = await _db.TagOrders.Where(o => o.TagId == id).ToListAsync();
         if (orderRows.Count > 0) _db.TagOrders.RemoveRange(orderRows);
         _db.Tags.Remove(tag);
         await _db.SaveChangesAsync();
-        return Ok(new ApiResponse<object>(true, new { removedWorkLinks = workLinks.Count, removedMangaLinks = mangaLinks.Count }));
+        return Ok(new ApiResponse<object>(true, new { removedWorkLinks = workLinks.Count }));
     }
 
     /// <summary>清理空标签（无任何作品关联）——删除标签唯一真正安全的场景</summary>
@@ -147,7 +145,7 @@ public class TagController : ControllerBase
     public async Task<IActionResult> CleanupEmpty()
     {
         var emptyIds = await _db.Tags
-            .Where(t => !_db.WorkTags.Any(w => w.TagId == t.Id) && !_db.MangaTags.Any(m => m.TagId == t.Id))
+            .Where(t => !_db.WorkTags.Any(w => w.TagId == t.Id))
             .Select(t => t.Id)
             .ToListAsync();
         if (emptyIds.Count == 0)
@@ -168,10 +166,10 @@ public class TagController : ControllerBase
     {
         if (req == null || req.FromId <= 0 || req.IntoId <= 0)
             return BadRequest(new ApiResponse<object>(false, null, "参数不合法"));
-        var (movedWork, movedManga, error) = await _tags.MergeTagsAsync(req.FromId, req.IntoId, ct);
+        var (movedWork, error) = await _tags.MergeTagsAsync(req.FromId, req.IntoId, ct);
         if (error != null)
             return BadRequest(new ApiResponse<object>(false, null, error));
-        return Ok(new ApiResponse<object>(true, new { movedWork, movedManga }));
+        return Ok(new ApiResponse<object>(true, new { movedWork }));
     }
 
     /// <summary>获取标签内手动顺序（gid 数组；无记录返回 null）</summary>
