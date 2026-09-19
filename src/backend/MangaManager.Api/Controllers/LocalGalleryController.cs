@@ -18,14 +18,6 @@ public class LocalGalleryController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>扫描本地画廊列表（旧接口，保留兼容）</summary>
-    [HttpGet("galleries")]
-    public IActionResult GetGalleries()
-    {
-        var list = _svc.ScanLocalGalleries();
-        return Ok(new ApiResponse<object>(true, list));
-    }
-
     /// <summary>获取轻量元数据列表（仅 gid+artists+groups+category+language，用于侧边栏分组和标签池）</summary>
     [HttpGet("galleries/meta")]
     public IActionResult GetGalleryMetas()

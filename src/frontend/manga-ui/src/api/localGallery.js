@@ -2,11 +2,6 @@
 
 import { API_BASE, request } from './client'
 
-export async function fetchLocalGalleries() {
-  const json = await request('/api/local/galleries')
-  return json.data || []
-}
-
 export async function fetchLocalGalleryMetas() {
   const json = await request('/api/local/galleries/meta')
   return json.data || []

@@ -35,16 +35,6 @@ public class LocalGalleryService
         _legacyDirs[-Math.Abs(legacyId)] = dirPath;
     }
 
-    /// <summary>扫描本地画廊目录，返回列表（兼容旧接口，从 DB 查询）</summary>
-    public List<LocalGalleryItem> ScanLocalGalleries()
-    {
-        using var db = CreateDb();
-        return db.LocalGalleries.AsNoTracking()
-            .OrderByDescending(g => g.LastModified)
-            .Select(MapToItem)
-            .ToList();
-    }
-
     /// <summary>DB 查询辅助——从 LocalGallery 实体映射到 LocalGalleryItem</summary>
     private static LocalGalleryItem MapToItem(LocalGallery g) => new()
     {
@@ -60,7 +50,6 @@ public class LocalGalleryService
         Language = g.Language,
         Artists = DeserializeJsonList(g.Artists),
         Groups = DeserializeJsonList(g.Groups),
-        AllTags = DeserializeJsonList(g.AllTags),
         DownloadedAt = g.DownloadedAt
     };
 
@@ -366,8 +355,7 @@ public class LocalGalleryService
         Rating = g.Rating,
         LastModified = g.LastModified,
         Artists = DeserializeJsonList(g.Artists),
-        Groups = DeserializeJsonList(g.Groups),
-        AllTags = DeserializeJsonList(g.AllTags)
+        Groups = DeserializeJsonList(g.Groups)
     };
 
     private static IQueryable<LocalGallery> ApplyDbSort(IQueryable<LocalGallery> query, string? sort)
@@ -842,7 +830,6 @@ public class LocalGalleryItem
     public string? Language { get; set; }
     public List<string> Artists { get; set; } = new();
     public List<string> Groups { get; set; } = new();
-    public List<string> AllTags { get; set; } = new();
     public DateTime? DownloadedAt { get; set; }
 }
 
@@ -910,5 +897,4 @@ public class LocalGallerySummary
     public DateTime LastModified { get; set; }
     public List<string> Artists { get; set; } = new();
     public List<string> Groups { get; set; } = new();
-    public List<string> AllTags { get; set; } = new();
 }
