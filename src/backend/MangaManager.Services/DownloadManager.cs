@@ -465,6 +465,22 @@ public class DownloadManager
                     task.Status = "completed";
                 }
                 task.CompletedAt = DateTime.UtcNow;
+
+                // 下载完成后显式入库：不再依赖 FileSystemWatcher 的延迟兜底
+                // （历史上"下载完成但本地库没有该作品"就出在这条隐式链路上）
+                if (task.Status == "completed")
+                {
+                    try
+                    {
+                        var sync = _scopeFactory.CreateScope().ServiceProvider
+                            .GetRequiredService<GallerySyncService>();
+                        await sync.SyncDirectoryAsync(EhentaiFileHelper.GetGalleryLocalDir(task.Gid, task.Title));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[DownloadManager] 完成后入库失败 gid={Gid}（watcher 仍会兜底）", task.Gid);
+                    }
+                }
             }
         }
         catch (OperationCanceledException) when (taskCts.IsCancellationRequested)
