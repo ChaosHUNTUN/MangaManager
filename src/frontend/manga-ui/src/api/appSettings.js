@@ -26,3 +26,9 @@ export async function rescanLibrary() {
   const json = await request('/api/settings/app/rescan', { method: 'POST' })
   return json
 }
+
+/** 运行状态汇总（库规模 / 数据一致性指标 / 下载队列 / 存储目录），供设置页诊断展示 */
+export async function fetchServerStatus() {
+  const json = await request('/api/status')
+  return json.data
+}

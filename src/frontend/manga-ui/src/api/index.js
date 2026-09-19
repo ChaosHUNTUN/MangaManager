@@ -61,4 +61,4 @@ export {
 export { fetchDrives, fetchDirectory } from './filesystem'
 
 // 运行时设置（库目录 / 代理 / 重扫）
-export { fetchAppSettings, saveAppSettings, rescanLibrary } from './appSettings'
+export { fetchAppSettings, saveAppSettings, rescanLibrary, fetchServerStatus } from './appSettings'

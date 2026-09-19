@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Folder, RefreshCw, Save, ShieldCheck, Globe, AlertCircle, CheckCircle, BookMarked, Tags } from 'lucide-react'
-import { fetchAppSettings, saveAppSettings, rescanLibrary } from '../api'
+import { Folder, RefreshCw, Save, ShieldCheck, Globe, AlertCircle, CheckCircle, BookMarked, Tags, Activity } from 'lucide-react'
+import { fetchAppSettings, saveAppSettings, rescanLibrary, fetchServerStatus } from '../api'
 import useEHCookie from '../hooks/useEHCookie'
 import DirectoryPicker from '../components/DirectoryPicker'
 import TagLibraryModal from '../components/TagLibraryModal'
@@ -57,6 +57,8 @@ export default function Settings() {
   const [savingProxy, setSavingProxy] = useState(false)
   const [rescanning, setRescanning] = useState(false)
   const [tagLibOpen, setTagLibOpen] = useState(false)
+  const [status, setStatus] = useState(null)
+  const [statusLoading, setStatusLoading] = useState(false)
 
   const loadApp = useCallback(async () => {
     setLoading(true)
@@ -68,6 +70,13 @@ export default function Settings() {
     setLoading(false)
   }, [showToast])
   useEffect(() => { loadApp() }, [loadApp])
+
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true)
+    try { setStatus(await fetchServerStatus()) } catch { setStatus(null) }
+    setStatusLoading(false)
+  }, [])
+  useEffect(() => { loadStatus() }, [loadStatus])
 
   const handlePickDir = async (dir) => {
     setPickerOpen(false)
@@ -258,6 +267,37 @@ export default function Settings() {
       </Card>
 
       {tagLibOpen && <TagLibraryModal onClose={() => setTagLibOpen(false)} />}
+
+      {/* 运行状态（诊断）：库规模 / 数据一致性指标 / 下载队列 / 存储目录 */}
+      <Card icon={<Activity size={16} />} title="运行状态"
+        desc="用于诊断：一致性指标正常应为 0（孤儿标签关联 / 悬空标签引用）。">
+        {!status ? (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            {statusLoading ? '读取中…' : '不可用（后端未响应）'}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, fontSize: 'var(--text-2xs)' }}>
+              <div>作品：<b>{status.library?.galleries ?? 0}</b></div>
+              <div>标签：<b>{status.library?.tags ?? 0}</b></div>
+              <div>标签关联：<b>{status.library?.workTags ?? 0}</b></div>
+              <div style={{ color: (status.library?.orphanWorkTags ?? 0) > 0 ? 'var(--warning)' : undefined }}>
+                孤儿关联：<b>{status.library?.orphanWorkTags ?? 0}</b>
+              </div>
+              <div style={{ color: (status.library?.danglingTagRefs ?? 0) > 0 ? 'var(--error)' : undefined }}>
+                悬空标签引用：<b>{status.library?.danglingTagRefs ?? 0}</b>
+              </div>
+              <div>下载任务：<b>{status.downloads?.total ?? 0}</b>（活跃 {status.downloads?.active ?? 0}）</div>
+              <div style={{ color: status.storage?.exists ? undefined : 'var(--warning)' }}>
+                库目录：{status.storage?.exists ? '可访问' : '不可访问'}
+              </div>
+            </div>
+            <button className="btn-sm" style={{ marginTop: 10 }} onClick={loadStatus} disabled={statusLoading}>
+              <RefreshCw size={13} /> {statusLoading ? '刷新中…' : '刷新状态'}
+            </button>
+          </>
+        )}
+      </Card>
     </div>
   )
 }
