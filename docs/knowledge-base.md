@@ -235,6 +235,13 @@ MangaManager/
 
 ### 2026-09-19 全量优化执行记录
 
+**架构审查后按序执行的改进（每项独立提交）**
+1. **删除 `AllTags` 的 API 暴露 + 死端点**：`LocalGallerySummary/Item`、`MapToSummary/MapToItem` 不再带 AllTags；删除 `/api/local/galleries` 全量列表端点与 `ScanLocalGalleries()`（前端从未调用）。卡片列表载荷 14KB → 6KB。**DB 列保留**（它是标签同步输入源）
+2. **`RemoveGalleriesAsync` 统一删除路径 + 下载完成显式入库**：三处删除（追加式重扫/目录删除/一致性检查）共用同一方法（含 work_tag 清理）；下载完成后直接调 `GallerySyncService.SyncDirectoryAsync`，不再依赖 FileSystemWatcher 的 2 秒延迟兜底
+3. **阅读器跨作品导航改用 URL 上下文**：打开阅读器时把 `group/q/sort/tags` 写进 URL，阅读器据此调 `/api/local/galleries/gids` 还原有序序列 → 刷新页面 / 新标签页 / 会话丢失都能继续上下翻作品（原先只靠 sessionStorage）
+4. **在线模块缓存 + 详情骨架屏**：搜索结果与画廊详情各加 3 分钟内存缓存（翻页返回、列表↔详情来回切不再重复抓 EH）；详情弹窗先用列表卡片字段渲染骨架，接口返回后覆盖
+5. **可观测性**：新增 `/api/status`（库规模、孤儿 work_tag / 悬空标签引用计数、下载队列按状态、存储目录可用性）+ 设置页「运行状态」诊断卡片。与轻量 `/health` 区分
+
 **P0 真 bug**
 - **编辑标签保存直接报错**：`useGalleryOperations` 定义了 `setEditTagsSaving` / `setImporting` / `setBatchImporting` 但**没 return**，LocalGallery 的内联 handler 直接调用 → 点击保存抛 `ReferenceError`（编辑标签功能实际不可用）。已补全 hook 返回值与解构
 
