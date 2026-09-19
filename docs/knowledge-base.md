@@ -233,6 +233,12 @@ MangaManager/
   - 结束控制台时用强制结束（Stop-Process）不会触发它的 `Exit_Click`，因此**不会连带停掉 API**；但走它自己的「退出」按钮会停 API+前端
 
 ### 2026-09-19 启动器统一 + 单元测试 + CI（架构审查第 9 项）
+- **托盘「退出」确认框几秒后自动消失 → 无法手动退出控制台（用户报告）**：
+  - **现象**：右键托盘图标 → ❌ 退出，确认框只存活几秒就自己消失，退出流程永远走不到
+  - **根因**：`Exit_Click` 是托盘菜单项的 Click 处理器，此时菜单**还没关闭**，却同步弹了一个**无 owner** 的 `MessageBox.Show`。托盘菜单关闭时会销毁自己的弹出窗口，而 Win32 会把消息框的 owner 认成"当前活动窗口"（正是那个弹出窗口）→ 弹出窗口一销毁，确认框被连带关闭
+  - **修法**（`App.xaml.cs`）：① `Dispatcher.BeginInvoke(..., DispatcherPriority.Background)` + 250ms 延迟，等菜单彻底关闭后再弹；② 显式传 owner（主窗口，隐藏状态 HWND 依然有效；没有主窗口时用不可见 1×1 窗口 `EnsureHandle()` 兜底）；③ `_exitPrompting` 防重入 + `defaultResult: No` 防回车误退出；④ 停止服务包在 try/catch/finally 里——服务停不掉也必须能退出（原实现抛异常就卡在"退不掉"）
+  - **同类坑**：WinForms 的 NotifyIcon 菜单直接弹模态框有完全一样的问题，标准解法同样是"defer + 指定 owner"。**规则：托盘菜单项里不要直接弹模态框**
+
 - **启动器只保留 WPF 控制台**：删除根目录 `manga_manager.py`（Python 托盘启动器，603 行），`启动管理工具.bat` 改为「先 `dotnet build` 再启动 `MangaManager.Console.exe`」，彻底消除"重启后跑的还是旧二进制"的历史坑。`.clinerules` 同步目录结构与启动约定：**唯一入口 = `启动管理工具.bat`**，禁止再引入第二个启动器（两个进程会抢着管 API/前端）
   - **批处理只能写 ASCII**：`chcp 65001` 改的是输出代码页，cmd.exe 解析 .bat 正文仍按 OEM 代码页 → UTF-8 中文会被拆坏（实测报 `'�报错' is not recognized`）。所以启动脚本里的提示一律用英文
   - **控制台运行时会锁住自己的输出目录**：此时 `dotnet build` 必然 MSB3027 失败。启动器先 `tasklist` 检测 `MangaManager.Console.exe`，已在运行就直接提示（要更新代码：先退出控制台再双击）；构建仍失败但有旧产物时，退化为用旧产物启动并打印警告

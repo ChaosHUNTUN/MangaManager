@@ -21,7 +21,10 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private MainViewModel? _vm;
     private IDownloadMonitor? _monitor;
+    private LogService? _logService;
+    private Window? _dialogOwner;
     private bool _isExiting;
+    private bool _exitPrompting;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -51,6 +54,7 @@ public partial class App : Application
         var logService = new LogService(config.Logging.MaxLines,
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "console.log"),
             config.Logging.MaxFileSizeKB);
+        _logService = logService;
         var runner = new ProcessRunner(dispatcher);
         var probe = new HttpProbe();
         var apiClient = new ApiClient(config.Services.Api.Url, config.Monitoring.HttpTimeoutSeconds);
@@ -118,18 +122,92 @@ public partial class App : Application
 
     private void OpenWeb_Click(object sender, RoutedEventArgs e) => _vm?.OpenWebCommand.Execute(null);
 
-    private async void Exit_Click(object sender, RoutedEventArgs e)
-    {
-        var result = System.Windows.MessageBox.Show(
-            "退出将停止所有服务（API + 前端），确定退出？",
-            "MangaManager", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (result != MessageBoxResult.Yes) return;
+    /// <summary>
+    /// 托盘菜单「退出」。
+    ///
+    /// 历史故障：确认框只显示几秒就自己消失，导致手动退出根本点不到。
+    /// 原因是托盘菜单（ToolStrip/弹出窗口）关闭时会销毁属于它的窗口，
+    /// 而无 owner 的 MessageBox 会让系统把"当前活动窗口"（即那个弹出窗口）
+    /// 当成 owner，于是弹出窗口一销毁，确认框被连带关掉。
+    ///
+    /// 修法两件事：① 等菜单彻底关闭后再弹（BeginInvoke + 短暂延迟）；
+    /// ② 显式指定一个长期存在的 owner 窗口（主窗口，隐藏状态也仍有句柄）。
+    /// </summary>
+    private void Exit_Click(object sender, RoutedEventArgs e)
+        => Dispatcher.BeginInvoke(new Action(ConfirmExitAsync),
+            System.Windows.Threading.DispatcherPriority.Background);
 
-        _isExiting = true;
-        if (_vm != null) await _vm.ShutdownAsync();
-        if (_monitor != null) await _monitor.DisposeAsync();
-        _trayIcon?.Dispose();
-        Application.Current.Shutdown();
+    private async void ConfirmExitAsync()
+    {
+        if (_exitPrompting || _isExiting) return;   // 防连点/防重入
+        _exitPrompting = true;
+        try
+        {
+            await Task.Delay(250);   // 给托盘菜单完成关闭/弹出窗口销毁留出时间
+
+            var choice = System.Windows.MessageBox.Show(
+                EnsureDialogOwner(),
+                "退出将停止所有服务（API + 前端），确定退出？",
+                "MangaManager", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (choice != MessageBoxResult.Yes) return;
+
+            _isExiting = true;
+            _logService?.Log("收到退出指令，正在停止服务...");
+            if (_trayIcon != null) _trayIcon.ToolTipText = "MangaManager - 正在退出...";
+
+            try
+            {
+                if (_vm != null) await _vm.ShutdownAsync();
+                if (_monitor != null) await _monitor.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                // 停止服务失败也必须让用户退出，否则就会卡在"退不掉"的状态
+                _logService?.Log($"退出时停止服务出错（继续退出）: {ex.Message}");
+            }
+            finally
+            {
+                _trayIcon?.Dispose();
+                Application.Current.Shutdown();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logService?.Log($"退出流程异常，强制退出: {ex.Message}");
+            _isExiting = true;
+            Application.Current.Shutdown();
+        }
+        finally
+        {
+            _exitPrompting = false;
+        }
+    }
+
+    /// <summary>
+    /// 对话框 owner：优先用主窗口（即便隐藏，句柄依然有效）；
+    /// 主窗口还没建好时退化为一个不可见的 1×1 窗口，保证 MessageBox 有稳定 owner。
+    /// </summary>
+    private Window EnsureDialogOwner()
+    {
+        if (_mainWindow != null) return _mainWindow;
+
+        if (_dialogOwner == null)
+        {
+            _dialogOwner = new Window
+            {
+                Title = "MangaManager",
+                Width = 1,
+                Height = 1,
+                Left = -32000,
+                Top = -32000,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+                WindowStyle = WindowStyle.None,
+                Visibility = Visibility.Hidden,
+            };
+            new System.Windows.Interop.WindowInteropHelper(_dialogOwner).EnsureHandle();
+        }
+        return _dialogOwner;
     }
 
     protected override void OnExit(ExitEventArgs e)
