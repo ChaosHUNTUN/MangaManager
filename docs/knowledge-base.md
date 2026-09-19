@@ -245,6 +245,8 @@ MangaManager/
   - **SQLite 内存库集成测试**（跑真实 EF 查询）：`tag:"big breasts"`、`tag:big_breasts`、中文标签名、多标签 **AND**、`artist:` 精确匹配、分页钳位
   - 为可测性把 `SplitSearchTerms` / `SanitizeFileName` 由 `private` 改 `internal`，并在 Services 项目加 `InternalsVisibleTo("MangaManager.Tests")`
 - **CI**：`.github/workflows/ci.yml` —— backend（windows-latest：构建 slnx + WPF 控制台 + `dotnet test`）、frontend（node 22：`npm ci` + lint + build）
+- **CI 首次运行的结论（重要）**：workflow 已注册并触发（run #1，`cdd5823`），但两个 job 都在 3 秒内失败且**没有任何 step**——GitHub 给出的注解是 `The job was not started because your account is locked due to a billing issue.`。**这是账号计费问题，不是代码问题**，需在 GitHub 账号的 Billing 里处理；在此之前 CI 不会真正执行
+- **本地兜底**：新增 `scripts/devops/ci_local.ps1`（与 CI 等价的 6 步检查，失败会列出步骤并以 exit 1 结束）。注意 .ps1 也要**只写 ASCII**：Windows PowerShell 5.1 无 BOM 时按 ANSI 解析文件，UTF-8 中文会破坏语法（实测 `Missing closing '}'`）
 - **验证**：后端 Release 构建 0 警告 0 错误；`dotnet test` 43/43 通过；前端 lint 0 error / 55 warning、build 通过
 
 ### 2026-09-19 全量优化执行记录

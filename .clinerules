@@ -213,6 +213,8 @@ dotnet run
 ### 测试
 ```bash
 dotnet test src\backend\MangaManager.Tests\MangaManager.Tests.csproj
+# 本地跑一遍 CI 的全部检查（后端构建/测试 + 前端 lint/build）
+pwsh -File scripts\devops\ci_local.ps1
 ```
 
 ---

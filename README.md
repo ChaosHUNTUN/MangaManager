@@ -81,6 +81,13 @@ dotnet test src/backend/MangaManager.Tests/MangaManager.Tests.csproj
 CI（`.github/workflows/ci.yml`）会在 push / PR 时跑：后端构建 + WPF 控制台构建 + 单元测试，
 以及前端 `npm ci` + lint + build。
 
+不想等 CI、或 Actions 不可用时，可以在本地跑同一套检查：
+
+```powershell
+pwsh -File scripts\devops\ci_local.ps1          # 跳过快照安装（假定 node_modules 已就绪）
+pwsh -File scripts\devops\ci_local.ps1 -Install # 先跑 npm ci（需先停掉前端 dev server）
+```
+
 ---
 
 ## 项目结构
