@@ -62,7 +62,8 @@ export default function EHentai() {
 
   // ─── 供 JSX 使用的稳定 handler（封装复杂参数构造） ───
   const handleDownloadCard = useCallback((e, g) => { e.stopPropagation(); handleDownload({ gid: g.gid, token: g.token, title: g.title, thumb: g.thumbUrl }) }, [handleDownload])
-  const handleOpenDetail = useCallback((g) => openDetail(g.gid, g.token), [openDetail])
+  // 把卡片数据作为骨架传入：详情接口返回前就能显示标题/封面/评分
+  const handleOpenDetail = useCallback((g) => openDetail(g.gid, g.token, g), [openDetail])
 
   // 误触防护：滚动（含惯性滚动）过程中或刚结束时轻触卡片会触发 click，
   // 移动端很容易在滑动列表时误开详情，这里按"最近是否滚动过"过滤
@@ -384,10 +385,11 @@ export default function EHentai() {
       )}
 
       {/* 详情弹窗 */}
-      {detailLoading && <div className="modal-overlay"><div className="modal"><div className="loading">加载详情...</div></div></div>}
-      {detail && !detailLoading && (
+      {detailLoading && !detail && <div className="modal-overlay"><div className="modal"><div className="loading">加载详情...</div></div></div>}
+      {detail && (
         <div className="modal-overlay" onClick={closeDetailModal}>
           <div className="modal" style={{ maxWidth: 680, maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
+            {detailLoading && <div style={{ fontSize: '0.72rem', color: '#8ab4f8', padding: '8px 20px 0' }}>详情加载中…（以下为列表页已知信息）</div>}
             <div style={{ position: 'relative', background: 'linear-gradient(180deg, #1a1a3a 0%, #0f0f1a 100%)', padding: '20px 24px 16px', borderBottom: '1px solid #2a2a4a' }}>
               <button className="btn-sm" onClick={() => setDetail(null)} style={{ position: 'absolute', top: 10, right: 10, border: 'none', color: '#888', fontSize: '1.1rem' }}>✕</button>
               <div style={{ display: 'flex', gap: 16 }}>

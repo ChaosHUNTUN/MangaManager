@@ -42,8 +42,24 @@ export default function useEHDetail({ showToast, setLocalGids, setDownloadingGid
     try { await removeBlockedTag(tag); setBlockedTags(prev => prev.filter(t => t !== tag)) } catch { }
   }
 
-  const openDetail = async (gid, token) => {
+  /**
+   * 打开详情。传入 seed（搜索结果卡片对象）时会先用卡片已有字段渲染骨架，
+   * 真实详情返回后再覆盖——避免"点开后白屏等接口"的体感。
+   */
+  const openDetail = async (gid, token, seed) => {
     setDetailLoading(true); setTagTranslations({}); setNsTranslations({})
+    setDetail(seed ? {
+      gid, token,
+      title: seed.title || `#${gid}`,
+      category: seed.category || 'other',
+      language: seed.language || null,
+      rating: seed.rating != null ? String(seed.rating) : '0',
+      fileCount: seed.fileCount || 0,
+      fileSize: seed.fileSize || 0,
+      thumbUrl: seed.thumbUrl || null,
+      tagGroups: [],
+      isSkeleton: true,
+    } : null)
     try {
       const d = await fetchEHGalleryDetail(gid, token); setDetail(d)
       await translateDetailTags(d)

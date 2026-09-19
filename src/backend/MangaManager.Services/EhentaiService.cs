@@ -65,6 +65,11 @@ public class EhentaiService
         int categoryMask = 0, int? minRating = null, int? pageFrom = null, int? pageTo = null, int? advSearch = null,
         bool popular = false)
     {
+        // 搜索结果短时缓存：翻页返回、切换详情再回来时不必重复抓 EH（EH 有速率限制，重复抓既有风险也慢）
+        var cacheKey = $"{search}|{page}|{exhentai}|{nextCursor}|{categoryMask}|{minRating}|{pageFrom}|{pageTo}|{advSearch}|{popular}";
+        if (_listCache.TryGetValue(cacheKey, out var cached) && DateTime.UtcNow - cached.At < ListCacheTtl)
+            return cached.Result;
+
         var host = exhentai ? HOST_EX : HOST_E;
         string url;
         if (popular)
@@ -133,8 +138,13 @@ public class EhentaiService
                 : "E-Hentai 返回空响应，请稍后重试。");
         var result = ParseList(html, host, page);
         result.IsExhentai = exhentai;
+        _listCache[cacheKey] = (DateTime.UtcNow, result);
         return result;
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, GalleryListResult Result)> _listCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, GalleryDetail Result)> _detailCache = new();
+    private static readonly TimeSpan ListCacheTtl = TimeSpan.FromMinutes(3);
 
     private GalleryListResult ParseList(string html, string host, int page)
     {
@@ -371,7 +381,20 @@ public class EhentaiService
 
     #region 画廊详情
 
+    /// <summary>画廊详情（带短时缓存：列表↔详情来回切时避免重复抓取）</summary>
     public async Task<GalleryDetail> GetGalleryDetailAsync(int gid, string token)
+    {
+        var detailKey = $"{gid}/{token}";
+        if (_detailCache.TryGetValue(detailKey, out var cachedDetail)
+            && DateTime.UtcNow - cachedDetail.At < ListCacheTtl)
+            return cachedDetail.Result;
+
+        var detail = await GetGalleryDetailCoreAsync(gid, token);
+        _detailCache[detailKey] = (DateTime.UtcNow, detail);
+        return detail;
+    }
+
+    private async Task<GalleryDetail> GetGalleryDetailCoreAsync(int gid, string token)
     {
         // 第1步：先尝试表站，如果不可用则尝试里站
         var host = HOST_E; // 表站优先
