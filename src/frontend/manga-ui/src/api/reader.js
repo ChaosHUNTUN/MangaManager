@@ -1,15 +1,6 @@
 // 阅读器 API：进度 + 设置 + URL 构建器
 
-import { API_BASE, request } from './client'
-
-// === 漫画 URL 构建器 ===
-export function getCoverUrl(mangaId) {
-  return `${API_BASE}/api/cover/${mangaId}`
-}
-
-export function getPageUrl(mangaId, pageIndex) {
-  return `${API_BASE}/api/reader/manga/${mangaId}/page/${pageIndex}`
-}
+import { request } from './client'
 
 // === 阅读进度 ===
 export async function fetchReadingProgress(gid) {

@@ -61,24 +61,3 @@ export async function saveTagOrder(tagId, gids) {
     body: JSON.stringify({ gids })
   })
 }
-
-export async function fetchMangaTags(mangaId) {
-  const json = await request(`/api/manga/${mangaId}/tags`)
-  return json.data || []
-}
-
-export async function setMangaTags(mangaId, tagIds) {
-  return request(`/api/manga/${mangaId}/tags`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(tagIds)
-  })
-}
-
-export async function batchAddTags(mangaIds, tagIds) {
-  return request('/api/manga/batch/tags', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mangaIds, tagIds })
-  })
-}

@@ -3,18 +3,11 @@
 
 export { API_BASE, request } from './client'
 
-// 漫画
-export {
-  fetchMangaList, fetchMangaDetail, scanDirectory, subscribeScanProgress,
-  renameManga, deleteManga
-} from './manga'
-
 // 标签
 export {
   fetchAllTags, fetchTagCategories, createTag, updateTag, deleteTag, mergeTags,
   cleanupEmptyTags,
-  fetchTagOrder, saveTagOrder,
-  fetchMangaTags, setMangaTags, batchAddTags
+  fetchTagOrder, saveTagOrder
 } from './tags'
 
 // E-Hentai
@@ -52,7 +45,6 @@ export {
 
 // 阅读器
 export {
-  getCoverUrl, getPageUrl,
   fetchReadingProgress, fetchReadingProgressAbortable, saveReadingProgress,
   markProgressFinished,
   fetchReaderSettings, saveReaderSettings
