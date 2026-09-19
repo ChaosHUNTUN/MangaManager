@@ -98,7 +98,18 @@ export default function useGalleryOperations({ albumConfig, paged, pageTotal,
     }))
     sessionStorage.setItem('reader-local-return-url', window.location.search)
     if (isRandom) sessionStorage.removeItem('reader-local-full-gids')
-    navigate(`/reader-local/${gid}`)
+
+    // 把筛选上下文放进 URL：刷新页面 / 新标签页打开 / 分享链接都能还原同一阅读序列，
+    // 阅读器据此向后端拉取有序 gid 列表（不再只依赖 sessionStorage）
+    const ctx = new URLSearchParams()
+    if (!isRandom) {
+      if (activeGroup && activeGroup !== 'all') ctx.set('group', activeGroup)
+      if (search) ctx.set('q', search)
+      if (sortBy && sortBy !== 'modified-desc') ctx.set('sort', sortBy)
+      if (tagIds && tagIds.length) ctx.set('tags', tagIds.join(','))
+    }
+    const qs = ctx.toString()
+    navigate(`/reader-local/${gid}${qs ? `?${qs}` : ''}`)
     if (!isRandom) {
       try {
         const { fetchLocalGalleryGids } = await import('../api')

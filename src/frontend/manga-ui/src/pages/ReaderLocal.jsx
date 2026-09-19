@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { fetchLocalGalleryPagesAbortable, fetchLocalGalleryDetail, fetchReadingProgressAbortable, saveReadingProgress, API_BASE } from '../api'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { fetchLocalGalleryPagesAbortable, fetchLocalGalleryDetail, fetchLocalGalleryGids, fetchReadingProgressAbortable, saveReadingProgress, API_BASE } from '../api'
 import { useReaderEngine } from '../visual-test/reader/useReaderEngine'
 import useImagePreload from '../hooks/useImagePreload'
 import PaginatedView from '../visual-test/reader/PaginatedView'
@@ -127,7 +127,20 @@ export default function ReaderLocal() {
   }, [gid])
 
   // ── 画廊间导航 ──
-  // 优先级: reader-local-full-gids (完整列表, 异步加载) > reader-local-context.gids (当前页)
+  // 优先级: URL 筛选上下文（刷新/新标签页都有效）> reader-local-full-gids（会话预取）> reader-local-context.gids（当前页）
+  const [searchParams] = useSearchParams()
+  const urlCtx = useMemo(() => {
+    const group = searchParams.get('group')
+    const q = searchParams.get('q')
+    const sort = searchParams.get('sort')
+    const tags = searchParams.get('tags')
+    if (!group && !q && !sort && !tags) return null
+    return {
+      group, search: q, sort,
+      tagIds: tags ? tags.split(',').map(Number).filter(Boolean) : null,
+    }
+  }, [searchParams])
+
   const [galleryList, setGalleryList] = useState([])
   const loadGalleryList = useCallback(() => {
     try {
@@ -138,6 +151,16 @@ export default function ReaderLocal() {
     } catch {}
   }, [])
   useEffect(loadGalleryList, [gid])
+
+  // URL 带筛选上下文时直接向后端要有序 gid 列表（会话态丢失也能还原同一阅读序列）
+  useEffect(() => {
+    if (!urlCtx) return
+    let cancelled = false
+    fetchLocalGalleryGids(urlCtx)
+      .then(list => { if (!cancelled && Array.isArray(list) && list.length > 0) setGalleryList(list) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [urlCtx])
   // 监听完整列表异步加载完成
   useEffect(() => {
     const onUpdate = (e) => { if (e.detail?.length) setGalleryList(e.detail) }
@@ -240,9 +263,11 @@ export default function ReaderLocal() {
   // 返回书架（保存进度后回到进入阅读器前的筛选/排序状态）
   const handleBack = useCallback(() => {
     if (progressRestoredRef.current === currentGid) saveProgress(currentGid, currentPage, isPaged ? null : offsetRef.current)
-    const returnUrl = sessionStorage.getItem('reader-local-return-url') || ''
+    // 优先用会话里记录的"进入阅读器前的 URL"；会话丢失时用 URL 上的筛选上下文还原
+    const returnUrl = sessionStorage.getItem('reader-local-return-url')
+      || (urlCtx ? `?${searchParams.toString()}` : '')
     navigate(`/local${returnUrl}`, { replace: true })
-  }, [saveProgress, currentGid, currentPage, navigate, isPaged])
+  }, [saveProgress, currentGid, currentPage, navigate, isPaged, urlCtx, searchParams])
 
   // ── 图片预加载 (±50 页半径, gid 变化自动中断) ──
   useImagePreload(pages, currentPage, currentGid)
