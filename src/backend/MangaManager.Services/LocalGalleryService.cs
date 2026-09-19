@@ -251,15 +251,11 @@ public class LocalGalleryService
                 else if (group.StartsWith("artist:"))
                 {
                     // 精确匹配作者标签（任意位置，修复多作者作品只匹配数组首元素的问题）
-                    var name = group[7..];
-                    query = query.Where(g => db.WorkTags.Any(wt =>
-                        wt.WorkId == g.Gid && wt.Tag!.Namespace == "artist" && wt.Tag.Name == name));
+                    query = ApplyTagNamespaceFilter(db, query, "artist", group[7..], exact: true);
                 }
                 else if (group.StartsWith("group:"))
                 {
-                    var name = group[6..];
-                    query = query.Where(g => db.WorkTags.Any(wt =>
-                        wt.WorkId == g.Gid && wt.Tag!.Namespace == "group" && wt.Tag.Name == name));
+                    query = ApplyTagNamespaceFilter(db, query, "group", group[6..], exact: true);
                 }
             }
         }
@@ -280,12 +276,10 @@ public class LocalGalleryService
                     switch (prefix)
                     {
                         case "artist":
-                            query = query.Where(g => db.WorkTags.Any(wt =>
-                                wt.WorkId == g.Gid && wt.Tag!.Namespace == "artist" && wt.Tag.Name.ToLower().Contains(value)));
+                            query = ApplyTagNamespaceFilter(db, query, "artist", value, exact: false);
                             break;
                         case "group":
-                            query = query.Where(g => db.WorkTags.Any(wt =>
-                                wt.WorkId == g.Gid && wt.Tag!.Namespace == "group" && wt.Tag.Name.ToLower().Contains(value)));
+                            query = ApplyTagNamespaceFilter(db, query, "group", value, exact: false);
                             break;
                         case "category":
                             query = query.Where(g => g.Category != null && g.Category.ToLower().Contains(value));
@@ -362,6 +356,26 @@ public class LocalGalleryService
         Artists = DeserializeJsonList(g.Artists),
         Groups = DeserializeJsonList(g.Groups)
     };
+
+    /// <summary>
+    /// 标签类筛选的统一谓词：按「命名空间 + 名称」过滤作品。
+    ///
+    /// 收敛前同一语义散在四处（group=artist:/group: 精确匹配、搜索框 artist:/group: 子串匹配），
+    /// 各写一遍 work_tag JOIN；现在两种入口共用本方法，仅 exact 不同：
+    ///   exact=true  → 旧分组入口（URL 里残留的 group=artist:X）按名称精确匹配
+    ///   exact=false → 搜索框前缀按名称子串匹配
+    /// </summary>
+    private static IQueryable<LocalGallery> ApplyTagNamespaceFilter(
+        MangaDbContext db, IQueryable<LocalGallery> query, string ns, string value, bool exact)
+    {
+        if (exact)
+            return query.Where(g => db.WorkTags.Any(wt =>
+                wt.WorkId == g.Gid && wt.Tag!.Namespace == ns && wt.Tag.Name == value));
+
+        var v = value.ToLower();
+        return query.Where(g => db.WorkTags.Any(wt =>
+            wt.WorkId == g.Gid && wt.Tag!.Namespace == ns && wt.Tag.Name.ToLower().Contains(v)));
+    }
 
     /// <summary>为当前页作品附加阅读进度（一次查询批量取，避免逐条查库）</summary>
     private static void AttachProgress(MangaDbContext db, List<LocalGallerySummary> items)

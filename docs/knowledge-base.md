@@ -241,6 +241,12 @@ MangaManager/
 3. **阅读器跨作品导航改用 URL 上下文**：打开阅读器时把 `group/q/sort/tags` 写进 URL，阅读器据此调 `/api/local/galleries/gids` 还原有序序列 → 刷新页面 / 新标签页 / 会话丢失都能继续上下翻作品（原先只靠 sessionStorage）
 4. **在线模块缓存 + 详情骨架屏**：搜索结果与画廊详情各加 3 分钟内存缓存（翻页返回、列表↔详情来回切不再重复抓 EH）；详情弹窗先用列表卡片字段渲染骨架，接口返回后覆盖
 5. **可观测性**：新增 `/api/status`（库规模、孤儿 work_tag / 悬空标签引用计数、下载队列按状态、存储目录可用性）+ 设置页「运行状态」诊断卡片。与轻量 `/health` 区分
+6. **阅读进度升级**：`local_reading_progress` 增 `TotalPages`/`Finished`；`POST /api/readingprogress/mark` 批量标记已读/未读；分页接口附带阅读状态（一次查询）；卡片显示「已读 ✓ / 百分比」；详情弹窗可切换；批量模式可「标记已读」；阅读器读到最后一页自动置已读（回看不清除）
+7. **旧漫画子系统前端下线**：删除 `/reader/:id` 路由、`ReaderRedirect`、`api/manga.js` 及其导出、`tags.js` 的旧漫画接口、`reader.js` 的旧 URL 构建器（前端零调用方；`manga`/`reading_progress` 表均 0 行）。**后端 `MangaController`/`ReaderController`/`MangaService` 与 5 张空表未删**——需数据库迁移，留待单独一轮
+8. **筛选语义收敛（第 5 项）**：原先"按作者筛选"有三套实现（`group=artist:X` 精确、搜索框 `artist:` 子串、`tagIds` 按 id），各写一遍 work_tag JOIN → 抽出统一谓词 `ApplyTagNamespaceFilter(db, query, ns, value, exact)`，两种入口共用。**语义现状**：
+   - `tagIds`（侧边栏/URL）：按标签 id 精确匹配，多标签 **AND**
+   - 搜索框 `tag:`：标签名/中文名**子串**匹配；`artist:`/`group:`：对应命名空间内**子串**匹配
+   - `group=`（URL 残留）：命名空间内**精确**匹配（UI 已无入口，仅兼容旧链接）
 
 **P0 真 bug**
 - **编辑标签保存直接报错**：`useGalleryOperations` 定义了 `setEditTagsSaving` / `setImporting` / `setBatchImporting` 但**没 return**，LocalGallery 的内联 handler 直接调用 → 点击保存抛 `ReferenceError`（编辑标签功能实际不可用）。已补全 hook 返回值与解构
