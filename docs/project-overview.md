@@ -51,7 +51,7 @@ MangaManager/
 │       └── MangaManager.Console/     # WPF 桌面控制台
 ├── dist/                              # 发布产物
 ├── 未翻译专辑翻译表.xlsx              # 翻译工作文件
-└── 启动管理工具.bat                    # 遗留 Python 管理工具入口
+└── 启动管理工具.bat                    # 唯一启动入口（WPF 控制台）
 ```
 
 ---
